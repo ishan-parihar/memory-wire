@@ -422,7 +422,18 @@ mod tests {
     fn commit(dir: &Path, file: &str, subject: &str, body: Option<&str>) {
         std::fs::write(dir.join(file), format!("{file}\n")).expect("write");
         git(&["add", "-A"], dir);
-        let mut args = vec!["-c", "commit.gpgsign=false", "commit", "-q", "-m", subject];
+        let mut args = vec![
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=memory-wire tests",
+            "-c",
+            "user.email=tests@memory-wire.invalid",
+            "commit",
+            "-q",
+            "-m",
+            subject,
+        ];
         if let Some(body) = body {
             args.extend(["-m", body]);
         }
