@@ -6,13 +6,8 @@ against a local `memory-wire serve` on a scratch `--db` on 2026-09-27; the
 `Expect:` lines are observed output, not aspirations, and every claim here is
 listed in [`docs/CONSISTENCY.md`](docs/CONSISTENCY.md) with how it was checked.
 
-> **Not published yet.** Crate is `0.2.0` and there is no GitHub release, so
-> `MW_REPO` has no default that works. Set it to the repo you cloned or are
-> fetching from, then keep the raw URL in `$MW_RAW`. If you built from source,
-> skip to the "Start the server" block — every step after it is unchanged.
-
 ```bash
-export MW_REPO='<owner>/<repo>'                              # required
+export MW_REPO='ishan-parihar/memory-wire'                  # this repo
 export MW_RAW="https://raw.githubusercontent.com/$MW_REPO/main"
 export MW_BIN="$HOME/.local/bin/memory-wire"
 export MW_DB="$HOME/.local/share/memory-wire/agents.db"     # your call

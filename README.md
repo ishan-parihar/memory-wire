@@ -384,16 +384,16 @@ latency, so quote the profile with any latency number.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/install/get-memory-wire.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/install/get-memory-wire.sh | sh
 # sh get-memory-wire.sh --db <path>     # echoes the serve line with that --db
 # sh get-memory-wire.sh --uninstall     # removes the binary only, keeps the db
 ```
 
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
-defaults. **No GitHub release is published yet** (crate is `0.2.0`), so
-`MW_REPO` has no working default — build with `cargo build --release` until one is
-cut. Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
+defaults, which resolve to this repo and its latest published release
+(`v0.2.0`, asset `memory-wire-linux-x86_64.tar.gz`).
+Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 
 ## Roadmap
 

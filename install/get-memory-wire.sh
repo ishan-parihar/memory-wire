@@ -3,14 +3,14 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/$MW_REPO/main/install/get-memory-wire.sh | sh
 #
-# Env: MW_REPO=<owner>/<repo> (no public release yet — set this), MW_VERSION=<tag>
+# Env: MW_REPO=<owner>/<repo> (defaults to this repo), MW_VERSION=<tag>
 # (default "latest" via the GitHub API), MW_INSTALL_DIR=<dir> (default
 # ~/.local/bin), MW_LOCAL_ASSET=<file> (install a local .tar.gz, skip the network).
 # Release assets are memory-wire-<target>.tar.gz, <target> in linux-x86_64
 # linux-aarch64 macos-x86_64 macos-aarch64.
 set -eu
 
-MW_REPO="${MW_REPO:-memory-wire-rs/memory-wire}"
+MW_REPO="${MW_REPO:-ishan-parihar/memory-wire}"
 MW_VERSION="${MW_VERSION:-latest}"
 MW_INSTALL_DIR="${MW_INSTALL_DIR:-$HOME/.local/bin}"
 BIN="memory-wire"
