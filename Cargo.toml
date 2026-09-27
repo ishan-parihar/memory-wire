@@ -1,0 +1,54 @@
+[package]
+name = "memory-wire"
+version = "0.2.0"
+edition = "2021"
+description = "memory-wire: Rust memory infrastructure integrating Hindsight (learning memory) + agentmemory (coding-agent capture)"
+license = "MIT OR Apache-2.0"
+keywords = ["agent-memory", "mcp", "retrieval", "embeddings"]
+categories = ["database", "command-line-utilities"]
+
+[[bin]]
+name = "memory-wire"
+path = "src/main.rs"
+
+[lib]
+name = "memory_wire"
+path = "src/lib.rs"
+
+[dependencies]
+# Minimal scaffold. Planned deps (see PLAN.md section 4) to be added per-phase.
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
+regex = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+rmcp = { version = "1.8", default-features = false, features = ["server", "transport-io"] }
+
+[features]
+default = []
+
+[dev-dependencies]
+
+# Lint groups are deny-by-default in CI (`-D warnings`). `pedantic` and `nursery`
+# are deliberately OFF: they emit ~263 findings on this crate (mostly stylistic
+# naming/doc choices), so enabling them would break the build rather than catch bugs.
+# Adopting either is a separate, budgeted change -- not a one-line edit here.
+[lints.clippy]
+correctness = "deny"
+suspicious = "deny"
+style = "deny"
+complexity = "deny"
+perf = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1

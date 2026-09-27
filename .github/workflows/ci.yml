@@ -1,0 +1,71 @@
+# CI for memory-wire — deliberately quota-frugal.
+#
+# Quota policy (this file exists to spend as few Actions minutes as possible):
+#   * Branch pushes are INTENTIONALLY EXCLUDED. There is no `push:` trigger for
+#     branches/tags other than a `v*` release tag. Every commit to a dev branch
+#     costs 0 minutes. Verification happens on the PR, which is the only moment
+#     a human actually needs the answer.
+#   * A release tag (`push: tags: ['v*']`) is verified once, unfiltered, so a
+#     published tag can never be broken. That is the only push-triggered run.
+#   * Docs-only PRs cost 0 minutes via `paths-ignore` below.
+#   * `concurrency` kills superseded PR runs instead of letting them run to
+#     completion in parallel.
+#   * One job, one runner, 15-minute hard cap. No matrix, no multi-OS, no docker.
+#
+# What is deliberately NOT here: release builds, benchmarks, the `longmemeval` /
+# `coding_life` / `scale_sweep` / `soak` examples, and any fmt gate. Those are
+# manual (`cargo run --example ...`, `cargo build --release`) because they cost
+# minutes and can fail on files unrelated to a PR. rustfmt is not even installed
+# for that reason. A fmt gate belongs in a separate, opt-in workflow if ever.
+
+name: ci
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test + clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `rust-toolchain` file in the repo, so the action supplies the channel:
+      # `stable` is the pinned major channel. rustfmt is deliberately omitted —
+      # there is no fmt gate. If a rust-toolchain file is ever added, this step
+      # must be replaced by `actions-rust-lang/setup-rust-toolchain`.
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Restores target/ + ~/.cargo from a cache scoped to this runner OS;
+      # a changed Cargo.lock changes the key, so dependency edits rebuild cold
+      # instead of serving a stale cache.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-cargo
+
+      - name: cargo test
+        run: cargo test --locked
+
+      # `--all-features` lints the `embed` feature too, which the default build
+      # never compiles -- without it that code is only ever checked by review.
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
