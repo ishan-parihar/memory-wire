@@ -10,6 +10,15 @@
 //! file `longmemeval_s_cleaned.json` (500 questions, ~48 sessions each).
 //!
 //! Run: `cargo run --example longmemeval -- --data eval/data/longmemeval_s_cleaned.json [--n 500] [--seed 42]`
+//!
+//! This binary **owns the whole of `eval/RESULTS.md`**, methodology paragraph
+//! included. It used to emit only the table, so every run silently deleted the
+//! curated note underneath it — the note stating that the 200-row candidate pool
+//! never binds on this suite, which `docs/CONSISTENCY.md` §6 depends on. The
+//! header below is part of the template, and the session-count range in it is
+//! computed from the run rather than hand-pinned, so it cannot go stale. A run
+//! from `--release` therefore reproduces the committed file apart from the date
+//! and the latency column.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -19,6 +28,10 @@ use memory_wire::api::MemoryService;
 use memory_wire::memory::{Bank, Memory};
 use memory_wire::store::{SqliteStore, Store};
 use serde::Deserialize;
+
+// The `--out-md` policy (a bare run must not be able to overwrite a committed
+// `eval/` artifact) and the build-profile name the provenance line needs.
+mod bench_common;
 
 #[derive(Deserialize)]
 struct Turn {
@@ -89,13 +102,34 @@ fn arg(name: &str, default: String, args: &[String]) -> String {
         .unwrap_or(default)
 }
 
+/// `2500` -> `2,500`. The number is read by humans, and a missing separator is
+/// the kind of thing a later copy-paste "fixes" into something else.
+fn group_digits(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let data = arg("--data", "eval/data/longmemeval_s_cleaned.json".into(), &args);
     let n: usize = arg("--n", "0".into(), &args).parse().unwrap_or(0);
     let seed: u64 = arg("--seed", "42".into(), &args).parse().unwrap_or(42);
     let out_json = arg("--out-json", "eval/results.json".into(), &args);
-    let out_md = arg("--out-md", "eval/RESULTS.md".into(), &args);
+    let out_md = bench_common::out_md(&args, "RESULTS.md");
+    if bench_common::profile() != "release" {
+        eprintln!(
+            "WARNING: this run is not `--release`; the latency column below is not comparable \
+             to the committed artifacts"
+        );
+    }
+    let profile_token = if bench_common::profile() == "release" { "release" } else { "debug" };
 
     let raw = fs::read_to_string(&data)?;
     let entries: Vec<Entry> = serde_json::from_str(&raw)?;
@@ -118,10 +152,17 @@ fn main() -> anyhow::Result<()> {
     let mut total = Agg::default();
     let mut by_type: HashMap<String, Agg> = HashMap::new();
     let mut rows: Vec<serde_json::Value> = Vec::new();
+    // The methodology note quotes the haystack size per question. Measured here
+    // rather than pinned, so the note can never contradict the run that wrote it.
+    let (mut sess_min, mut sess_max, mut sess_sum) = (usize::MAX, 0usize, 0usize);
 
     for (qi, &ei) in order.iter().enumerate() {
         let e = &entries[ei];
         let store = SqliteStore::open_in_memory()?;
+        let n_sessions = e.haystack_session_ids.len();
+        sess_min = sess_min.min(n_sessions);
+        sess_max = sess_max.max(n_sessions);
+        sess_sum += n_sessions;
         store.put_bank(&Bank {
             id: "eval".into(),
             name: "eval".into(),
@@ -171,8 +212,27 @@ fn main() -> anyhow::Result<()> {
     }
 
     let pct = |x: f64, c: usize| if c == 0 { 0.0 } else { x / c as f64 * 100.0 };
-    let mut md = String::from(
-        "# LongMemEval-S retrieval results (memory-wire)\n\nMethodology: per-question fresh index, session-as-document, question-text query — same as agentmemory `longmemeval-bench.ts` (retrieval-only, no LLM judge).\n\n| Slice | R@5 | R@10 | R@20 | NDCG@10 | MRR | p50 ms | n |\n|---|---|---|---|---|---|---|---|\n",
+    let date = chrono::Utc::now().format("%Y-%m-%d");
+    let sess_min = if sess_min == usize::MAX { 0 } else { sess_min };
+    let sess_mean = if total.count == 0 { 0.0 } else { sess_sum as f64 / total.count as f64 };
+    let mut md = format!(
+        "# LongMemEval-S retrieval results (memory-wire)\n\n\
+         Methodology: per-question fresh index, session-as-document, question-text query — \
+         same as agentmemory `longmemeval-bench.ts` (retrieval-only, no LLM judge).\n\n\
+         Run {date} from `--{profile_token}`, seed {seed}, all {n} questions. Each question \
+         indexes\n{sess_min}–{sess_max} haystack sessions (mean {sess_mean:.1}), so the 200-row \
+         recall candidate pool never\nbinds on this suite — every session is scored on every \
+         query, and the suite cannot\ndetect a pool-bound or overlap-scorer regression on \
+         its own. The >200-row path is\ncovered by `tests/scale.rs` (5,000 memories) and \
+         `eval/SCALE_SWEEP.md`. The\nretrieval metrics are deterministic: re-running this \
+         binary reproduced all {values}\nper-question values bit-for-bit. The \
+         `p50 ms` column is the exception: it is wall-clock, so it\nmoves with \
+         the machine's load (2-3x between the runs recorded here) and it is a \
+         record of *this*\nrun, not a property of the build. Do not pin it.\n\n\
+         | Slice | R@5 | R@10 | R@20 | NDCG@10 | MRR | p50 ms | n |\n\
+         |---|---|---|---|---|---|---|---|\n",
+        n = total.count,
+        values = group_digits(total.count * 5),
     );
     let mut types: Vec<&String> = by_type.keys().collect();
     types.sort();

@@ -5,9 +5,9 @@ Rust binary: retain/recall/reflect with bank isolation, FTS5 BM25 + RRF fusion, 
 redaction on write — over HTTP, or as an MCP stdio server. No runtime, no daemon, no
 database to install.
 
-- **93.0% R@5** LongMemEval-S · **10.5 MB** idle RSS · **8.4 MB** binary · 100% hit-rate coding-life
+- **93.0% R@5** LongMemEval-S · **10.7 MiB** idle RSS · **8.4 MiB** binary · 100% hit-rate coding-life
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook)
-- Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `docs/BENCHMARK.md`
+- Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `docs/BENCHMARK.md`
 
 **Contents** — [Benchmarks](#benchmarks) · [Footprint](#footprint-vs-competitors) · [Quick start](#quick-start) · [CLI](#cli) · [Install](#install) · [How it works](#how-it-works) · [Reproduce](#reproduce) · [Roadmap](#roadmap)
 
@@ -30,63 +30,96 @@ cross-encoder rerank behind a 0.8–1.0 GB idle RSS (see below).
 
 | Suite | memory-wire | Competitors |
 |---|---|---|
-| coding-life, 15 labeled queries (`eval/CODING_LIFE.md`) | hit-rate **100%**, R@5 100%, p50 0.27–0.62 ms across 5 release runs | grep baseline 96.7% (same harness); agentmemory publishes no score |
-| Scale sweep 240→10k (`eval/SCALE_SWEEP.md`) | p50 0.6→4.9ms, token savings ≥95.7% | agentmemory: 0.1→22.8ms BM25, heap 6→316MB, savings to 100% |
+| coding-life, 15 labeled queries (`eval/CODING_LIFE.md`) | hit-rate **100%**, R@5 100%, p50 **260–620 µs** across release runs of this binary | grep baseline 96.7% (same harness); agentmemory publishes no score |
+| Scale sweep 240→10k (`eval/SCALE_SWEEP.md`) | search p50 0.99→6.03 ms, token savings ≥95.7% | agentmemory: 0.1→22.8ms BM25, heap 6→316MB, savings to 100% |
+
+Both latency ranges move 2–3x with the machine's load. `eval/CODING_LIFE.md` and
+`eval/SCALE_SWEEP.md` each say so in their own text, and each artifact's
+provenance line carries the load-relevant date, profile and machine. Quote them
+as ranges, never as a single run.
 
 ## Footprint vs competitors
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.4 MB** binary — 8,816,120 B (LTO, incl. the MCP SDK) | Python API image + PG/pg0 | Node 20 + iii-engine binary |
-| Idle RSS | **10.5 MB** (`ps -o rss`, serve + 1 retain, mean of 3) | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
-| RSS under load | **12.7 MB** (5k retains + 200 recalls, recall p50 6ms / p95 10ms) | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
+| Ship artifact | **8.4 MiB** binary — 8,836,032 B (LTO, incl. the MCP SDK) | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
+| RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
 | Minimum box | any (binary + SQLite) | **1.5 GB** full / 512 MB slim + external providers + separate DB | Node + engine + 4 ports |
-| 10k-memories storage | **3.0 MB** (SQLite+FTS5, 3,194,880 B settled — 7,442,440 B while the WAL is unflushed) | Postgres + pgvector (+ reranker) | **35.7 MB** (BM25+vector) |
+| 10k-memories storage | **2.9 MiB** (SQLite+FTS5, 3,022,848 B settled main file — 7,237,496 B while the WAL is unflushed) | Postgres + pgvector (+ reranker) | **35.7 MB** (BM25+vector) |
 | Background processes | **0** | API + worker + UI + DB | REST + streams + viewer + worker WS |
 
 Hindsight rows: their `docs/developer/installation.md` (RAM table). agentmemory rows:
-their `benchmark/SCALE.md` (§1 heap + storage tables). memory-wire rows: measured
-2026-09-27 on this tree at `0.2.0` — `cargo build --release --locked`, then `ls -l
-target/release/memory-wire`; RSS by `ps -o rss` against a `serve` on a scratch
-`--db`, read after health check + 1 retain (idle; mean of 3 runs) and after 5,000
-retains + 200 recalls over HTTP (under load; one process, sequential); storage is
-the 10k row of `eval/SCALE_SWEEP.md`.
+their `benchmark/SCALE.md` (§1 heap + storage tables).
 
-The deltas are the interesting part, and three of them moved in opposite
-directions. **The binary grew, not shrank**: 8,816,120 B against the 8,593,368 B
-measured at `0.1.0`, **+222,752 B (+2.6%)**. The `fastembed` optional dependency
-and its ONNX runtime are gone — there is no `embed` feature and no `fastembed`,
-`ort` or `tokenizers` entry in `Cargo.lock` — but the MCP SDK landed between those
-two measurements, and `rmcp` + `schemars` cost more than `fastembed` ever did. The
-binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.4 MB and not
+**How the memory-wire rows were measured, 2026-09-28, on this tree.** Binary by
+`stat -c %s` after `cargo build --release --locked`, cross-checked by
+`eval/BENCH_FOOTPRINT.md` (which reads the binary next to the harness's own path,
+so it cannot read a debug build or a stale artifact). Both RSS rows by `ps -o
+rss` — really `VmRSS` from `/proc/<pid>/status` — against a `serve` on a scratch
+`--db`, read after `/health` answers `ok` and then again after one HTTP retain
+(idle: 8 reads, two independent procedures; under load: 3 rounds of 5,000
+retains + 200 recalls, sequential). Storage is the 10,000-memory row of
+`eval/BENCH_FOOTPRINT.md`, which measures both halves — WAL-unflushed and
+post-`wal_checkpoint(TRUNCATE)` — on every run. `eval/SCALE_SWEEP.md` reads the
+same corpus as **3,014,656 B** for the main file; it samples mid-run while the
+store holds the file open, so the ~8 KB difference is auto-checkpoint position,
+not a disagreement.
+
+**These are ranges because RSS on this box is a range.** Every RSS figure above
+was taken on a machine under sustained load from *unrelated* work
+(`loadavg` 21–48 on 24 cores), and a single reading on a loaded box is an
+anecdote. Nothing here is a one-run point value except the two byte counts, which
+are exact.
+
+The deltas are interesting, and three of them moved in opposite directions.
+**The binary grew, not shrank**: 8,836,032 B against the 8,593,368 B measured at
+`0.1.0`, **+242,664 B (+2.8%)**. The `fastembed` optional dependency and its ONNX
+runtime are gone — there is no `embed` feature and no `fastembed`, `ort` or
+`tokenizers` entry in `Cargo.lock` — but the MCP SDK landed between those two
+measurements, and `rmcp` + `schemars` cost more than `fastembed` ever did. The
+binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.4 MiB and not
 smaller, and it is code, not a resident dependency, so idle RSS does not move
 with it.
 
-**Idle RSS is flat**: 9,123 KB before the first retain and 10,704 KB (10.45 MiB)
-after it, mean of 3 runs, against 10,396 KB for the same measurement in the
-previous audit — **+308 KB (+3.0%)**, tracking the +2.6% binary and the extra
-schema pages. The pre-retain/post-retain gap is the FTS5 index and the write
-path's first pages, and it is the reason the two readings must not be quoted
-interchangeably.
+**Idle RSS is not flat any more, and the honest form is a range.** The previous
+pin was 10,704 kB post-retain. Measured today over 8 reads — a 7-round shell
+loop plus the committed harness's own single read, at `loadavg` 21–25 — it is
+**10,716–11,080 kB** (7-round mean 10,911 kB, 10.65 MiB). The old pin sits at the
+very bottom of today's band, so the claim has moved up by roughly 200 kB. That is
+the read pool: four more SQLite connections' worth of page cache on a store that
+already had two. Pre-retain moves the same way, 9,123 kB → **9,196–9,536 kB,
+mean 9,351 kB (9.13 MiB)**. The pre/post gap is still the FTS5 index and the
+write path's first pages, which is why the two must never be quoted
+interchangeably. This is not an interleaved before/after — the pre-pool binary was
+not rebuilt for this measurement — so treat the ~200 kB as "the range moved", not
+as a precisely attributed delta. `docs/CONSISTENCY.md` §12.4 has the same record
+and the honest caveat, and §11.3 has the page-cache settings that were tried and
+rejected.
 
-**The 10k store grew and is understated by its own harness**: 3,194,880 B
-(3.05 MiB) settled, **+819,200 B (+34.5%)** over the previous 2,375,680 B. A
-drop-index-and-`VACUUM` ladder on a real 10k store attributes it to the two
-indexes that the `document_id` upsert and content-hash dedup added —
-`idx_memories_bank_hash` 565,248 B (17.7%) and `idx_memories_bank_doc` 106,496 B
-(3.3%) — plus the `content_hash` and `document_id` columns themselves. The
-pre-existing `idx_memories_bank_time` (`src/store.rs:577`) is 344,064 B, 10.8%.
-Separately, the store runs in **WAL mode**, and `eval/SCALE_SWEEP.md` reports the
-*main file* only: while the process holds it open, 10,000 memories actually occupy
-7,442,440 B (main 3,194,880 + `-wal` 4,214,792 + `-shm` 32,768), which collapses
-back to 3,194,880 B at a clean `wal_checkpoint(TRUNCATE)`. The 3.0 MB figure is
-the settled size; a server that has just been fed 10k memories and not yet
-checkpointed is using more than twice that.
+**The 10k store shrank, for the first time.** 3,022,848 B (2.88 MiB) settled main
+file, **−172,032 B (−5.4%)** against the 3,194,880 B this table used to publish.
+The cause is exact and structural: FTS5 now runs `detail=none`, so the index
+stores no positional data. `memories_fts_data` went 331,776 → 159,744 B and the
+whole index 434,176 → 262,144 B, **−39.6%**; `docsize` is unchanged at 94,208 B
+because `bm25()` needs it. The migration is gated by a one-shot
+`fts_detail_none` marker in the existing `schema_markers` table, so it runs once
+per database and never re-runs. Separately, the store runs in **WAL mode** and
+the settled figure is the settled one: while the process holds the file open,
+10,000 memories occupy **7,237,496 B** (main 3,022,848 + `-wal` 4,182,880 +
+`-shm` 32,768), collapsing back to 3,022,848 B at a clean
+`wal_checkpoint(TRUNCATE)`. A server that has just been fed 10k memories and not
+yet checkpointed is using 2.4x the settled figure.
 
-**Under load is where the bounded candidate pool pays**: 12,964 KB (12.66 MiB)
-against 22,116 KB before it, **−9,152 KB (−41.4%)**, with recall p50/p95 at
-6 ms/10 ms against 45 ms/132 ms. Recall cost no longer grows with the bank, so a
-bank 50× the size costs less resident memory than it did at 1/50th the size.
+**Under load.** 13,084–13,360 kB (mean 13,249 kB, 12.94 MiB) for 5,000 retains +
+200 recalls over HTTP, sequential, one process. The previous claim also carried
+"recall p50 6 ms / p95 10 ms"; that number came from a different harness and is
+**not** re-pinned here, because today's equivalent — 200 sequential `curl`
+requests end to end, each a fresh process — measured **13.8–32.2 ms per
+request**, which is the client and the load, not recall. The store's own recall
+figures are in `eval/`: **849 µs** p50 under the 16-client soak, **2.4 ms** at a
+1k-memory bank, **3.1 ms** at a 2k bank with 1 client, **8 ms** on LongMemEval-S
+sessions, all wall-clock and all load-confounded.
 
 ## Quick start
 
@@ -365,21 +398,43 @@ pre-retain recall is normal, not exceptional: `GET .../memories` → `[]`,
 One corollary: **`PUT /banks/:id/config` requires an existing bank** and will not
 create one, so configure a bank after its first retain.
 
-`tests/{e2e,scale,backup}.rs` · `examples/{longmemeval,coding_life,scale_sweep,soak}.rs`.
+`tests/{e2e,scale,backup}.rs` · `examples/{longmemeval,coding_life,scale_sweep,soak,bench_footprint,bench_write,bench_recall_curve,bench_concurrency,bench_coldstart}.rs`.
 
 ## Reproduce
 
 ```bash
 ./eval/download.sh            # official LongMemEval-S, 264 MB, once
-cargo run --release --example longmemeval -- --data eval/data/longmemeval_s_cleaned.json --n 500
-cargo run --release --example coding_life
-cargo run --release --example scale_sweep
-cargo test && cargo clippy --all-targets --locked -- -D warnings
+cargo run --release --example longmemeval -- --data eval/data/longmemeval_s_cleaned.json --n 500 --out-md eval/RESULTS.md
+cargo run --release --example coding_life  --out-md eval/CODING_LIFE.md
+cargo run --release --example scale_sweep  --out-md eval/SCALE_SWEEP.md
+cargo test && cargo clippy --all-targets --all-features --locked -- -D warnings
+```
+
+**`--out-md` has no `eval/` default, on purpose.** A bare
+`cargo run --release --example …` writes its markdown artifact to a scratch file
+under `$TMPDIR` and prints where; updating a committed `eval/*.md` means naming
+it. Those files are the reviewed record of what was measured, and a single run
+silently replacing one has already destroyed real content here twice — a curated
+methodology note in `RESULTS.md`, and a benchmark artifact whose header then
+disagreed with the build. One rule, shared by every harness.
+
+The five `bench_*` harnesses plus `soak` are measurement, not CI:
+
+```bash
+cargo run --release --example bench_footprint    --out-md eval/BENCH_FOOTPRINT.md
+cargo run --release --example bench_write        --out-md eval/BENCH_WRITE.md
+cargo run --release --example bench_recall_curve --out-md eval/BENCH_RECALL_CURVE.md
+cargo run --release --example bench_concurrency  --out-md eval/BENCH_CONCURRENCY.md
+cargo run --release --example bench_coldstart    --out-md eval/BENCH_COLDSTART.md
+cargo run --release --example soak               --out-md eval/SOAK.md
 ```
 
 The eval artifacts are generated from `--release`, the profile that ships; a
 default-profile run reports the same retrieval metrics but roughly 2–5× the
-latency, so quote the profile with any latency number.
+latency, so quote the profile with any latency number. Each artifact's own
+header carries its date, profile and machine, and wall-clock latency is only as
+good as the load the box was under when it ran — read that header before
+quoting a number.
 
 ## Install
 

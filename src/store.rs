@@ -5,7 +5,8 @@
 //! memory-wire: single `Store` trait, SQLite first, Postgres when `DATABASE_URL` is set.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard, TryLockError};
 
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, ToSql};
 use serde::Serialize;
@@ -118,6 +119,56 @@ pub const APPEND_MODE: &str = "append";
 /// names no mode at all.
 pub const REPLACE_MODE: &str = "replace";
 
+/// How many read connections a file-backed store keeps open **besides** the
+/// write connection.
+///
+/// Not a knob: a compile-time constant with the reasoning attached, because a
+/// runtime dial would be a thing to tune against a number nobody has measured on
+/// a second machine. It was chosen by measurement, not taste — `bench_concurrency`
+/// at three sizes under [`SqliteStore::read_conn`]'s writer-first policy, this
+/// box, 2,000 memories, `--memories 2000`, one round each (the highest-resolution
+/// block this box produced, load average 28-50):
+///
+/// | size | 1-cl p50 | 4-cl | 8-cl | 16-cl | 32-cl | 64-cl ops/s | sweep RSS |
+/// |---|---|---|---|---|---|---|---|
+/// | 2 | 1,213 us | 1,592 | 1,533 | 1,518 | 1,439 | 1,152 | 11.9 MB |
+/// | 4 | 1,283 us | 1,426 | 1,445 | 1,366 | 1,377 | 1,239 | 12.9 MB |
+/// | 8 | 1,279 us | 1,661 | 1,548 | 1,447 | 1,475 | 1,291 | 15.0 MB |
+///
+/// and a second, rotated block — arm order reshuffled per round so a slow minute
+/// cannot land on one size — of the mixed read/write `soak` (16 clients, load
+/// 72-103):
+///
+/// | size | aggregate ops/s | RSS start → total | ceiling |
+/// |---|---|---|---|
+/// | 2 | 1,719 / 1,860 | 6.2 → 15.0 MB · 6.2 → 18.7 MB | 23.8 MB |
+/// | 4 | 1,478 / 1,215 | 6.4 → 21.6 MB · 6.6 → 21.2 MB | 23.8 MB |
+/// | 8 | 1,400 / 1,385 | 6.7 → 23.7 MB · 6.7 → 24.2 MB | 23.8 MB |
+///
+/// Two is not enough. Its throughput *falls* from the 4-client step on — 1,592
+/// → 1,533 → 1,518 → 1,439 → 1,152 ops/s — because two spilled readers cannot
+/// cover four or more clients, so the sweep plateaus and then degrades into a
+/// serialization signature (1.23x from 1 to 64 clients, under the harness's
+/// 1.50x floor). `soak.rs` shows the same shape from the other side: the
+/// smallest 16-client resident growth of the three (+8.8 / +12.4 MB against
+/// +14.6 / +15.2 MB for four), because half its reads are queueing rather than
+/// working.
+///
+/// Four holds the plateau. Eight buys nothing measurable over it at any client
+/// count — 1,291 against 1,239 at 64 clients, inside the spread, and it does not
+/// win at 4 or 16 either — while every cost here is per connection:
+/// `cache_size=-2000` is a *per-connection* 2 MB ceiling, so each reader is
+/// another 2 MB of page cache, and each is a separate FTS5 churn stream leaving
+/// its own freed blocks in whatever thread's arena they land in. That is
+/// +2.1 MB of RSS in the concurrency sweep and +2.5 MB in the mixed soak over
+/// four, and it puts the soak total at 23.7-24.2 MB against `soak.rs`'s own
+/// 23.8 MB ceiling — at the line, or through it, for a gain that does not exist.
+///
+/// Wider cannot help writes. WAL still permits exactly one writer, and that
+/// writer is the separate connection in [`SqliteStore::conn`], so there is no
+/// write workload to size this against.
+const READ_POOL_SIZE: usize = 4;
+
 /// What a document-scoped write does with the document's prior revision.
 ///
 /// An enum rather than a `&str` because the two sides are not symmetric: `append`
@@ -170,6 +221,18 @@ const MARKER_TABLE: &str = "schema_markers";
 /// Set once every `memories` row carries a `content_hash`, so the backfill is
 /// not re-run (and not re-scanned) on every open.
 const HASH_BACKFILL_MARKER: &str = "content_hash_backfilled";
+/// Set once `memories_fts` has been recreated with `detail=none`, so a database
+/// written before that change is rebuilt exactly once rather than on every open.
+///
+/// A marker rather than a read of the FTS options because **FTS5 does not record
+/// `detail` where a probe could find it**: the `{table}_config` shadow table of a
+/// `memories_fts` holds exactly one row and one column of interest — `version=4`
+/// — for a `detail=full` and a `detail=none` table alike (both verified against
+/// SQLite 3.53.4, and `detail` is absent from the table in both cases). So there
+/// is nothing to read back, and the only honest way to answer "was this database
+/// already converted?" is to record the answer. Same one-shot mechanism, and the
+/// same shape, as [`HASH_BACKFILL_MARKER`].
+const FTS_DETAIL_MARKER: &str = "fts_detail_none";
 
 /// Rows the recall candidate pool is drawn from, on top of the BM25 hits.
 ///
@@ -415,8 +478,31 @@ fn ttl_days_of(config: &serde_json::Value) -> Option<u32> {
 }
 
 /// SQLite-backed store (bundled, zero daemon). Postgres lands in Phase 1b via the same trait.
+///
+/// Reads and writes take *different* connections, because the database runs in
+/// WAL mode and WAL is the one journal mode that lets a reader work while a
+/// writer commits. One `Mutex<Connection>` cannot express that: it funnels both
+/// through the same connection, so `N` concurrent recalls queue behind each
+/// other on a mutex rather than overlapping on the database.
 pub struct SqliteStore {
+    /// The write connection, the *preferred* read connection, and — for an
+    /// in-memory store — the only connection. See [`SqliteStore::read_conn`].
     conn: Mutex<Connection>,
+    /// Read connections, one per WAL reader, for a file-backed store. **Empty
+    /// for an in-memory store**, and that is load-bearing rather than an
+    /// oversight: a `:memory:` database is per-connection, so a second
+    /// connection to one is a *second, empty* database, and a pool of them would
+    /// hand a read an empty bank while the write connection held every row. A
+    /// shared-cache URI (`file:...?mode=memory&cache=shared`) can join them, and
+    /// was not chosen: it brings its own table-level locking, and the tests and
+    /// the zero-setup path both want the plain, obvious database.
+    reads: Vec<Mutex<Connection>>,
+    /// Where [`SqliteStore::read_conn`] resumes looking for a free reader after
+    /// the spill path found the current one busy. Advisory: a stale value costs
+    /// a retry. Advanced on the spill path only, so an uncontended reader —
+    /// which always wins the writer — never rotates off it and never pays for
+    /// a second cold page cache it has no contention to amortize.
+    read_cursor: AtomicUsize,
     /// Whether this open had to rebuild the FTS index. Facts about the open, not
     /// about the data: nothing branches on it at runtime, it is here so a
     /// regression test can observe the gate instead of inferring it from timing.
@@ -429,6 +515,8 @@ impl SqliteStore {
         let conn = Connection::open_in_memory()?;
         let mut store = Self {
             conn: Mutex::new(conn),
+            reads: Vec::new(),
+            read_cursor: AtomicUsize::new(0),
             rebuilt_fts: false,
         };
         store.configure()?;
@@ -441,11 +529,38 @@ impl SqliteStore {
         let conn = Connection::open(path)?;
         let mut store = Self {
             conn: Mutex::new(conn),
+            reads: Vec::new(),
+            read_cursor: AtomicUsize::new(0),
             rebuilt_fts: false,
         };
         store.configure()?;
         store.rebuilt_fts = store.migrate()?;
+        // Opened once, here, *after* `migrate` has committed: the readers must
+        // attach to a database that already has its schema, and — the reason the
+        // pool is a field rather than something built per call — there is no
+        // path by which a read connection can be opened while the write
+        // connection is mid-transaction. `put_doc`'s supersede-and-insert is
+        // therefore as atomic as it was, and a reader that arrives during it
+        // gets the pre-commit snapshot from WAL, never a half-applied one.
+        store.reads = Self::open_read_pool(path)?;
         Ok(store)
+    }
+
+    /// Open the read connections for a file-backed store, each configured exactly
+    /// like the write connection.
+    fn open_read_pool(path: &Path) -> Result<Vec<Mutex<Connection>>, StoreError> {
+        (0..READ_POOL_SIZE)
+            .map(|_| {
+                let conn = Connection::open(path)?;
+                // Same pragmas as the write connection, and the omission of any
+                // of them is silent rather than loud. `busy_timeout` in
+                // particular: a reader without one does not wait for the writer,
+                // it fails instantly with SQLITE_BUSY, which under a write storm
+                // would turn every concurrent recall into a 500.
+                Self::configure_conn(&conn)?;
+                Ok(Mutex::new(conn))
+            })
+            .collect()
     }
 
     /// True when this open rebuilt the FTS index from `memories`.
@@ -457,14 +572,14 @@ impl SqliteStore {
         self.rebuilt_fts
     }
 
-    /// The connection, or [`StoreError::LockPoisoned`] if a panic unwound while
-    /// the lock was held.
+    /// The write connection, or [`StoreError::LockPoisoned`] if a panic unwound
+    /// while the lock was held.
     ///
-    /// The single place the lock is taken, because the single place that can
-    /// report it: `expect("store lock")` in the middle of a request handler is
-    /// not a crash the caller sees, it is a *missing response* — the connection
-    /// drops with no status line — while `/health` keeps answering 200 and
-    /// `doctor` keeps calling the server up. And the poison is sticky, so one
+    /// The single place a lock is turned into an error, because the single place
+    /// that can report it: `expect("store lock")` in the middle of a request
+    /// handler is not a crash the caller sees, it is a *missing response* — the
+    /// connection drops with no status line — while `/health` keeps answering 200
+    /// and `doctor` keeps calling the server up. And the poison is sticky, so one
     /// panic would take out every later request too. A loud error the error
     /// mapper turns into the documented 500 is the whole difference.
     ///
@@ -478,19 +593,214 @@ impl SqliteStore {
             .map_err(|_| StoreError::LockPoisoned)
     }
 
-    /// Connection-scoped pragmas, applied before any DDL.
+    /// A connection a read may run on, or [`StoreError::LockPoisoned`].
     ///
-    /// Kept out of the schema batch on purpose: SQLite ignores
-    /// `foreign_keys` inside a transaction, and `busy_timeout` is a property of
-    /// the connection rather than the database.
-    fn configure(&self) -> Result<(), StoreError> {
-        let conn = self.conn()?;
+    /// **Writer-first, spill to the pool only under contention.** The writer's
+    /// own connection is tried first with [`Mutex::try_lock`], and a read that
+    /// gets it stays there; only a read that finds the writer already locked
+    /// falls through to the pool. The deployment target is localhost,
+    /// single-user (see `README.md`), and under those conditions this *is* the
+    /// single-connection store: one reader, one connection, one page cache.
+    ///
+    /// The predecessor selected pool-first (stay-put, spread-on-contention) and
+    /// was measured a 4-5x single-client recall regression, p50 450-658 us ->
+    /// 2,568-2,643 us. **That regression does not reproduce on this box**, and
+    /// the reason is worth recording rather than quietly re-asserting: at
+    /// `--memories 2000` the whole database is 729,088 B, which fits inside the
+    /// `cache_size=-2000` page cache *of any connection*, so a lone reader on a
+    /// pool slot warms that slot exactly as it would warm the writer's. Eight
+    /// alternating rounds of a 1-client-only sweep at load average 90-102 (unrelated
+    /// jobs, 24 cores) gave p50 2,542-3,465 us pool-first, 2,388-3,825 us here,
+    /// 2,716-8,828 us with no pool at all — one spread, three arms. The
+    /// 20,000-memory case, where the store is 6.4 MB and the cache genuinely
+    /// cannot hold it, is the same story for latency and a clear one for memory:
+    /// 1-client p50 24.2-31.2 / 27.0-29.5 / 27.1-29.7 ms across the three, while
+    /// resident growth was +3.0 MB pool-first against +0.9 MB here.
+    ///
+    /// So the honest claim for this policy is **memory, not latency**: a lone
+    /// client keeps the write connection's cache *and* the pool's four page
+    /// caches stay cold, worth ~2.1 MB of resident at 20k memories, and 19.0-20.9
+    /// MB total in the 16-client mixed read/write soak against pool-first's
+    /// 25.3-27.4 MB in the two rounds where that arm was not itself collapsing
+    /// (`soak.rs`'s RSS ceiling is 23.8 MB, and pool-first sat on it). Multi-client
+    /// throughput is unaffected: at 16/32/64 clients the interleaved rounds put
+    /// this policy at 1,068-1,402 / 919-1,070 / 900-1,175 ops/s against
+    /// pool-first's 671-1,406 / 852-1,341 / 797-1,014, and a *no-pool* control
+    /// collapses to 243-496 ops/s at 64 clients. The pool is what delivers
+    /// scaling; this decides who pays for it and when.
+    ///
+    /// The pool is then paid for exactly where it earns: at 4+ clients a reader
+    /// that misses the writer spills to a neighbour, so recalls still overlap
+    /// in the database (WAL) instead of queueing on one mutex.
+    ///
+    /// The cursor is advanced on the spill path **only**. A read that wins the
+    /// writer never rotates off it, so a lone client cannot be cycled through
+    /// cold caches — which is exactly what store-wide round-robin measured
+    /// (recall p50 203 us -> 281 us at one client, aggregate 2069 -> 1295 ops/s
+    /// at two: *worse than no pool at all*, because it pays a cold-cache miss on
+    /// every call and never lets any cache warm).
+    ///
+    /// **No torn read.** The writer's `Mutex` is held for the whole of
+    /// [`Store::put_doc`]'s transaction — `put_doc` takes `self.conn()` into a
+    /// `let mut conn` guard, opens `conn.transaction()`, and commits before the
+    /// guard is dropped — so there are exactly two states a reader can find the
+    /// writer lock in, and only one of them is safe to read on:
+    ///
+    /// - *A writer holds it.* Then the open transaction is on the *writer's*
+    ///   connection. `try_lock` returns `WouldBlock`, the read spills, and it
+    ///   lands on a **different** `Connection` object. A connection only ever
+    ///   sees its own uncommitted transaction, so the spilled read reads the
+    ///   last committed state from the WAL — never the half-applied
+    ///   supersede-and-insert. This is why the spill is not a fallback to be
+    ///   avoided but the *only* correct answer when the lock is busy.
+    /// - *A reader holds it.* Then no writer is inside a transaction at all
+    ///   (a writer cannot open one without the same lock), so reading on the
+    ///   writer's connection is a plain read of committed data.
+    ///
+    /// There is no third state, because the lock is what separates them. A
+    /// blocking `lock()` here would instead queue, and a read that *waited* for
+    /// the writer would inherit its latency while holding the connection a
+    /// second reader can no longer use — the serialization this store exists to
+    /// avoid.
+    ///
+    /// **One guard per read call**, including the two-statement
+    /// [`Store::recall_inputs`]: both statements run on the connection this
+    /// returns, so the hit list and the candidate pool are read the same way the
+    /// single-connection store read them, and neither can be handed a different
+    /// snapshot by a second pool slot.
+    ///
+    /// An in-memory store has no pool and goes straight to
+    /// [`SqliteStore::conn`], which is why it keeps behaving exactly as it did
+    /// with one connection.
+    fn read_conn(&self) -> Result<MutexGuard<'_, Connection>, StoreError> {
+        let n = self.reads.len();
+        if n == 0 {
+            return self.conn();
+        }
+        // Checked across the whole pool rather than per slot: a poisoned reader
+        // is refused for *every* read, not just the ones that happened to land on
+        // it. One poison takes the read path down, exactly as it took the whole
+        // store down before there was a pool — a read that still worked off the
+        // other slots would answer from a store the operator has already
+        // been told is poisoned. Checked *before* the writer is tried, so a read
+        // is never served off the writer precisely because a pool slot is
+        // poisoned: the connection a read would otherwise have used is the
+        // writer, and poison is a refusal, never a redirection.
+        if self.reads.iter().any(Mutex::is_poisoned) {
+            return Err(StoreError::LockPoisoned);
+        }
+        // Fast path. Not `lock()`: a read that blocks here would be a read that
+        // queued on the write path, and every argument above for the pool
+        // disappears. `WouldBlock` is the contention signal that sends it to a
+        // neighbour, not an error to retry.
+        match self.conn.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(TryLockError::Poisoned(_)) => return Err(StoreError::LockPoisoned),
+            Err(TryLockError::WouldBlock) => {}
+        }
+        // Spill path: the writer is mid-transaction or held by another reader.
+        // Start where the last spill left off so successive spilled reads walk
+        // the pool instead of piling onto one slot.
+        let start = self.read_cursor.load(Ordering::Relaxed) % n;
+        for offset in 0..n {
+            let slot = (start + offset) % n;
+            match self.reads[slot].try_lock() {
+                Ok(guard) => {
+                    if offset > 0 {
+                        // Relaxed: this is a hint about which slot to try first,
+                        // not synchronisation. A stale value costs a retry
+                        // through the loop and nothing else — the `Mutex` is what
+                        // makes the connection itself exclusive.
+                        self.read_cursor.store(slot, Ordering::Relaxed);
+                    }
+                    return Ok(guard);
+                }
+                Err(TryLockError::Poisoned(_)) => return Err(StoreError::LockPoisoned),
+                Err(TryLockError::WouldBlock) => {}
+            }
+        }
+        self.reads[start].lock().map_err(|_| StoreError::LockPoisoned)
+    }
+
+    /// Connection-scoped pragmas for one connection, applied before any DDL.
+    ///
+    /// Called for the write connection *and* for every reader, because which of
+    /// these is per-connection is not uniform and getting it wrong is silent:
+    ///
+    /// - **Per-database** (recorded in the file header, so it is already in
+    ///   force on a connection that merely opens the file): `journal_mode`.
+    ///   Setting it again is a no-op that returns the current mode.
+    /// - **Per-connection** (a fresh handle starts at SQLite's compiled
+    ///   defaults, whatever the file says): `foreign_keys`, `busy_timeout`,
+    ///   `synchronous`, `cache_size`, `mmap_size`. That is the list that has to
+    ///   be reapplied to every reader, and `busy_timeout` is the one that decides
+    ///   whether a read waits for a writer or fails.
+    ///
+    /// Kept out of the schema batch on purpose: SQLite ignores `foreign_keys`
+    /// inside a transaction.
+    ///
+    /// `synchronous=NORMAL` is the one durability trade this store makes, and it
+    /// is the only reason a retain is not two orders of magnitude slower than it
+    /// could be. SQLite otherwise defaults to `FULL`, which in WAL mode fsyncs
+    /// the WAL on every commit: measured on this machine, one single-row commit
+    /// costs ~2 ms at `FULL` against ~0.1 ms at `NORMAL`.
+    ///
+    /// What it costs: at `NORMAL` in WAL mode a commit is not fsynced, so a
+    /// **power loss or OS crash can lose transactions committed in the last
+    /// few seconds**. A process crash cannot: the WAL is in the page cache and
+    /// the next opener replays it, and committed reads never see the loss. The
+    /// database is never *corrupt* either way — `NORMAL` in WAL mode is
+    /// corruption-safe, only lossy, and SQLite's own documentation calls it "a
+    /// good choice for most applications running in WAL mode".
+    ///
+    /// That is the right trade for an agent's memory store: the data is a cache
+    /// of what the agent said, re-writable from the conversation, and losing the
+    /// last few seconds of it costs a re-save rather than data that exists
+    /// nowhere else. What it would *not* be right for is a ledger or a billing
+    /// table, and nothing here is one.
+    ///
+    /// `cache_size=-2000` and `mmap_size=0` are the page-cache settings, and
+    /// one of them is a measured refusal worth keeping. Both are SQLite's
+    /// defaults; stating them pins the choice against a differently-configured
+    /// build rather than inheriting it. Measured at a 10k corpus, same binary
+    /// both sides, 9,600 samples per arm, 4 alternating rounds:
+    ///
+    /// - **`cache_size` stays at the default, and the reason is structural.**
+    ///   Raising it to 32 MB moved `put` p50 by -0.6% (287.7 -> 286.1 us, i.e.
+    ///   nothing) and `put_tagged` p50 by -3.1% (330.7 -> 320.6 us, better in
+    ///   3 of 4 rounds), while costing a reproducible **+105 KB of idle RSS**
+    ///   across a 7-point sweep. A bigger page cache would pay off if recall
+    ///   read the whole bank; it does not. The candidate pool is the newest 200
+    ///   rows plus the BM25 hits, so the read working set is bounded no matter
+    ///   how large the bank gets, and a 2 MB cache already holds it. 8 MB was
+    ///   measured too (274->269, 323->311 us) for +89 KB — the same RSS within
+    ///   noise for less than half the (already unresolvable) gain. A knob that
+    ///   costs RSS and buys nothing measurable is a knob to leave alone. It is
+    ///   also why the pool is sized in [`READ_POOL_SIZE`]: the budget is per
+    ///   connection, so every reader is another 2 MB of ceiling.
+    /// - **`mmap_size=0` is a refusal with a large, unambiguous cost on the
+    ///   other side.** Mapped database pages count toward RSS: 64 MB and 256 MB
+    ///   of `mmap_size` measured +2.0 MB and +2.3 MB of RSS under load
+    ///   (13,540 -> 15,472 / 15,876 KB, +15% / +17%) with no throughput gain —
+    ///   `put` p50 271 -> 276 us, `put_tagged` 315 -> 320 us, and a 1000-row
+    ///   batched transaction 19.2 -> 15.2/s. Unlike the cache ceiling, an mmap
+    ///   region is paid in resident pages whether or not it earns its keep.
+    fn configure_conn(conn: &Connection) -> Result<(), StoreError> {
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA foreign_keys=ON;
-             PRAGMA busy_timeout=5000;",
+             PRAGMA busy_timeout=5000;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA cache_size=-2000;
+             PRAGMA mmap_size=0;",
         )?;
         Ok(())
+    }
+
+    /// [`Self::configure_conn`] for the store's own write connection.
+    fn configure(&self) -> Result<(), StoreError> {
+        let conn = self.conn()?;
+        Self::configure_conn(&conn)
     }
 
     fn migrate(&self) -> Result<bool, StoreError> {
@@ -516,7 +826,7 @@ impl SqliteStore {
                PRIMARY KEY(memory_id, tag)
              );
              CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-               content, content='memories', content_rowid='rowid'
+               content, content='memories', content_rowid='rowid', detail=none
              );",
         )?;
         // `ALTER TABLE ... ADD COLUMN` has no IF NOT EXISTS in SQLite, and the
@@ -607,6 +917,9 @@ impl SqliteStore {
         // trigger attached, the backfill is a plain column write.
         if !Self::marker_set(&conn, HASH_BACKFILL_MARKER)? {
             let undigested: Vec<(String, String)> = {
+                // `prepare`, not `prepare_cached`: the marker above means this
+                // block runs at most once per database, ever, so there is no
+                // second call to amortise a parse against.
                 let mut stmt = conn
                     .prepare("SELECT id, content FROM memories WHERE content_hash IS NULL")?;
                 let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -626,6 +939,62 @@ impl SqliteStore {
                 &format!("INSERT OR REPLACE INTO {MARKER_TABLE} (name, value) VALUES (?1, '1')"),
                 params![HASH_BACKFILL_MARKER],
             )?;
+        }
+        // Recreate `memories_fts` with `detail=none`, once per database.
+        //
+        // **What `detail=none` changes, and what it does not.** It drops the
+        // per-token *positions* the index stored; the tokens themselves, which
+        // docs hold them (the `docsize` table BM25 needs), the `MATCH` grammar and
+        // `bm25()`'s arithmetic are all untouched. Retrieval is therefore
+        // invariant by construction rather than by argument: an identical corpus
+        // gives bit-identical `(rowid, bm25(...))` lists under both settings.
+        // What it does disable is positional *readback* — `snippet()`,
+        // `highlight()` and `offsets()` all raise `SQLITE_ERROR`, as does a
+        // multi-term phrase query (`MATCH '"a b"'`). None of the three readback
+        // helpers is called anywhere in this crate, and a phrase query cannot be
+        // built: [`SqliteStore::fts_match_query`] splits the query on every
+        // non-alphanumeric character and emits each surviving token as its own
+        // quoted string joined by `OR`, so the FTS5 grammar never sees a quoted
+        // run of more than one term. Single-term quoted strings are ordinary
+        // terms, not phrases, and are unaffected.
+        //
+        // The `integrity-check` gate below is *not* one of the disabled features
+        // and was measured on both settings before this was written: it passes on
+        // a `detail=none` external-content table and still reports a drifted
+        // index as `SQLITE_CORRUPT_VTAB`, which is what the gate depends on.
+        //
+        // **Why a marker and not a probe.** FTS5 persists table options in the
+        // `{table}_config` shadow table, so the obvious check is to read `detail`
+        // back from it. It is not there: for a `detail=full` and a `detail=none`
+        // `memories_fts`, `memories_fts_config` contains exactly the same single
+        // row, `version=4`, and no `detail` key in either case (verified on
+        // SQLite 3.53.4). So there is nothing to read back, and "has this
+        // database been converted?" has to be recorded rather than derived. This
+        // is the same one-shot marker, and the same reasoning, as the digest
+        // backfill above.
+        //
+        // The whole step is one transaction: the table is dropped and recreated,
+        // and a failure between those two would leave a database whose recall
+        // cannot find anything at all. Rolled back, it stays the `detail=full`
+        // store it was, and the next open tries again. `unchecked_transaction`
+        // because this connection is behind the store's `Mutex` and is not
+        // otherwise borrowed — the same single-writer assumption the whole
+        // `migrate` runs under.
+        if !Self::marker_set(&conn, FTS_DETAIL_MARKER)? {
+            tracing::info!("memory-wire: converting the FTS index to detail=none; rebuilding it");
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(
+                "DROP TABLE IF EXISTS memories_fts;
+                 CREATE VIRTUAL TABLE memories_fts USING fts5(
+                   content, content='memories', content_rowid='rowid', detail=none
+                 );
+                 INSERT INTO memories_fts(memories_fts) VALUES('rebuild');",
+            )?;
+            tx.execute(
+                &format!("INSERT OR REPLACE INTO {MARKER_TABLE} (name, value) VALUES (?1, '1')"),
+                params![FTS_DETAIL_MARKER],
+            )?;
+            tx.commit()?;
         }
         // Triggers are dropped and recreated rather than created-if-absent: a
         // trigger body that drifted from this version (or was never indexing at
@@ -688,6 +1057,9 @@ impl SqliteStore {
     ///
     /// `table` is always a literal from this module, never client input.
     fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, StoreError> {
+        // `prepare`, not `prepare_cached`: this runs a handful of times per
+        // process open from `migrate`, never on a request path, and its text
+        // interpolates the table name so every table is its own cache key.
         let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
@@ -780,8 +1152,10 @@ impl SqliteStore {
     /// goes through [`Self::recall_pool_conn`] instead — so a filter parameter
     /// here would have exactly one possible value, which is the whole bank.
     fn list_conn(conn: &Connection, bank_id: &str) -> Result<Vec<Memory>, StoreError> {
-        let mut stmt =
-            conn.prepare(&format!("SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=? ORDER BY rowid"))?;
+        let mut stmt = conn
+            .prepare_cached(&format!(
+                "SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=? ORDER BY rowid"
+            ))?;
         let rows = stmt.query_map(params![bank_id], memory_from_row)?;
         let mut out = Vec::new();
         for row in rows {
@@ -797,7 +1171,7 @@ impl SqliteStore {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Memory>, StoreError> {
-        let mut stmt = conn.prepare(&format!(
+        let mut stmt = conn.prepare_cached(&format!(
             "SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=? ORDER BY rowid LIMIT ? OFFSET ?"
         ))?;
         // saturating casts: limit/offset are untrusted, and a wrap would read the
@@ -850,6 +1224,12 @@ impl SqliteStore {
              ORDER BY rowid"
         );
         let mut stmt = conn.prepare(&sql)?;
+        // `prepare`, not `prepare_cached`, on purpose: the statement's *text* is
+        // built from the hit count and the tag count, so this one call site is up
+        // to ~1000 distinct SQL strings (0-50 hit ids x 0-20 tags) against a
+        // 16-slot LRU. Caching it would evict the entry the next recall wants
+        // and pin 16 prepared statements alive for nothing. Parsing is the price
+        // of a variable query, and it is not what the recall budget goes on.
         // Bound in the order the statement binds them: the outer bank, the outer
         // tag filter, then the window's own bank and tag filter, its limit, and
         // finally the hit ids. saturating cast: a wrap would silently read a
@@ -891,6 +1271,10 @@ impl SqliteStore {
             tag_predicate("memories", tags)
         );
         let mut stmt = conn.prepare(&sql)?;
+        // `prepare`, not `prepare_cached`: as in `recall_pool_conn`, the text
+        // carries one `?` per tag, so the key space is the tag count (0-20)
+        // against the same 16-slot LRU. The tag-free shape - the common one - is
+        // a single key, but caching it would let a tag-filtered recall evict it.
         // saturating cast, like every other untrusted limit in this file: a wrap
         // would silently bound the stream to some other window than the caller
         // asked for.
@@ -931,7 +1315,7 @@ impl SqliteStore {
         query: &str,
         limit: usize,
     ) -> Result<KeywordHits, StoreError> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         Self::keyword_search_conn(&conn, bank_id, query, limit, &[])
     }
 }
@@ -984,8 +1368,9 @@ impl Store for SqliteStore {
         // Dedup: content this bank already holds is the same memory, so hand back
         // the row that holds it rather than store a second copy. Asked first, on
         // the digest index that decides the question and inside the same
-        // transaction as the insert — the store holds a single connection, so
-        // nothing can slip in between the check and the write.
+        // transaction as the insert — and on the one connection that writes, which
+        // is exclusive to writers, so nothing can slip in between the check and
+        // the write.
         //
         // Scoped to the no-document path. A caller holding a `document_id` is
         // choosing upsert semantics explicitly, and handing it the id of some
@@ -1011,8 +1396,9 @@ impl Store for SqliteStore {
                 // The unique index is the guarantee, but its error is a driver
                 // string about a constraint, which names neither the caller's
                 // mistake nor the fix. Ask first, on the index that decides the
-                // question, inside the same transaction as the insert: the store
-                // holds a single connection, so nothing can slip in between.
+                // question, inside the same transaction as the insert: writes are
+                // serialized on the one write connection, so nothing can slip in
+                // between.
                 let taken: bool = tx.query_row(
                     "SELECT EXISTS(SELECT 1 FROM memories WHERE bank_id=?1 AND document_id=?2)",
                     params![m.bank_id, doc],
@@ -1039,9 +1425,11 @@ impl Store for SqliteStore {
         tx.execute("DELETE FROM memory_tags WHERE memory_id = ?1", params![m.id])?;
         // Prepared once, executed per tag: the statement is the same every time,
         // and re-preparing it inside the loop is per-tag parse work for a
-        // statement the database has already seen.
+        // statement the database has already seen. `prepare_cached` rather than
+        // `prepare` so the parse is paid once per connection rather than once
+        // per retain.
         let mut insert_tag =
-            tx.prepare("INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?1, ?2)")?;
+            tx.prepare_cached("INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?1, ?2)")?;
         for tag in tags {
             insert_tag.execute(params![m.id, tag])?;
         }
@@ -1062,8 +1450,8 @@ impl Store for SqliteStore {
     }
 
     fn get(&self, bank_id: &str, id: &str) -> Result<Option<Memory>, StoreError> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(&format!(
+        let conn = self.read_conn()?;
+        let mut stmt = conn.prepare_cached(&format!(
             "SELECT {MEMORY_COLUMNS} FROM memories WHERE id=?1 AND bank_id=?2"
         ))?;
         let mut rows = stmt.query_map(params![id, bank_id], memory_from_row)?;
@@ -1074,7 +1462,7 @@ impl Store for SqliteStore {
     }
 
     fn list(&self, bank_id: &str) -> Result<Vec<Memory>, StoreError> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         Self::list_conn(&conn, bank_id)
     }
 
@@ -1084,12 +1472,12 @@ impl Store for SqliteStore {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Memory>, StoreError> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         Self::list_page_conn(&conn, bank_id, limit, offset)
     }
 
     fn bank_stats(&self, bank_id: &str) -> Result<BankStats, StoreError> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let memories: usize = conn.query_row(
             "SELECT COUNT(*) FROM memories WHERE bank_id=?1",
             params![bank_id],
@@ -1129,7 +1517,7 @@ impl Store for SqliteStore {
         tags: &[String],
         fts_limit: usize,
     ) -> Result<RecallInputs, StoreError> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         // BM25 first: the pool it feeds is bounded by the window *plus* these
         // hits, so the hit list has to be in hand before the pool can be asked
         // for. Doing it the other way round would need a second FTS scan.
@@ -1142,8 +1530,8 @@ impl Store for SqliteStore {
     }
 
     fn get_bank_config(&self, bank_id: &str) -> Result<Option<String>, StoreError> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare("SELECT config FROM banks WHERE id = ?1")?;
+        let conn = self.read_conn()?;
+        let mut stmt = conn.prepare_cached("SELECT config FROM banks WHERE id = ?1")?;
         let mut rows = stmt.query_map(params![bank_id], |row| row.get::<_, String>(0))?;
         match rows.next() {
             None => Ok(None),
@@ -1180,8 +1568,8 @@ impl Store for SqliteStore {
     }
 
     fn bank_ttls(&self) -> Result<Vec<(String, Option<u32>)>, StoreError> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare("SELECT id, ttl_days FROM banks ORDER BY id")?;
+        let conn = self.read_conn()?;
+        let mut stmt = conn.prepare_cached("SELECT id, ttl_days FROM banks ORDER BY id")?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<u32>>(1)?)))?;
         let mut out = Vec::new();
         for row in rows {
@@ -1359,6 +1747,206 @@ mod tests {
         rm_db(&path);
     }
 
+    // A read pool over the wrong database is the quietest possible break: every
+    // read answers, the bank simply looks empty, and nothing anywhere raises.
+    // So the pool is pinned to the *same* database the writes land in, and to
+    // writes committed after it was built.
+    #[test]
+    fn a_file_store_should_serve_reads_from_the_same_database_its_writes_landed_in() {
+        let path = tmp_db("pool-shared");
+        let s = SqliteStore::open(&path).expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware")).expect("put");
+        assert_eq!(s.list("a").expect("list").len(), 1, "a pool reader must see the first write");
+        let (pool, hits) = s.recall_inputs("a", "jose", &[], 10).expect("recall inputs");
+        assert_eq!((pool.len(), hits.len()), (1, 1));
+
+        s.put(&content_mem("a", "m2", "rate limiting via token bucket")).expect("put");
+        assert_eq!(
+            s.list("a").expect("list").len(),
+            2,
+            "and the second, committed after the pool was built — a reader that missed it is a stale snapshot"
+        );
+        assert_eq!(s.keyword_search("a", "token bucket", 10).expect("search").len(), 1);
+        assert_eq!(s.bank_stats("a").expect("stats").memories, 2);
+
+        // The pool is a pool: a held reader is not handed out again, which is
+        // the whole reason a second recall can run while the first is still
+        // inside SQLite.
+        let held = s.read_conn().expect("read connection");
+        let other = s.read_conn().expect("second read connection");
+        assert!(
+            !std::ptr::eq(&*held, &*other),
+            "two live reads were given the same connection, so the pool cannot overlap them"
+        );
+        drop(held);
+        drop(other);
+        rm_db(&path);
+    }
+
+    // A `:memory:` database is per-connection: a second connection to one is a
+    // *second, empty* database. That is why an in-memory store keeps the single
+    // connection and no pool, and it is the reason the choice is stated here
+    // rather than left to a reader of the struct to infer.
+    #[test]
+    fn an_in_memory_store_should_keep_one_connection_and_a_file_store_a_pool() {
+        assert!(
+            SqliteStore::open_in_memory().expect("open").reads.is_empty(),
+            "a pool over a `:memory:` database is N empty databases"
+        );
+        let path = tmp_db("pool-size");
+        let s = SqliteStore::open(&path).expect("open");
+        assert_eq!(s.reads.len(), READ_POOL_SIZE);
+        rm_db(&path);
+    }
+
+    // `foreign_keys` and `busy_timeout` are per-connection, so a reader that
+    // skipped `configure_conn` would fail differently from the writer, and
+    // silently: without the busy timeout a read does not queue behind the
+    // writer, it errors with SQLITE_BUSY, which is a 500 under a write storm.
+    #[test]
+    fn every_read_connection_should_carry_the_pragmas_the_write_connection_does() {
+        let path = tmp_db("pool-pragmas");
+        let s = SqliteStore::open(&path).expect("open");
+        for (i, slot) in s.reads.iter().enumerate() {
+            let conn = slot.lock().expect("read connection");
+            let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).expect("fk");
+            let busy: i64 = conn.query_row("PRAGMA busy_timeout", [], |r| r.get(0)).expect("busy");
+            let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).expect("mode");
+            assert_eq!(fk, 1, "reader {i} must enforce foreign keys like the writer");
+            assert_eq!(busy, 5000, "reader {i} must wait for the writer, not fail with SQLITE_BUSY");
+            assert_eq!(mode, "wal", "reader {i} must be on the writer's journal");
+        }
+        rm_db(&path);
+    }
+
+    // A poison now has two homes, and the read one must behave like the write
+    // one: an error, never a panic, and never a read quietly served off a
+    // different slot. Same reasoning as
+    // `a_poisoned_store_lock_should_refuse_loudly_instead_of_panicking`.
+    #[test]
+    fn a_poisoned_read_connection_should_refuse_every_read_rather_than_being_skipped() {
+        let path = tmp_db("pool-poison");
+        let s = SqliteStore::open(&path).expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = s.reads[0].lock().expect("lock");
+            panic!("deliberate: a panic while a read connection is held");
+        }));
+        assert!(unwound.is_err(), "the fixture must actually poison a reader");
+
+        // Including the reads that would have landed on the seven healthy slots:
+        // a store the operator has been told is poisoned must not go on answering
+        // out of the rest of the pool.
+        assert!(matches!(s.list("a"), Err(StoreError::LockPoisoned)));
+        assert!(matches!(s.get("a", "m1"), Err(StoreError::LockPoisoned)));
+        assert!(matches!(s.bank_stats("a"), Err(StoreError::LockPoisoned)));
+        assert!(matches!(s.recall_inputs("a", "jose", &[], 10), Err(StoreError::LockPoisoned)));
+
+        // The write path is a different lock: a read poison is not a write poison.
+        s.put(&content_mem("a", "m2", "another jose note")).expect("writes still work");
+        rm_db(&path);
+    }
+
+    // The regression this policy is meant to remove: a lone reader is served the
+    // write connection, whose page cache is the one the write path has been
+    // warming all along, and the pool's own caches stay cold. That is worth
+    // ~2.1 MB of resident memory at 20k memories (measured) — the latency half
+    // of the story does not reproduce at 2,000, where the store fits inside any
+    // connection's page cache; see [`SqliteStore::read_conn`].
+    #[test]
+    fn a_lone_reader_should_be_served_the_write_connection_and_never_rotate_off_it() {
+        let path = tmp_db("pool-writer-first");
+        let s = SqliteStore::open(&path).expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+
+        // The address the writer's `Connection` lives at, captured by briefly
+        // locking it. The `Mutex` owns the connection in place, so the address
+        // is stable once the guard is dropped — which is what makes pointer
+        // identity comparable across two separate acquisitions.
+        let writer_at = {
+            let g = s.conn.lock().expect("write connection");
+            &*g as *const Connection as usize
+        };
+        for i in 0..8 {
+            let guard = s.read_conn().expect("read connection");
+            assert_eq!(
+                &*guard as *const Connection as usize,
+                writer_at,
+                "read {i} was served off a pool connection while nothing was contending, \
+                 so it leaves the writer's warm page cache — and four cold ones — \
+                 for contention it never experiences"
+            );
+            drop(guard);
+        }
+        assert_eq!(
+            s.read_cursor.load(Ordering::Relaxed),
+            0,
+            "the fast path must not advance the spill cursor: rotating an uncontended \
+             reader is store-wide round-robin, which measured worse than no pool"
+        );
+        rm_db(&path);
+    }
+
+    // The other half of the contract: under contention the read *spills*, and
+    // spilling is the only correct answer rather than a fallback. The writer's
+    // lock is held here, which is either a write mid-transaction or another
+    // reader; either way `try_lock` reports `WouldBlock` and the read must land
+    // on a different connection instead of blocking.
+    #[test]
+    fn a_read_while_the_writer_is_locked_should_spill_instead_of_blocking() {
+        let path = tmp_db("pool-spill");
+        let s = SqliteStore::open(&path).expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+
+        let writer_at = {
+            let g = s.conn.lock().expect("write connection");
+            &*g as *const Connection as usize
+        };
+        // Every pool slot's address, captured while all of them are free — the
+        // positive half of "it spilled", rather than only ruling out the writer.
+        let pool_ats: Vec<usize> = s
+            .reads
+            .iter()
+            .map(|slot| &*slot.lock().expect("pool slot") as *const Connection as usize)
+            .collect();
+        let held = s.conn.lock().expect("write connection");
+
+        let started = std::time::Instant::now();
+        let spilled = s
+            .read_conn()
+            .expect("a read under a held writer must not block or panic");
+        let elapsed = started.elapsed();
+        let spilled_at = &*spilled as *const Connection as usize;
+
+        assert!(
+            pool_ats.contains(&spilled_at) && spilled_at != writer_at,
+            "the spilled read must take a pool connection, never the writer's own — \
+             that is the state the spill exists to avoid, where an open transaction \
+             could be read"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(250),
+            "the read waited {elapsed:?} on the writer; a blocked read is the \
+             serialization this store exists to avoid"
+        );
+
+        // And the spill is a *usable* connection against the same database, not
+        // a second empty one: it sees the committed write.
+        let got: String = spilled
+            .query_row("SELECT content FROM memories WHERE id='m1'", [], |r| r.get(0))
+            .expect("spilled read must see committed state");
+        assert_eq!(got, "jose middleware");
+
+        drop(spilled);
+        drop(held);
+        rm_db(&path);
+    }
+
     #[test]
     fn migrate_should_rebuild_a_drifted_fts_index() {
         let path = tmp_db("rebuild");
@@ -1377,6 +1965,315 @@ mod tests {
         assert_eq!(hits.len(), 1, "migrate must rebuild the FTS index");
         assert_eq!(hits[0].0, "m1");
         rm_db(&path);
+    }
+
+    /// The DDL FTS5 recorded for `memories_fts`, which is the only place the
+    /// `detail=` option is readable after the fact.
+    fn fts_ddl(path: &Path) -> String {
+        let conn = Connection::open(path).expect("raw open");
+        conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_fts'",
+            [],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .expect("memories_fts must exist")
+        .expect("sqlite_master.sql is never null for a table")
+    }
+
+    /// Build the database an older build would have left behind: the same schema
+    /// with the FTS table at the *default* `detail=full`, populated, and a
+    /// `schema_markers` table carrying the digest-backfill marker but not the
+    /// `detail=none` one. Written by hand rather than produced by the code under
+    /// test, so the test cannot pass by construction.
+    fn legacy_detail_full_db(path: &Path, rows: &[(&str, &str)]) {
+        let conn = Connection::open(path).expect("raw open");
+        conn.execute_batch(
+            "CREATE TABLE banks (
+               id TEXT PRIMARY KEY, name TEXT NOT NULL,
+               config TEXT NOT NULL DEFAULT '{}', ttl_days INTEGER);
+             CREATE TABLE memories (
+               id TEXT PRIMARY KEY,
+               bank_id TEXT NOT NULL REFERENCES banks(id) ON DELETE CASCADE,
+               content TEXT NOT NULL, context TEXT,
+               created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+               document_id TEXT, content_hash BLOB);
+             CREATE TABLE memory_tags (
+               memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+               tag TEXT NOT NULL, PRIMARY KEY(memory_id, tag));
+             CREATE VIRTUAL TABLE memories_fts USING fts5(
+               content, content='memories', content_rowid='rowid');
+             CREATE TABLE schema_markers (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO schema_markers VALUES ('content_hash_backfilled', '1');
+             INSERT INTO banks (id, name) VALUES ('a', 'a');
+             CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
+               INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+             END;
+             CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
+               INSERT INTO memories_fts(memories_fts, rowid, content)
+                 VALUES ('delete', old.rowid, old.content);
+             END;
+             CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
+               INSERT INTO memories_fts(memories_fts, rowid, content)
+                 VALUES ('delete', old.rowid, old.content);
+               INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+             END;",
+        )
+        .expect("legacy schema");
+        for (id, content) in rows {
+            conn.execute(
+                "INSERT INTO memories (id, bank_id, content) VALUES (?1, 'a', ?2)",
+                params![id, content],
+            )
+            .expect("legacy insert");
+        }
+    }
+
+    #[test]
+    fn a_fresh_database_should_get_a_detail_none_fts_index() {
+        let path = tmp_db("detail-fresh");
+        let s = SqliteStore::open(&path).expect("open");
+        drop(s);
+        let ddl = fts_ddl(&path);
+        assert!(
+            ddl.contains("detail=none"),
+            "a fresh database must not be built with the default detail: {ddl}"
+        );
+        rm_db(&path);
+    }
+
+    #[test]
+    fn a_legacy_detail_full_database_should_be_migrated_to_detail_none() {
+        let path = tmp_db("detail-migrate");
+        legacy_detail_full_db(
+            &path,
+            &[
+                ("m1", "auth uses jose for the session cookie"),
+                ("m2", "deploy the redis cache at the edge"),
+            ],
+        );
+        assert!(
+            !fts_ddl(&path).contains("detail=none"),
+            "the fixture must start at detail=full or this test proves nothing"
+        );
+        let s = SqliteStore::open(&path).expect("open legacy db");
+        let ddl = fts_ddl(&path);
+        assert!(ddl.contains("detail=none"), "not migrated: {ddl}");
+        // The rebuild must repopulate from the content table, not leave the index
+        // empty — an empty index on an external-content table still answers
+        // queries, so only a real hit list proves the rows are back.
+        let hits = s.keyword_search("a", "jose", 10).expect("search");
+        assert_eq!(hits.len(), 1, "the rebuilt index lost its rows");
+        assert_eq!(hits[0].0, "m1");
+        drop(s);
+        rm_db(&path);
+    }
+
+    #[test]
+    fn reopening_a_migrated_database_should_not_touch_the_fts_index_again() {
+        let path = tmp_db("detail-idempotent");
+        legacy_detail_full_db(&path, &[("m1", "auth uses jose")]);
+        let s = SqliteStore::open(&path).expect("first open migrates");
+        assert!(!s.rebuilt_fts_on_open(), "a clean legacy index needs no repair");
+        drop(s);
+        // Every later open must be a no-op. `rebuilt_fts_on_open` is the flag the
+        // rebuild sets, and the index size is a witness that the `detail=none`
+        // table was not dropped and rebuilt a second time.
+        let size_after_migration = fts_bytes(&path);
+        for _ in 0..3 {
+            let s = SqliteStore::open(&path).expect("reopen");
+            assert!(
+                !s.rebuilt_fts_on_open(),
+                "a re-opened, already-converted database must not rebuild"
+            );
+            drop(s);
+        }
+        assert_eq!(
+            fts_bytes(&path),
+            size_after_migration,
+            "the FTS index changed size across no-op opens, so it was rebuilt"
+        );
+        rm_db(&path);
+    }
+
+    /// Bytes occupied by every `memories_fts*` page. Structural, so it is a
+    /// meaningful thing to assert on even while the box is busy.
+    fn fts_bytes(path: &Path) -> i64 {
+        let conn = Connection::open(path).expect("raw open");
+        conn.query_row(
+            "SELECT sum(pgsize) FROM dbstat WHERE name LIKE 'memories_fts%'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("dbstat must be compiled in")
+    }
+
+    #[test]
+    fn migrating_a_detail_full_database_should_not_change_a_single_bm25_ranking() {
+        // The whole claim of this change is that `detail=none` is invisible to
+        // retrieval. The strongest available statement of it: the *same* corpus,
+        // searched through the *same* code path, returns bit-identical
+        // `(id, rank)` pairs before the migration and after it.
+        let rows: Vec<(String, String)> = (0..400)
+            .map(|i| {
+                (
+                    format!("m{i}"),
+                    format!(
+                        "row {i} mentions auth jose session cookie deploy redis cache \
+                         latency index shard replica retention budget {i}"
+                    ),
+                )
+            })
+            .collect();
+        let queries = [
+            "auth jose",
+            "session cookie",
+            "deploy redis cache",
+            "latency index shard",
+            "retention budget",
+        ];
+
+        let path = tmp_db("detail-parity");
+        let borrowed: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|(i, c)| (i.as_str(), c.as_str()))
+            .collect();
+        legacy_detail_full_db(&path, &borrowed);
+
+        let mut before = Vec::new();
+        {
+            // Read the ranking the old index produced, through the real store.
+            // Opening it here would migrate it, so the queries go through a bare
+            // connection with the same SQL `keyword_search_conn` builds.
+            let conn = Connection::open(&path).expect("raw open");
+            for q in queries {
+                let m = SqliteStore::fts_match_query(q);
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT memories.id, bm25(memories_fts) AS rank
+                         FROM memories_fts JOIN memories ON memories.rowid = memories_fts.rowid
+                         WHERE memories_fts MATCH ? AND memories.bank_id = ?
+                         ORDER BY rank LIMIT ?",
+                    )
+                    .expect("prepare");
+                let rows: Vec<(String, f64)> = stmt
+                    .query_map(params![m, "a", 50i64], |r| {
+                        Ok((r.get(0)?, r.get(1)?))
+                    })
+                    .expect("query")
+                    .collect::<Result<_, _>>()
+                    .expect("rows");
+                before.push(rows);
+            }
+        }
+        assert!(
+            before.iter().all(|r| !r.is_empty()),
+            "the fixture must actually match, or the comparison is vacuous"
+        );
+
+        let s = SqliteStore::open(&path).expect("open migrates");
+        assert!(fts_ddl(&path).contains("detail=none"), "not migrated");
+        for (q, want) in queries.iter().zip(&before) {
+            let got = s.keyword_search("a", q, 50).expect("search");
+            assert_eq!(
+                &got, want,
+                "recall moved for {q:?} across the detail=none migration"
+            );
+        }
+        drop(s);
+        rm_db(&path);
+    }
+
+    #[test]
+    fn the_fts_integrity_gate_should_still_pass_under_detail_none() {
+        // FTS5 documents restrictions around `detail=none` and external-content
+        // tables, and this crate's whole drift-recovery story rests on
+        // `integrity-check` reporting a desynced index. So the gate is asserted
+        // here directly, on both the clean case and the drifted one: a pass
+        // proves `migrate` took the no-rebuild branch, and a failure proves the
+        // drift is still *detectable* rather than silently accepted.
+        let path = tmp_db("detail-integrity");
+        let s = SqliteStore::open(&path).expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "integrity gate under detail none")).expect("put");
+        drop(s);
+        assert!(fts_ddl(&path).contains("detail=none"), "fixture is not detail=none");
+
+        {
+            let conn = Connection::open(&path).expect("raw open");
+            conn.execute_batch(
+                "INSERT INTO memories_fts(memories_fts, rank) VALUES('integrity-check', 1);",
+            )
+            .expect("integrity-check must succeed on a detail=none external-content table");
+            // Now desync the index behind the store's back, exactly as a lost
+            // trigger write would, and require the same command to object.
+            conn.execute_batch("DROP TRIGGER memories_au;").expect("drop trigger");
+            conn.execute(
+                "UPDATE memories SET content = 'drifted away' WHERE id = 'm1'",
+                [],
+            )
+            .expect("drift");
+            let err = conn
+                .execute_batch(
+                    "INSERT INTO memories_fts(memories_fts, rank) VALUES('integrity-check', 1);",
+                )
+                .expect_err("a drifted detail=none index must fail integrity-check");
+            assert!(
+                err.to_string().contains("malformed") || err.to_string().contains("corrupt"),
+                "unexpected drift report: {err}"
+            );
+        }
+        // And the self-heal the gate exists to provide still fires on reopen.
+        let s = SqliteStore::open(&path).expect("reopen heals");
+        assert!(
+            s.rebuilt_fts_on_open(),
+            "a drifted index must still drive the rebuild branch"
+        );
+        let hits = s.keyword_search("a", "drifted", 10).expect("search");
+        assert_eq!(hits.len(), 1, "the rebuild must repopulate the index");
+        drop(s);
+        rm_db(&path);
+    }
+
+    #[test]
+    fn fts_match_query_should_never_be_able_to_build_a_phrase_query() {
+        // `detail=none` rejects a *multi-term* phrase query with an error rather
+        // than an answer, so the one thing standing between it and a recall that
+        // 500s on ordinary user input is that the query builder cannot produce
+        // one. It cannot: every surviving token is emitted as its own quoted
+        // string joined by `OR`, and quotes in the input are separators. These
+        // inputs are the shapes a caller could plausibly send.
+        for q in [
+            "how does auth work",
+            "\"quoted phrase\"",
+            "a AND (b OR c)",
+            "col:value pref* near",
+            "NEAR/2 x ^start {brace}",
+            "   ",
+            "a",
+        ] {
+            let m = SqliteStore::fts_match_query(q);
+            if m.is_empty() {
+                continue;
+            }
+            for part in m.split(" OR ") {
+                assert!(
+                    part.starts_with('"')
+                        && part.ends_with('"')
+                        && part[1..part.len() - 1].chars().all(|c| c.is_alphanumeric()),
+                    "{q:?} produced a term that is not a single quoted token: {part:?}"
+                );
+            }
+        }
+        // The decisive case: a query whose quotes a caller *meant* as a phrase
+        // comes out as two independent terms, which is what keeps `detail=none`
+        // from turning a quoted search into a hard error. (Tokens under two
+        // characters are dropped by the builder, hence `auth`/`jose` not `a`/`b`.)
+        assert_eq!(
+            SqliteStore::fts_match_query("\"auth jose\""),
+            "\"auth\" OR \"jose\""
+        );
+        assert_eq!(SqliteStore::fts_match_query(""), "");
+        assert_eq!(SqliteStore::fts_match_query("a"), "");
     }
 
     #[test]

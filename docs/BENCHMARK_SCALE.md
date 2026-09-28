@@ -1,8 +1,39 @@
 # Scale benchmark — LongMemEval-style, 2026-09-27 run
 
-Harness: `memory-wire/tests/scale.rs` (in-process, debug build, in-memory
-SQLite + FTS5 BM25 fused with overlap-rank via RRF k=60).
-Pins: `docs/VERSIONS.md`.
+> **This file is unchanged by the 2026-09-28 re-pin, on purpose.** Its two
+> latency figures are a *debug*-profile `cargo test` target and the note below
+> records that the build profile of one pair of them is unverified. Re-measuring
+> one number in a file whose companion number is still unresolved would not
+> resolve anything, so the whole pair is left exactly as recorded. For the
+> current release-profile picture — the 10k store, the 4-connection read pool,
+> FTS5 `detail=none`, and every number that moved on 2026-09-28 — read
+> `docs/CONSISTENCY.md` §12 and the `eval/BENCH_*.md` artifacts. The R@1/R@5
+> rows here remain true and are unaffected by any of it.
+
+Harness: `memory-wire/tests/scale.rs` (in-process, in-memory SQLite + FTS5 BM25
+fused with overlap-rank via RRF k=60). Pins: `docs/VERSIONS.md`.
+
+**Build profile of every latency in this file: DEBUG.** This harness is a
+`cargo test` target, so `cargo test` compiles it in the default profile and
+never in `--release`. That includes the `p95 < 500 ms` assertion at
+`tests/scale.rs:79` — that gate is a debug-profile gate, and it is the only
+latency assertion in the repo. `cargo test --release` is the only way to get a
+release-profile reading out of this harness.
+
+Do not compare these numbers against the `--release` figures in
+`eval/SCALE_SWEEP.md`, `eval/CODING_LIFE.md` or `eval/RESULTS.md`. A debug run
+reports the same retrieval metrics at roughly 2–5× the latency, which is why
+every committed `eval/` artifact states its profile in its own header.
+
+> **Unresolved: this file and `docs/CONSISTENCY.md` disagree on the profile of
+> one pair of numbers.** The `13–17 ms / 16–23 ms` p50/p95 below are recorded
+> here as 3 debug runs. The *same* figures appear in `docs/CONSISTENCY.md` §6 in
+> its **"Measured (release)"** column, against a `45 / 48 ms` debug baseline.
+> Both records are left exactly as written — neither number has been
+> re-measured, and inventing a replacement would be worse than the ambiguity.
+> Until someone re-runs this harness under both profiles, treat the build
+> profile of these two specific figures as unverified. The R@1/R@5 rows are
+> unaffected: they are deterministic and profile-independent.
 
 This is the only suite in the repo whose corpus is larger than the 200-row recall
 candidate pool, which makes it the regression probe for that bound. It is

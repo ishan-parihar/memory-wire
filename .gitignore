@@ -2,5 +2,12 @@ target/
 _audit/
 .env
 *.log
-eval/data/
+# eval/data/ is dataset scratch. The 264 MB LongMemEval-S dump stays untracked
+# (fetch it with eval/download.sh); only the two small vendored coding-life
+# fixtures are tracked, so `cargo run --release --example coding_life` works from
+# a clean clone with no manual step. A negation cannot re-include a file through
+# an ignored *directory*, so ignore the entries rather than the directory itself.
+eval/data/*
+!eval/data/sessions.json
+!eval/data/queries.json
 eval/results.json

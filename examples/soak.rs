@@ -33,6 +33,18 @@
 //! The database defaults to a temp file this run creates and removes. A `--db`
 //! path is never deleted: it is refused if it already holds rows, because the row
 //! arithmetic below starts from a known seed.
+//!
+//! Two things were added to this harness after its first run, both additive:
+//! **aggregate throughput** (operations per wall second — the run counted every
+//! operation it performed and never divided by time, so the repository had no
+//! throughput number anywhere) and **a committed artifact** (`--out-md`; the run
+//! used to print to stdout and record nothing, so no soak result had ever been
+//! written down). A bare run writes the artifact to a scratch file under
+//! `$TMPDIR`; `--out-md eval/SOAK.md` is what updates the committed one. The
+//! artifact is written before the verdict is decided, so a FAIL is recorded rather
+//! than lost. Every existing assertion, the PASS/FAIL exit behaviour, and the
+//! stdout format are unchanged.
+
 
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
@@ -44,6 +56,11 @@ use memory_wire::api::{http_error, ApiError, MemoryService};
 use memory_wire::memory::Bank;
 use memory_wire::store::{SqliteStore, Store, StoreError, UpdateMode};
 use rusqlite::Connection;
+
+// Shared with the `bench_*` harnesses for the provenance line (build profile, date,
+// machine) and the `/proc` RSS reader. A directory module, so cargo does not
+// auto-discover it as an example of its own.
+mod bench_common;
 
 /// The one document every client replaces: a single row, maximally contended.
 const REPLACE_DOC: &str = "soak-replace-doc";
@@ -350,6 +367,7 @@ fn main() -> Result<()> {
         .map(|v| v.parse().expect("--seconds T"))
         .unwrap_or(10);
     let baseline_p99: Option<u64> = flag(&args, "--baseline-p99-us").map(|v| v.parse().expect("--baseline-p99-us N"));
+    let out_md = bench_common::out_md(&args, "SOAK.md");
     let explicit_db = flag(&args, "--db");
     let db = explicit_db
         .clone()
@@ -498,17 +516,21 @@ fn main() -> Result<()> {
     println!();
     println!("| op      | count  | p50 us | p95 us | p99 us |");
     println!("|---|---|---|---|---|");
+    // Summarised once, here, because the artifact below needs the same numbers and
+    // the per-op vectors are drained by this loop. One summary, two consumers, so
+    // the stdout table and the committed table cannot disagree.
+    let mut per_op: Vec<(usize, usize, u64, u64, u64)> = Vec::with_capacity(ALL.len());
     for op in ALL {
         let mut lat = std::mem::take(&mut total.lat[op.idx()]);
         lat.sort_unstable();
-        println!(
-            "| {} | {} | {} | {} | {} |",
-            op.name(),
+        let (n, p50, p95, p99) = (
             lat.len(),
             pct(&lat, 0.50),
             pct(&lat, 0.95),
-            pct(&lat, 0.99)
+            pct(&lat, 0.99),
         );
+        per_op.push((op.idx(), n, p50, p95, p99));
+        println!("| {} | {n} | {p50} | {p95} | {p99} |", op.name());
     }
     println!(
         "| all     | {} | {p50} | {p95} | {p99} |",
@@ -612,6 +634,106 @@ fn main() -> Result<()> {
     }
 
     println!();
+    // Throughput: the number this run previously counted its way past. Every
+    // attempt is a request that came back with some status, so the denominator is
+    // attempts and the numerator is attempts — throughput is not a success rate,
+    // and the status line above is where the success rate lives.
+    let attempts = total.ok + total.conflict + total.five_xx + total.other;
+    let ops_per_s = if wall.as_secs_f64() > 0.0 {
+        attempts as f64 / wall.as_secs_f64()
+    } else {
+        0.0
+    };
+    println!(
+        "throughput {ops_per_s:.0} ops/s over {attempts} attempts in {:.1}s",
+        wall.as_secs_f64()
+    );
+
+    // The artifact, written before the verdict so a FAIL is recorded rather than
+    // lost with the process exit. Same numbers as the stdout above, plus the
+    // provenance and the limits that stdout has no room for.
+    let mut md = String::from("# Concurrency soak (memory-wire)\n\n");
+    md.push_str(&format!("{}\n\n", bench_common::provenance()));
+    md.push_str(&format!(
+        "Workload: {clients} clients x {banks} banks x {seconds}s against ONE `SqliteStore` \
+         (one writer `Mutex<Connection>` plus a 4-connection WAL read pool, writer-first with \
+         spill-on-contention), a six-op schedule weighted one storm in ten, on a \
+         database this run created at {dbpath}. Build profile, machine and date are in the \
+         provenance line above; the profile alone moves these numbers 2-5x.\n\n\
+         **Aggregate throughput: {ops_per_s:.0} ops/s** over {attempts} attempts in {wall_s:.1}s \
+         (median {p50} us, p95 {p95} us, p99 {p99} us across all ops).\n\n\
+         | op | count | ops/s | p50 us | p95 us | p99 us |\n|---|---|---|---|---|---|\n",
+        dbpath = db.display(),
+        wall_s = wall.as_secs_f64(),
+    ));
+    for (idx, n, op50, op95, op99) in &per_op {
+        md.push_str(&format!(
+            "| {} | {n} | {:.0} | {op50} | {op95} | {op99} |\n",
+            ALL[*idx].name(),
+            if wall.as_secs_f64() > 0.0 {
+                *n as f64 / wall.as_secs_f64()
+            } else {
+                0.0
+            },
+        ));
+    }
+    md.push_str(&format!(
+        "\nStatuses: ok {ok} · 409 {conflict} · 5xx {five_xx} · other {other}. \
+         SQLITE_BUSY/LOCKED {busy}. Panicked clients {panics}. Post-storm probe {probe}.\n\n\
+         Row exactness: per bank {per_bank:?}, expected sum {expected_total}, db sum {db_total}, \
+         per-bank exact {per_bank_exact}. Storm documents: replace {replace_rows:?}, append \
+         {append_rows:?}.\n\n\
+         RSS: {rss_line} · db on disk {db_mb:.1} MB · ceiling {ceil_mb:.1} MB (page cache + \
+         {RSS_PER_CLIENT_MB} MB/client).\n\n\
+         Append pre-check plan: {plan}\n\nIndexed: {indexed}. Conflict probe: {flat}.\n\n\
+         Baseline p99: {baseline_note}.\n\n\
+         Verdict: {verdict_line}\n\n\
+         ## What this does not measure\n\n\
+         - Throughput scaling. This run fixes the client count; \
+           `examples/bench_concurrency.rs` sweeps it and is where a serialization \
+           signature is actually visible.\n\
+         - Write cost. The workload keeps every bank growing, so a run's throughput \
+           depends on its length; `examples/bench_write.rs` prices a single retain.\n\
+         - Recall quality, recall versus bank size, startup cost, and binary or storage \
+           footprint. Those are `bench_recall_curve`, `bench_coldstart` and \
+           `bench_footprint`.\n\
+         - HTTP and MCP transport cost: this is the library call in-process, so axum, tokio \
+           and a socket are absent by design.\n\n\
+         ## Limitations\n\n\
+         - A time-boxed run measures throughput as a function of the scheduler as well as of \
+           the store. Quoting one run's ops/s as a property of the store overstates it; re-run \
+           and quote the spread, as `eval/CODING_LIFE.md` does for its p50.\n\
+         - The p99 baseline is only comparable across runs on the same profile *and* the same \
+           kind of storage: a dev build against a release build differ about 7x, and a scratch \
+           db on disk against one on tmpfs about 5x, both measured here.\n\
+         - One run bounds an RSS leak, it cannot prove the absence of one: rerun at a \
+           different `--seconds` or `--clients` and check the number does not track the work.\n\
+         - The append pre-check flatness check sizes a per-row scan or a retry loop. It is not \
+           sensitive to a constant-factor regression, and its {FLATNESS_LIMIT:.0}x budget \
+           deliberately allows for timing jitter between two idle single-threaded bursts.\n",
+        ok = total.ok,
+        conflict = total.conflict,
+        five_xx = total.five_xx,
+        other = total.other,
+        busy = total.busy,
+        probe = if usable { "ok" } else { "FAILED" },
+        rss_line = rss_line,
+        db_mb = db_on_disk as f64 / 1_048_576.0,
+        ceil_mb = rss_ceiling as f64 / 1_048_576.0,
+        indexed = indexed,
+        baseline_note = match baseline_p99 {
+            Some(base) if base > 0 => format!("compared against 2x {base} us"),
+            Some(_) => "no baseline recorded yet".into(),
+            None => "none given; this run establishes it".into(),
+        },
+        verdict_line = match fails.is_empty() {
+            true => "**PASS**".to_string(),
+            false => format!("**FAIL** — {}", fails.join("; ")),
+        },
+    ));
+    fs::write(&out_md, &md)?;
+    eprintln!("wrote {out_md}");
+
     if fails.is_empty() {
         println!("verdict    PASS");
     } else {

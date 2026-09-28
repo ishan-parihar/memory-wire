@@ -76,6 +76,12 @@ enum Cmd {
         lifecycle: hooks::Lifecycle,
     },
     /// Report endpoint, bank, store, and server health.
+    ///
+    /// The store is opened **read-only and is never migrated**: doctor must not
+    /// mutate a store it only reports on, so a store written by an older build
+    /// is reported as it is on disk. That makes it the wrong tool for verifying a
+    /// migration — to check a migration, open the store with `serve`, `sweep` or
+    /// any read/write path first, then point `--db` at it.
     Doctor {
         /// Inspect this SQLite database (default: $XDG_DATA_HOME/memory-wire/memory.db).
         /// Point it at the same file `serve --db X` uses, or the report describes

@@ -547,12 +547,16 @@ pub fn bank_config_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>>
 
 /// Run one blocking store call off the async worker threads.
 ///
-/// SQLite is synchronous and the store is one `Mutex<Connection>`, so a handler
-/// that called it inline parked a tokio worker in `lock()`/SQLite for the length
-/// of the request. Past the worker count every one of them is parked, and then
-/// the graceful-shutdown future — which also needs a worker to be polled — can
-/// never run, so the process stops answering to a signal it never sees. The
-/// blocking pool runs the same work with the workers left free.
+/// SQLite is synchronous, so a handler that called the store inline parked a
+/// tokio worker in `lock()`/SQLite for the length of the request. Past the
+/// worker count every one of them is parked, and then the graceful-shutdown
+/// future — which also needs a worker to be polled — can never run, so the
+/// process stops answering to a signal it never sees. The blocking pool runs
+/// the same work with the workers left free.
+///
+/// This is still true with the store's read pool: a reader is a connection's
+/// worth of blocking work, not the mutex, and the pool bounds how many of those
+/// can run at once rather than making any of them non-blocking.
 ///
 /// A panic inside the task arrives here as a join failure, and is mapped into the
 /// same error type as a storage fault so it still answers the documented 500

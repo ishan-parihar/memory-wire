@@ -1,3 +1,39 @@
+> # ⚠️ TWO RECORDS IN ONE FILE — READ THIS BEFORE QUOTING ANY NUMBER
+>
+> **§1–§5 are the PRE-CUT `0.1.0`-era sweep. They are kept verbatim as the
+> baseline that the final gate was measured against, and they are NOT current
+> claims.** Every count, size and version in §1–§5 describes `0.1.0`:
+>
+> - §1 "Now" column says the CLI has **seven** subcommands. This tree ships
+>   **eight** — `sweep` was added at `0.2.0`.
+> - §2 records the binary at **8,593,368 B** and idle RSS at **10.3 MB**. Both
+>   were superseded; §9 carries the current figures.
+> - §2 records 10k storage at **2,375,680 B**. Also superseded — §9.
+> - §2's `MW_LOCAL_ASSET` row is a past-tense install record: it really did
+>   install `memory-wire 0.1.0`, and it is true of that run.
+> - §4's six open items were closed at the cut; §10 says which.
+>
+> **§6–§10 are the post-cut `0.2.0` state** (final regression gate, 2026-09-27):
+> 217 tests, release binary **8,816,120 B**, idle RSS 10,704 KB post-retain,
+> 10k store 3,194,880 B settled / 7,442,440 B with the WAL unflushed, and the
+> retrieval metrics in `eval/RESULTS.md`. Those are the numbers as they stood at
+> the `0.2.0` cut.
+>
+> **§11–§12 are the tree ahead of the published `v0.2.0` tag** (2026-09-27 and
+> 2026-09-28). Read those for the current state: **229** tests, release binary
+> **8,836,032 B**, idle RSS 10,716–11,032 kB post-retain, 10k store 3,022,848 B
+> settled / 7,237,496 B with the WAL unflushed, 4-connection WAL read pool, FTS5
+> `detail=none`. §12 also carries the honest negatives and the two places where
+> an earlier claim in this file or in the README was simply wrong.
+>
+> **Do not edit a §1–§5 number to make it current.** They are the baseline, and
+> §9 is the single place movement is recorded — that is what makes the deltas
+> legible. Add a row to §9 instead.
+>
+> **CI runs no benchmarks and no doc sweeps** (deliberate — Actions quota; see
+> `.github/workflows/ci.yml`), so nothing re-verifies any figure here
+> automatically. `docs/CONSISTENCY.md` is a record, not a live check.
+
 # Docs consistency audit — 2026-09-27
 
 Phase 4 (H6 + H7) of `.omo/plans/production-readiness.md`. Every command below
@@ -286,3 +322,483 @@ settled figure and names the transient one, so neither reader is misled.
   uninstall message) — **still open**; `install/` was out of this phase's write
   scope and the script is still the misleading thing.
 
+
+---
+
+# SQLite layer: `synchronous`, statement cache, page cache — 2026-09-28
+
+Three changes at the pragma/statement level in `src/store.rs`, appended rather
+than folded into §9 so the pre-cut baseline and the `0.2.0` gate above stay
+exactly as recorded. Nothing else moved: no schema object, index, column, API
+signature, or ranking behaviour was touched, and `eval/results.json` is
+byte-identical to the committed artifact (see §11.4).
+
+**Method, and the caveat that governs every number below.** This box is shared
+and was under sustained external load the whole session — `loadavg` between 42
+and 98 on 24 cores, and per-round means for the *same binary* varied by up to 3x.
+Absolute ops/s is therefore not a usable statistic on this machine; **p50 is**,
+because it is a median over 3,000–45,000 samples. Before/after runs were
+interleaved (base, change, base, change, …) so drift in that load lands on both
+arms, and each configuration was also A/B'd **within one binary** where the
+choice allowed it. The `3x` mean swings in the raw logs are the load, not the
+change; the p50s do not move that way.
+
+## 11.1 D1 — `PRAGMA synchronous=NORMAL` — the whole win
+
+`configure()` set three pragmas and let SQLite default `synchronous` to `FULL`,
+which fsyncs the WAL on every commit. Adding `NORMAL` is the one durability trade
+in the diff, and it is documented on the function: at `NORMAL` in WAL mode a
+**power loss or OS crash can lose transactions committed in the last few
+seconds**; a process crash cannot (the WAL is in the page cache and the next
+opener replays it), and the database is never corrupt either way.
+
+| Write path, 9,000 samples per arm | ops/s base | ops/s after | p50 base | p50 after | p50 gain |
+|---|---|---|---|---|---|
+| `put` @1k corpus | 207.3 | 988.9 | 2,681.7 us | **266.5 us** | **10.1x** |
+| `put_tagged` @1k (1 tag) | 141.6 | 1,322.4 | 2,953.6 us | **321.3 us** | **9.2x** |
+| `put` @10k corpus | 195.7 | 697.1 | 2,355.3 us | **283.3 us** | **8.3x** |
+| `put_tagged` @10k | 241.1 | 756.1 | 2,450.0 us | **339.1 us** | **7.2x** |
+| 1,000-row bulk load (the `seed` path) | 140–174 rows/s | 1,145–2,029 rows/s | — | — | **8–11x** |
+
+The brief's raw-SQL figure was 1.98 ms -> 0.099 ms per commit (19.9x). The store's
+`put` does more than the bare insert — SHA-256 of the content, the FTS5 insert
+trigger, three index updates, and a `find_duplicate` seek — so the *ratio* is
+smaller and the *absolute* p50 lands at ~270 us rather than ~99 us. Same
+direction, same mechanism.
+
+**Batched write, as a control rather than a claim.** `Store` has no batch-insert
+API, so a multi-row transaction was priced through raw `rusqlite` against the
+same schema and the same three original pragmas: one commit per 1,000 rows was
+already 16.0 tx/s (~60 us/row) before and 16.7 tx/s after, i.e. **unchanged**,
+because a per-commit fsync amortized over 1,000 rows was never the cost. That is
+the point of D1: it moves exactly the per-commit cost and nothing else.
+
+RSS: 10,720 KB -> 10,729 KB idle (3 runs each). No change.
+
+## 11.2 D3 — `prepare_cached` on 6 of 13 sites; 7 left on `prepare`, with reasons
+
+`Rows::drop` calls `sqlite3_reset` (rusqlite `src/row.rs:109`), so a row iterator
+that goes out of scope always returns a *reset* statement to the cache. That
+makes the `get()`/`get_bank_config()` "read one row and return" shape safe to
+cache — verified directly rather than assumed, since an un-reset cached
+statement would continue the previous cursor and answer with a stale row.
+
+| Read path, 45,000 samples per arm | ops/s base | ops/s after | p50 base | p50 after |
+|---|---|---|---|---|
+| `get` @1k | 72,241 | 193,824 | 12.8 us | **4.2 us** (3.0x) |
+| `get` @10k | 54,692 | 197,449 | 10.7 us | **4.7 us** (2.3x) |
+| `list_page` @1k | 8,056 | 11,013 | 86.7 us | 71.6 us (1.21x) |
+| `list_page` @10k | 2,350 | 2,924 | 321.1 us | 287.0 us (1.12x) |
+
+Converted: `list_conn`, `list_page_conn`, `get`, `get_bank_config` (on both the
+retain and recall path), `bank_ttls`, and the per-tag `memory_tags` insert inside
+`put_doc`. Six static SQL strings against rusqlite's 16-slot LRU, so nothing
+evicts anything.
+
+Left on `prepare`, each with the reason now in a code comment:
+
+| Site | Why not |
+|---|---|
+| `recall_pool_conn` | SQL text carries one `?` per hit id and per tag: up to ~1,000 distinct strings against 16 LRU slots. Caching it thrashes and pins 16 prepared statements alive. |
+| `keyword_search_conn` | Same shape, narrower: 21 keys (0–20 tags) against 16 slots. The common tag-free shape is one key, but a tag-filtered recall would evict it. |
+| backfill `SELECT … content_hash IS NULL` | Marker-gated: runs at most once per database, ever. Nothing to amortize against. |
+| `has_column` (`PRAGMA table_info`) | ~5 calls per process *open*, never on a request path, and the text interpolates the table name. |
+| 3 test helpers (`tags_of`, `bank_columns`, `has_background_column`) | Test-only. Editing test source for zero production benefit is diff noise. |
+
+On the write path D3 is small and honestly so: `put_tagged` p50 321.3 -> 322.7 us
+@1k and 339.1 -> 321.9 us @10k, because after D1 a single commit costs ~270 us and
+one saved parse is a small fraction of it. **D3's real win is the `get` route
+(2.3–3.0x), not the retain.** `recall` p50 was 11,365.6 -> 9,966.9 us @1k and
+25,079.4 -> 22,572.5 us @10k — flat, as it must be, since that code is unchanged;
+it is the control that says the arm was not simply quieter.
+
+**Not done, and it is the bigger fish:** `conn.execute(...)` and `conn.query_row(...)`
+prepare internally on every call and are on the retain path (`put_bank`,
+`find_duplicate`, the tag delete, `set_bank_config`, the sweep). Roughly six
+uncached parses per retain survive this change. Converting them is the same
+one-word edit at ~8 more sites, and it is a separate change from this one.
+
+## 11.3 D4 — `cache_size` and `mmap_size`: one shipped, one refused
+
+RSS by `ps -o rss` against a `serve` on a scratch `--db`, read after `/health` +
+1 retain (the README's own idle definition), mean of 3 runs per setting:
+
+| `cache_size` / `mmap_size` | idle RSS | vs unset | RSS under load | vs unset |
+|---|---|---|---|---|
+| unset / 0 (shipped) | **10,639 KB** | — | **13,540 KB** | — |
+| -8192 (8 MB) / 0 | 10,728 KB | +89 KB | 13,664 KB | +124 KB |
+| -32768 (32 MB) / 0 | 10,744 KB | +105 KB | 13,720 KB | +180 KB |
+| unset / 64 MB | 10,716 KB | +77 KB | **15,472 KB** | **+1,932 KB** |
+| unset / 256 MB | 10,679 KB | +40 KB | **15,876 KB** | **+2,336 KB** |
+| -8192 (8 MB) / 64 MB | 10,819 KB | +180 KB | 15,556 KB | +2,016 KB |
+| -32768 (32 MB) / 256 MB | 10,689 KB | +51 KB | 15,868 KB | +2,328 KB |
+
+**`mmap_size=0` is a refusal, and a large one.** Mapped database pages count
+toward RSS. 64 MB and 256 MB cost **+1.9 MB and +2.3 MB under load — +15% / +17%**
+— for no throughput gain at any setting measured: with a 32 MB cache, `put` p50
+271.0 -> 275.8 us, `put_tagged` 314.5 -> 320.4 us, and a 1,000-row batched
+transaction 19.2 -> 15.2/s. Unlike a cache ceiling, an mmap region is paid in
+resident pages whether or not it earns its keep.
+
+**`cache_size` stays at the default (-2000), and the reason is structural.**
+Same binary both arms, 9,600 samples per arm, 4 alternating rounds, 10k corpus:
+
+| | default | 32 MB |
+|---|---|---|
+| `put` p50 | 287.7 us | 286.1 us (**-0.6%**) |
+| `put_tagged` p50 | 330.7 us | 320.6 us (-3.1%, better in 3 of 4 rounds) |
+| idle RSS | 10,639 KB | 10,744 KB (**+105 KB**) |
+
+An earlier 2-round sweep read this as -5.0% / -8.4%; the 4-round same-binary
+A/B does not reproduce it, and the 4-round reading is the one to believe. So the
+honest summary is: **at most a 3% median gain on one metric, and a reproducible
++105 KB of RSS.** A bigger page cache would pay off if recall read the whole
+bank; it does not. The candidate pool is the newest 200 rows plus the BM25 hits,
+so the read working set is bounded however large the bank grows and 2 MB already
+holds it. 8 MB was measured too (-1.8% / -3.9%) for +89 KB — the same RSS within
+noise, for less than half an already-unresolvable gain. A knob that costs RSS
+and buys nothing measurable is a knob to leave alone; it is stated explicitly so
+the choice is pinned rather than inherited.
+
+**Shipped config, RSS re-measured (4 runs):** idle 10,760 / 10,652 / 10,580 /
+10,748 KB, **mean 10,685 KB (10.43 MiB)**; under load 13,316 KB. Against
+§9's pinned 10,704 KB post-retain, and against the 10,720 KB this same harness
+measured on the **unmodified** `0.2.0` binary on this box, that is **-19 KB** —
+inside the run-to-run band (10,512–10,884 KB across every configuration
+measured today). **The README's headline 10.5 MB idle-RSS claim is not
+invalidated and was left untouched.**
+
+> **SUPERSEDED — see §12.4.** "Left untouched" was true when this section was
+> written. The read pool has since added four more connections' worth of page
+> cache, and the claim no longer holds: measured 2026-09-28 over 7 rounds, idle
+> post-retain is **10,716–11,032 kB, mean 10,911 kB (10.65 MiB)**, and the
+> README now publishes that range instead of a point value. This section is left
+> exactly as recorded so the page-cache deltas below stay legible.
+
+## 11.4 Gates — verbatim, and one thing the eval run broke
+
+| Gate | Result |
+|---|---|
+| `cargo test --locked` x3 | **217 passed, 0 failed**, 3/3 runs: 117 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test |
+| `cargo clippy --all-targets --all-features --locked -- -D warnings` | clean, exit 0 |
+| `cargo doc --no-deps --all-features --locked` | 0 warnings |
+| longmemeval R@5 / R@10 / R@20 / NDCG@10 / MRR | **93.0 / 97.4 / 99.6 / 83.5 / 83.9 — all unchanged** |
+
+The retrieval match is not an aggregate coincidence: `eval/results.json` is
+**byte-identical** to the committed artifact after the run (`git diff` empty;
+500 records, 5 metrics each = 2,500 values), and all six question-type slices
+match. Nothing about ranking can have moved, because nothing that feeds it did.
+
+**`cargo run --release --example longmemeval` has a side effect worth flagging.**
+Running the documented reproduce command **overwrote `eval/RESULTS.md`**:
+it deleted the hand-written methodology note (the one stating that the 200-row
+candidate pool never binds on this suite, 38–62 sessions per question, which
+§6 above depends on) and replaced the pinned 5–7 ms p50 column with this run's
+11–14 ms — a load artifact of a box at `loadavg` 84. It was reverted
+(`git checkout eval/RESULTS.md`); the retrieval metrics it produced were
+identical, so nothing was lost but the note. **The generator should not be
+rewriting a curated note, and it should not overwrite a latency column from a
+single run.** Left alone here: `examples/longmemeval.rs` was outside this
+change's write scope and another task owns `examples/`.
+
+**Binary:** 8,816,120 B -> **8,824,696 B**, +8,576 B (+0.097%). Still "8.4 MB".
+The README's exact byte count was updated to match; its RSS row was not, because
+§11.3 shows the claim still holds.
+
+---
+
+# §12 — the tree ahead of published `v0.2.0` — 2026-09-27 and 2026-09-28
+
+§11 recorded the SQLite pragma/statement work. §12 records everything else that
+landed on top of it, every number that moved, and — deliberately, at length —
+every measurement that **did not** work out. Nothing here is a new claim about
+the product's shape; it is the re-pin and the honest negatives.
+
+## 12.0 What this section is, and the machine it was measured on
+
+**The tree on `main` is substantially ahead of the published `v0.2.0` tag and
+release.** `Cargo.toml` still says `0.2.0`, so the version string describes the
+*release*, not the tree. Cutting the next version is a separate decision and
+nothing in this record makes it.
+
+**The machine, because it governs every latency number in this section.** The
+box is shared and was under sustained load from unrelated work for the whole
+period — a fleet of `ultra_granular_001_regional_hpo.py` processes at ~91% CPU
+each plus an API service at ~470%. Observed `loadavg` across this work ranged
+**20.9 to 48.1 on 24 cores**, and per-round means for the *same binary* varied by
+up to 3x. Therefore:
+
+- **Structural measurements are trustworthy and are pinned exactly**: byte
+  counts, page counts, row counts, test counts, recall metrics, index sizes.
+- **Wall-clock latency is not.** It is reported here as a measured **range with
+  its load window**, never as a point value. Where a before/after exists it is
+  interleaved across >=3 alternating rounds.
+- The battery's per-harness load is recorded in `/tmp/mw-battery.log` for this
+  session; the committed artifacts each carry their own date/profile/machine
+  provenance line, and the four latency-heavy ones now carry an explicit
+  "do not pin this" note in their own text.
+
+## 12.1 Feature work — the complete list
+
+Everything here is code that already existed before this record was written; this
+section is the index, not the changelog.
+
+| # | Change | What it is | Where it is recorded |
+|---|---|---|---|
+| 1 | TTL sweep | per-bank `ttl_days` plus the explicit `memory-wire sweep` that enforces it. Off by default, no scheduler, one transaction per bank, FTS entry retired by the `memories_ad` trigger. A value this build cannot use reads as *no policy* rather than failing the write | README "Forgetting"; `src/sweep.rs` |
+| 2 | Graceful shutdown | SIGINT/SIGTERM stop accepting and drain in-flight requests. The shutdown test builds its `Expect: 100-continue` request by hand rather than sleeping, so the ordering assertion is a round-trip, not a duration | §8; README CLI |
+| 3 | Loopback-default bind | `serve --addr` defaults to `127.0.0.1:8899` because there is no authentication. A non-loopback address still binds and says so once on stderr first | README CLI |
+| 4 | Dead-code removal | `consolidate.rs`, `Observation`, `MentalModel`, `DedupWindow` deleted; the `fastembed` dependency, the `ort`/`tokenizers` transitive entries and the `embed` cargo feature removed. Only the dependency-free `cosine`/`rank_by_cosine` kernel survives, with no embedder and no producer behind it | §8; `docs/VERSIONS.md` §3 |
+| 5 | Poisoned-lock fix | a poisoned writer lock used to panic on the next `lock()`, so one panic in any writer took the store down permanently. Fixed so a poisoned lock is recovered and reported | `src/store.rs` |
+| 6 | Swallowed-error fix | storage errors that were being dropped rather than propagated; every one now surfaces as the same opaque `500 storage error` the HTTP contract promises, so a failure cannot read as an empty success | README error contract |
+| 7 | `UpdateMode` enum | `document_id` upsert made explicit: `replace` (the default, works repeatedly) and `append` (single-use per document id — a second one is a `409` and the first row survives). Replaces stringly-typed mode dispatch | README "How it works" |
+| 8 | `created_at: Option<String>` | the insert path stamps RFC 3339 UTC or does not; the type now says so, and a memory stored without capture context no longer claims an empty one | README lifecycle routes |
+| 9 | Recall scorer rewrite | token-overlap ranking rewritten so the candidate pool is newest-200-rows ∪ BM25 top-50, fused by RRF k=60 with a 100-result cap. Recall cost stopped growing with the bank | `eval/BENCH_RECALL_CURVE.md` |
+| 10 | `synchronous=NORMAL` | §11.1. No fsync per commit. **8-10x on the write path, not the predicted 19.9x** | §11.1, §12.2 |
+| 11 | `prepare_cached` | 6 of 13 static-SQL read sites; the other 7 stay on `prepare` with a recorded reason. `get` p50 12.8 → 4.2 us @1k | §11.2 |
+| 12 | 4-connection WAL read pool | writer-first with spill-on-contention. **Kept because the no-pool control collapses; the cost is RSS** | §12.3 |
+| 13 | FTS5 `detail=none` | no positional data in the index. **Index 434,176 → 262,144 B, −39.6%. No latency win is possible or claimed** | §12.5 |
+| 14 | `doctor` store integrity | `PRAGMA integrity_check`; a damaged page is reported `unreadable` and fails `--strict` rather than being counted | §3 |
+| 15 | Five benchmark harnesses + tracked fixture | `bench_footprint`, `bench_write`, `bench_recall_curve`, `bench_concurrency`, `bench_coldstart`, plus a working soak artifact; the 8 KB coding-life fixture is tracked so a clean clone can run the suite | `eval/`; `eval/README.md` |
+| 16 | Generator owns its own artifacts | three harnesses were destroying curated prose in their own committed output. Fixed — see §12.6 | §12.6 |
+
+## 12.2 The predicted 19.9x that reproduced as 8-10x
+
+`PLAN.md` quoted a raw-SQL measurement of 1.980 ms/commit at
+`synchronous=FULL` against 0.099 ms/commit at `NORMAL` and called it "a 19.9x
+headroom from one pragma". **19.9x is not a number this store produces, and it
+was never going to be.** The raw figure is a bare single-row `INSERT`; the
+store's `put` additionally does SHA-256 of the content, the FTS5 insert trigger,
+three index updates and a `find_duplicate` seek, so the per-commit *fraction* that
+a pragma can remove is smaller and the absolute p50 lands ~270 us rather than
+~99 us.
+
+Measured, interleaved, 9,000 samples per arm (full table in §11.1):
+`put` p50 2,681.7 → 266.5 us @1k, 2,355.3 → 283.3 us @10k; `put_tagged`
+2,953.6 → 321.3 us @1k, 2,450.0 → 339.1 us @10k; 1,000-row bulk load
+140–174 → 1,145–2,029 rows/s. That is **7.2x-10.1x**, and it is what the docs now
+say. The direction and the mechanism are the same; the number is smaller, and the
+19.9x figure has been struck from `PLAN.md` rather than left as a prediction.
+
+## 12.3 The read pool: kept for throughput, paid for in memory
+
+`READ_POOL_SIZE = 4`, chosen by measurement rather than taste:
+
+| Pool size | 1.5x scaling floor at 64 clients | Soak RSS |
+|---|---|---|
+| 2 (writer only) | **1.23x — FAILS** | — |
+| **4 (shipped)** | 1.89x — passes | within ceiling |
+| 8 | nothing further to gain | **23.7–24.2 MB against a 23.8 MB ceiling** |
+
+**The measurement that justifies keeping it** is the no-pool control. With the
+pool, aggregate in-process recall throughput at 64 clients is **772.0 ops/s
+(760.9–791.8)** against **408.7 ops/s (351.3–464.9)** for 1 client — a **1.89x**
+gain, clearing the 1.5x floor. The no-pool control collapses to **243–496 ops/s
+at 64 clients**, i.e. *below* its own 1-client figure, and fails the gate at
+0.87x. That control is the whole argument: without it a 1.89x number means
+nothing.
+
+**The measurement that justifies the "writer-first" policy is a memory one, and
+it points the other way.** Under a 16-client mixed soak, total RSS is
+**19.0–20.9 MB writer-first against 25.3–27.4 MB pool-first** against a 23.8 MB
+ceiling. So the shipped design is deliberately *not* the one that maximises
+parallel recall: a reader takes the writer's connection when it can, and spills
+to a pool neighbour only under contention. Idle RSS is unaffected either way.
+Today's committed soak run (`eval/SOAK.md`, loadavg 47.6) shows RSS 7.6 → 27.2 MB
+against the 23.8 MB ceiling and **PASS** — the gate is on RSS *growth* against
+the page-cache ceiling, not on the total.
+
+**A 4-5x single-client read regression was predicted and did not reproduce.** A
+second connection ought to mean a second, cold page cache: the 2,000-memory store
+is **729,088 B**, which fits inside *any* connection's default 2 MB page cache, so
+there is no cold-cache penalty to pay and no regression to observe. The mechanism
+was real; its precondition was not met by a corpus this small. Recorded as a
+prediction that did not reproduce, not as a finding.
+
+## 12.4 RSS: re-pinned as a range, and the two settings that were refused
+
+| Figure | Previously pinned | Measured 2026-09-28 | Load | Rounds |
+|---|---|---|---|---|
+| idle RSS, pre-retain | 9,123 kB (8.91 MiB) | **9,196–9,536 kB, mean 9,351 kB (9.13 MiB)** | loadavg 25.0 | 7 |
+| idle RSS, post-retain | 10,704 kB (10.45 MiB) | **10,716–11,080 kB** (7-round mean 10,911 kB / 10.65 MiB, plus the committed harness's own 11,080 kB read) | loadavg 21.0–25.0 | 8 |
+| RSS under load (5k retains + 200 recalls, HTTP, sequential) | 12,964 kB (README) / 13,316 kB (§11.3) | **13,084–13,360 kB, mean 13,249 kB (12.94 MiB)** | loadavg 20.9–29.9 | 3 |
+| release binary | 8,824,696 B | **8,836,032 B** (8.43 MiB) | — | exact |
+| 10k storage, settled main | 3,194,880 B | **3,022,848 B** (2.88 MiB) | — | exact |
+| 10k storage, settled total | 3,227,648 B | **3,055,616 B** (2.91 MiB) | — | exact |
+| 10k storage, WAL unflushed | 7,442,440 B | **7,237,496 B** (6.90 MiB) | — | exact |
+| index bytes per 1k memories | 322,764 B | **305,561 B** | — | exact |
+| tests | 217 (117 lib) | **229** (129 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test) | — | exact |
+
+**"Idle RSS is flat" is no longer a true sentence, and the README now says so.**
+The old pin sits at the very bottom of today's band, so the claim moved up by
+roughly 200 kB; the plausible cause is the read pool's extra page caches. This was
+*not* an interleaved pre-pool/post-pool A/B — the pre-pool binary was not rebuilt
+for this measurement — so the honest claim is "the range moved up by about
+200 kB", not an attributed delta.
+
+**The structural numbers were bit-stable across two independent runs, which is
+the check that the wall-clock split is real.** `eval/BENCH_FOOTPRINT.md` was run
+twice today at `loadavg` 34.4 and 21.1 and returned *identical* byte counts both
+times — 7,237,496 unflushed, 3,055,616 settled total, 3,022,848 settled main,
+305,561 per 1k — while its RSS rows moved (11,020 → 11,080 kB) and
+`eval/BENCH_RECALL_CURVE.md`'s p50 column moved 2-3x against a fixed set of
+quality metrics. Byte counts and recall metrics are pinnable; latency is not.
+
+**The page-cache tuning was tried and rejected, and the rejection is the result.**
+Same binary both arms, 9,600 samples per arm, 4 alternating rounds, 10k corpus:
+`cache_size=32MB` moved `put` p50 287.7 → 286.1 us (**−0.6%**) and cost a
+reproducible **+105 KB** of idle RSS. `mmap_size=64MB` and `256MB` cost
+**+1,932 KB and +2,336 KB under load — +15% and +17% RSS — for no throughput gain
+at any setting measured**, because mapped database pages count toward RSS whether
+or not they earn their keep. An earlier 2-round sweep read `cache_size` as
+−5.0%/−8.4%; the 4-round same-binary A/B does not reproduce it, and the 4-round
+reading is the one to believe. Both knobs therefore stay at the SQLite defaults.
+A bigger page cache would pay off if recall read the whole bank; it does not —
+the read working set is bounded however large the bank grows, and 2 MB already
+holds it.
+
+## 12.5 `detail=none`: a real storage win, and a latency win that cannot exist
+
+`memories_fts` is now created with `detail=none`, gated by a one-shot
+`fts_detail_none` marker in the existing `schema_markers` table so the migration
+runs once per database and never re-runs. Byte-deterministic on every measurement.
+
+| Object | Before | After | Delta |
+|---|---|---|---|
+| whole FTS index | 434,176 B | **262,144 B** | **−172,032 B (−39.6%)** |
+| `memories_fts_data` | 331,776 B | **159,744 B** | −172,032 B |
+| `memories_fts_docsize` | 94,208 B | 94,208 B | unchanged |
+
+`docsize` is unchanged **because `bm25()` needs it** — that is the reason this
+trade is possible at all, and the reason it stops there.
+
+**There is no latency win here and none is claimed.** The tempting story is that
+a smaller index is a faster index. It cannot be, for this store: recall's
+candidate pool is bounded by construction — the newest 200 rows ∪ at most 50 BM25
+hits — so there is **no full index scan for `detail=none` to accelerate**. The
+`eval/BENCH_RECALL_CURVE.md` artifact is the proof, and it is the same shape
+before and after: the scan behind the pool *is* the FTS5 `MATCH` walk, and that
+walk still grows with the bank (see the curve's "bounded fusion, unbounded scan"
+paragraph). The correct statement is: **−172,032 B of resident and on-disk index
+at 10k memories, and no latency change, because the index is not the bottleneck
+and never was.**
+
+## 12.6 Three generators were destroying their own committed output
+
+This is the defect class that motivated the work, and it had **three** instances,
+not one.
+
+1. **`examples/longmemeval.rs` deleted the methodology paragraph** in
+   `eval/RESULTS.md`. The generator emitted a heading, a one-line methodology
+   note and a table; everything between the note and the table was hand-written
+   and was silently lost on every run. §11.4 recorded the incident and left it
+   unfixed as out-of-scope. **Fixed**: the paragraph is now part of the
+   generator's template, and the two figures inside it that could go stale — the
+   per-question haystack range and mean, and the count of per-question values —
+   are **computed from the run** rather than hand-pinned, so they cannot
+   contradict the run that wrote them. Verified: a fresh run reproduces the
+   committed file with exactly three differences, all of them intended — the run
+   date, the newly added "do not pin the p50 column" caveat, and the p50 column
+   itself. The computed session range reproduces the hand-written one exactly:
+   **38-62 sessions, mean 47.7**.
+2. **`examples/scale_sweep.rs` had the same defect.** Its committed
+   `eval/SCALE_SWEEP.md` carried a hand-written paragraph explaining that the
+   `DB bytes` column is the main file only, with three hard-coded byte counts in
+   it. A bare run deleted the paragraph, and when re-run the byte counts would
+   have been a month stale. **Fixed**: the paragraph is in the template, and the
+   three stale numbers are **gone from it entirely** — the WAL and
+   post-checkpoint figures are delegated to `eval/BENCH_FOOTPRINT.md`, which
+   measures both on every run. A second copy of a byte count is a second thing to
+   go stale.
+3. **`examples/coding_life.rs` had it too**, and this one had already fired: its
+   committed artifact carried a run-date line and a "p50 moves ±40% run to run"
+   caveat that the generator did not emit. Regenerating it during this work
+   deleted them, which is how the third instance was found. **Fixed** the same
+   way, with the caveat text in the template.
+
+**The `--out-md` default, and the approach taken.** Every harness defaulted
+`--out-md` to a path under `eval/`, so a bare `cargo run --release --example
+soak` silently replaced a reviewed artifact. The fix is **one shared rule**:
+`bench_common::out_md(args, name)` returns the caller's `--out-md` when given, and
+otherwise writes to a scratch file under `$TMPDIR` and prints where. Updating a
+committed artifact now requires naming it (`--out-md eval/SOAK.md`).
+
+*Why this approach and not the alternative.* The other option — keep the
+`eval/` default and require an explicit `--out-md` to write at all — was rejected
+because it makes the *common* case a failure and the *destructive* case easy: a
+caller who wants a quick look at the numbers would have to learn a flag before
+their first run, and the flag's absence would then be the thing that stops a
+silent overwrite. Writing to a temp path by default means a bare run is always
+harmless and always tells you where it put the file; the cost of being wrong is
+one extra flag on the run you actually meant to keep. One definition, shared by
+all nine harnesses, because five copies of this rule is how the rule drifts.
+
+**Also fixed while in the examples**, both cases of a generated artifact asserting
+something false about the build it was generated from: `bench_write`'s header
+claimed the store "never sets `synchronous`", which stopped being true when
+`synchronous=NORMAL` shipped (it now says what the store *does* set, and that the
+artifact's numbers are the *after* side of §11.1); and the `soak` and
+`bench_concurrency` headers described the store as "a single `Mutex<Connection>`",
+which stopped being true when the read pool landed.
+
+## 12.7 Two claims that were simply wrong
+
+**"Recall throughput measured flat at ~60 rec/s whether 1 or 64 concurrent clients
+hit the server."** This was quoted in `PLAN.md` as the motivating measurement for
+the whole of Phase B, and it is an **artifact of how it was measured**: over HTTP,
+with Python clients, on a box at `loadavg` 105. In-process, on this tree, a single
+client does **408.7 ops/s (351.3–464.9)** — not 60. The 60 is the Python client
+and the scheduler. The *latency* growth in that same measurement (17.2 ms → 55.4 →
+220.6 → 1012.3 ms) was real, and it is why the pool exists; the *throughput*
+claim was not. `PLAN.md` now quotes the original and retracts it in place.
+
+**`docs/BENCHMARK.md`'s "MCP tools (rmcp) — NOT IMPLEMENTED" row.** This is a
+true record of the `0.1.0` audit and a false statement about the current tree,
+and it was sitting in a table a reader could take at face value. **It has been
+labelled in place, not deleted**: the row reads `NOT IMPLEMENTED *(true at 0.1.0
+only; shipped at 0.2.0 — §5)*`, the section heading now carries the version and
+the date, and §1's banner says so too. A historical number that gets deleted is a
+number nobody can check; one that gets labelled is a number nobody can
+misread.
+
+## 12.8 Other stale numbers, and what happened to each
+
+| Where | Was | Now | Why |
+|---|---|---|---|
+| `PLAN.md` status | "217 tests green ... release binary 8,816,120 B" | kept as the *reference point* the plan was measured against, with a pointer forward | it is the pre-plan baseline; moving it would destroy the delta |
+| `PLAN.md` Phase A | "13 `.prepare(` call sites, zero `prepare_cached`" | 6 of 13, 7 with recorded reasons | §11.2 |
+| `PLAN.md` Phase B | "flat ~60 rec/s" | retracted in place with the in-process number | §12.7 |
+| `PLAN.md` Phase B | "19.9x headroom" | struck, replaced with 8-10x | §12.2 |
+| `PLAN.md` Phase B | the Porter-stemmer morphology probe | **not done**; the probe was not re-run, so 1-of-3 / 6-of-7 is the only evidence and is unversioned | the storage win on the same axis shipped instead |
+| `docs/BENCHMARK.md` §5 | 217 tests, binary 8,816,120 B | 229 tests, binary 8,836,032 B | re-measured |
+| `docs/VERSIONS.md` §3 | "INCOMPLETE — omits `rmcp`" | **complete**, regenerated; `fastembed`/`ort`/`tokenizers` confirmed absent | §12.4 |
+| `docs/BENCHMARK_SCALE.md` | the 13-17 ms / 16-23 ms p50 pair, profile unverified | **left exactly as recorded**, with its own standing note that the profile is unverified | not re-measured here; inventing a replacement would be worse than the ambiguity |
+| `docs/CONSISTENCY.md` §2 | 8,593,368 B, 10.3 MB, 2,375,680 B, 20 tests | left verbatim | §1-§5 is the baseline §9's deltas are computed from |
+| `eval/CODING_LIFE.md` | p50 "266 us" in a table whose own prose said 364-616 us | regenerated, self-consistent, with the range caveat in the template | the two halves of that file disagreed with each other |
+| `eval/SCALE_SWEEP.md` | 3,194,880 B and 7,442,440 B hand-written in prose | regenerated; the stale copies removed from the template | §12.6 |
+| `eval/BENCH_RECALL_CURVE.md` | p50 1,366 → 97,986 us | p50 2,443 → 131,642 us at loadavg 36 | **quality rows are bit-identical** (R@1 78.1/75.0/81.2/75.0, R@5 100% at every size, 32 gold in BM25 at every size); only wall-clock moved. This is the clearest single demonstration of the structural/wall-clock split |
+| `README.md` "RSS under load" | "recall p50 6 ms / p95 10 ms" | **not re-pinned**; the equivalent HTTP round trip measures 13.8-32.2 ms per `curl`, which is the client, not recall. The store's own recall figures are cited instead | §12.4 |
+
+## 12.9 Gates — verbatim, 2026-09-28
+
+| Gate | Result |
+|---|---|
+| `cargo test --locked` | **229 passed, 0 failed**: 129 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test |
+| `cargo clippy --all-targets --all-features --locked -- -D warnings` | clean, exit 0 |
+| `cargo doc --no-deps --all-features --locked` | 0 warnings |
+| `cargo run --release --example longmemeval -- --data eval/data/longmemeval_s_cleaned.json --n 500` | R@5 93.0 / R@10 97.4 / R@20 99.6 / NDCG@10 83.5 / MRR 83.9 |
+
+**The retrieval match is not an aggregate coincidence.** All 500 per-question
+values for `recall_any_at_5`, `recall_any_at_10`, `recall_any_at_20`, `mrr` and
+`ndcg_at_10` — 2,500 numbers, plus `question_id` and `question_type` — were
+compared field by field against the pre-change `eval/results.json` and are
+**identical, 0 differences out of 3,500 compared values**. All six question-type
+slices match too.
+
+`eval/results.json` itself is deliberately **not** claimed byte-identical: it
+embeds a per-question `latency_ms` recorded from the wall clock, which is
+load-dependent by construction and differs between runs (median 6 ms in the
+committed artifact's run, 8 ms today, 14 ms at loadavg 44). The per-question
+*metric* fields are the invariant, and those are what is asserted. Quoting the
+byte-identity of a file that carries a timestamp would be quoting a coincidence
+as a guarantee.

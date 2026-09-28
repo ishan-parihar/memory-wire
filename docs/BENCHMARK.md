@@ -1,3 +1,29 @@
+> # ⚠️ HISTORICAL RECORD — **NOT** THE CURRENT STATE OF THIS TREE
+>
+> **§1–§4 describe memory-wire `0.1.0` and are false of the current `0.2.0`
+> tree.** Their `NOT IMPLEMENTED` rows (MCP, the `bank`/`memory`/`mental-model`/
+> `fs`/`explore` CLI), the `20 passed` test count, the 76 MB debug binary, the
+> 1.9/2.1 ms seeded-benchmark latencies, the "recall is token-overlap, not
+> BM25" gap, and "no release-binary size" are all true *of 0.1.0* and wrong
+> here. Every one of them has since shipped or been deleted — see §5 and
+> `docs/CONSISTENCY.md` §8.
+>
+> Nothing in §1–§4 has been rewritten. The numbers are kept verbatim as evidence
+> about that build, and a stale number is a bug report about the past, not a
+> measurement to correct in place.
+>
+> **The current state is §5**, plus the live artifacts: `eval/RESULTS.md`,
+> `eval/CODING_LIFE.md`, `eval/SCALE_SWEEP.md`, the README footprint table, and
+> `docs/CONSISTENCY.md` §6–§12. Last re-measured 2026-09-28 on the tree ahead of
+> the published `v0.2.0` tag: **229** tests green, release binary **8,836,032 B**,
+> R@5 93.0. §5 carries the current matrix; §6–§12 of `docs/CONSISTENCY.md` carry
+> everything that moved since the `0.2.0` cut.
+>
+> **CI runs no benchmarks** (deliberate — Actions quota; see
+> `.github/workflows/ci.yml`), so nothing re-checks any number in this file
+> automatically. If this file and `eval/` disagree, `eval/` is the artifact of
+> record.
+
 # Benchmark + tool matrix
 
 > **This file holds two records.** §1–§4 are the **0.1.0 audit, run 2026-09-27**,
@@ -6,9 +32,14 @@
 > as the current state. §5 is the current `0.2.0` matrix. Nothing below rewrites
 > the 0.1.0 numbers.
 
-## 1. Tool matrix (live, :8891)
+## 1. Tool matrix (live, :8891) — **0.1.0 record, 2026-09-27**
 
-| Tool | Result | Evidence |
+Every row below describes the `0.1.0` build. The two `NOT IMPLEMENTED` rows are
+**historical**, not current: MCP and the `seed` CLI both shipped at `0.2.0` (see
+§5), and the `bank/memory/mental-model/fs/explore` group was never built under
+those names at all. They are kept here as evidence about that build.
+
+| Tool | Result (at 0.1.0) | Evidence |
 |---|---|---|
 | CLI `info` / `--help` / `serve --help` | PASS | version + pointers print; help renders |
 | `GET /health` | PASS | `ok` (200) |
@@ -18,8 +49,8 @@
 | bank isolation | PASS | `other` bank recall `[]` for `proj` content |
 | `POST /banks/:id/reflect` | PASS | cited answer; empty bank → `"no relevant memories"` |
 | malformed JSON / unknown route | PASS | 400 / 404 |
-| MCP tools (rmcp) | **NOT IMPLEMENTED** | no `rmcp` dep, no MCP route — plan-only (PLAN.md §4) |
-| CLI `bank/memory/mental-model/fs/explore` | **NOT IMPLEMENTED** | only `info` + `serve` exist |
+| MCP tools (rmcp) | **NOT IMPLEMENTED** *(true at 0.1.0 only; shipped at 0.2.0 — §5)* | at 0.1.0: no `rmcp` dep, no MCP route — plan-only (PLAN.md §4) |
+| CLI `bank/memory/mental-model/fs/explore` | **NOT IMPLEMENTED** *(true at 0.1.0 only; never built under those names — §5)* | at 0.1.0: only `info` + `serve` exist |
 
 ## 2. Seeded benchmark (:8892, debug, in-memory SQLite)
 
@@ -50,17 +81,19 @@ Baseline pins: `docs/VERSIONS.md` (hindsight `ccfe85b`, agentmemory `bcf4f0d`,
 `memory-wire` 0.1.0, rustc 1.98.0). Binary: debug build, 76,178,192 bytes
 (symbols included; release+LTO not yet measured).
 
-## 5. Current matrix — memory-wire 0.2.0, 2026-09-27
+## 5. Current matrix — memory-wire 0.2.0 tree, re-measured 2026-09-28
 
 Everything in §1–§4 that 0.2.0 has since closed, and where the evidence is. The
 authoritative current numbers live in `eval/` and in the README footprint table;
 this section exists so a reader who lands here does not take the 0.1.0 matrix for
-the shipped product.
+the shipped product. **This tree is ahead of the published `v0.2.0` tag** — see
+`docs/VERSIONS.md` — and every row below is measured against the tree, not the
+release.
 
 | Tool / surface | Status at 0.2.0 | Evidence |
 |---|---|---|
 | Retrieval stack | **FTS5 BM25 (LIMIT 50) + token-overlap (cap 200), fused by RRF k=60** over a candidate pool of the newest 200 rows ∪ the BM25 hits | `eval/RESULTS.md`: R@5 93.0 / R@10 97.4 / R@20 99.6 / NDCG@10 83.5 / MRR 83.9 on official LongMemEval-S, 500 questions |
-| Official LongMemEval-S harness | **built and run** (gap 4 closed) | `examples/longmemeval.rs`, `eval/RESULTS.md`; per-question values reproduce bit-for-bit across runs |
+| Official LongMemEval-S harness | **built and run** (gap 4 closed) | `examples/longmemeval.rs`, `eval/RESULTS.md`; all 500 per-question `recall_any_at_5/10/20`, `mrr`, `ndcg_at_10` values verified identical to the pre-change artifact on 2026-09-28 |
 | `GET`/`PUT /banks/:id/config` | shipped; PUT requires an existing bank | `docs/CONSISTENCY.md` §2, unknown-bank rule |
 | Lifecycle routes | shipped: `GET .../memories` (50/500, offset), `GET`/`DELETE .../memories/:mid`, `GET .../stats` | README "Lifecycle ops are routes now" |
 | `format: "full"` on recall | shipped; `score` is the fused RRF value, not a token count | `docs/CONSISTENCY.md` §2 |
@@ -71,8 +104,18 @@ the shipped product.
 | FTS5 | shipped — external-content `fts5` table with AI/AD/AU triggers, rebuilt on drift | `src/store.rs`; `migrate_should_rebuild_a_drifted_fts_index` |
 | Bounded recall pool | shipped — cost no longer grows with the bank | `eval/SCALE_SWEEP.md`, `docs/BENCHMARK_SCALE.md` |
 | `ttl_days` + `sweep` | shipped, off by default, no scheduler | README "Forgetting" |
-| Release binary size | **8,816,120 B** (gap 4 closed) | `stat -c %s target/release/memory-wire` after `cargo build --release --locked` |
-| Tests | **217 passed / 0 failed** (117 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test) | `cargo test --locked --all-features` |
+| Read path | 4-connection WAL read pool, writer-first with spill-on-contention; `prepare_cached` on 6 static-SQL read sites; `synchronous=NORMAL` | `eval/BENCH_CONCURRENCY.md` (64-client 772 ops/s, 1.89x vs 1 client, gate PASS); `docs/CONSISTENCY.md` §11, §12 |
+| FTS index | `detail=none` — index 434,176 → 262,144 B at 10k memories, −39.6%; `docsize` unchanged because `bm25()` needs it | `eval/BENCH_FOOTPRINT.md`; `docs/CONSISTENCY.md` §12.5 |
+| Benchmark surface | **five committed harnesses plus a soak artifact** under `eval/`, each with a provenance line | `eval/BENCH_{FOOTPRINT,WRITE,RECALL_CURVE,CONCURRENCY,COLDSTART}.md`, `eval/SOAK.md` |
+| Release binary size | **8,836,032 B** (gap 4 closed) | `stat -c %s target/release/memory-wire` after `cargo build --release --locked`; cross-checked by `eval/BENCH_FOOTPRINT.md` |
+| Tests | **229 passed / 0 failed** (129 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test) | `cargo test --locked`, 2026-09-28 |
+
+**Every wall-clock figure in `eval/` is load-confounded and is recorded as a
+range, never pinned.** The machine these artifacts were generated on ran at
+`loadavg` 21–48 on 24 cores under sustained unrelated load; absolute ops/s and
+latency move 2–3x with it. Structural measurements — byte counts, page counts, row
+counts, test counts, and every retrieval metric — are unaffected and are exact.
+See `docs/CONSISTENCY.md` §12.1 for the method.
 
 ### Still not built — and formally declined, not in flight
 

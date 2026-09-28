@@ -6,6 +6,9 @@
 //! aggregated by adapter and by question type.
 //!
 //! Run: `cargo run --example coding_life -- [--k 5] [--out-md eval/CODING_LIFE.md]`
+//!
+//! `--out-md` has no `eval/` default: a bare run writes to a scratch file under
+//! `$TMPDIR`, so this harness cannot overwrite a committed artifact.
 
 use std::collections::HashSet;
 use std::fs;
@@ -15,6 +18,8 @@ use memory_wire::api::MemoryService;
 use memory_wire::memory::{Bank, Memory};
 use memory_wire::store::{SqliteStore, Store};
 use serde::Deserialize;
+
+mod bench_common;
 
 #[derive(Deserialize)]
 struct Session {
@@ -61,7 +66,7 @@ fn arg(name: &str, default: String, args: &[String]) -> String {
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let k: usize = arg("--k", "5".into(), &args).parse().unwrap_or(5);
-    let out_md = arg("--out-md", "eval/CODING_LIFE.md".into(), &args);
+    let out_md = bench_common::out_md(&args, "CODING_LIFE.md");
 
     let sessions: Vec<Session> =
         serde_json::from_str(&fs::read_to_string("eval/data/sessions.json")?)?;
@@ -138,7 +143,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut md = format!(
-        "# coding-life eval (memory-wire)\n\nDataset: vendored `eval/data/{{sessions,queries}}.json` (15 sessions, 15 labeled queries, from agentmemory `eval/data/coding-agent-life-v1`). Scoring mirrors their `eval/runner/score.ts`. k={k}.\n\n| Adapter | P@{k} | R@{k} | Hit rate | p50 latency | n |\n|---|---|---|---|---|---|\n"
+        "# coding-life eval (memory-wire)\n\nDataset: vendored `eval/data/{{sessions,queries}}.json` (15 sessions, 15 labeled queries, from agentmemory `eval/data/coding-agent-life-v1`). Scoring mirrors their `eval/runner/score.ts`. k={k}.\n\nRun {} from `--profile={}`.\n\nThe corpus is 15 sessions, so the 200-row recall candidate pool cannot bind here and every session is scored on every query. P@{k} / R@{k} / hit rate are deterministic and are what this suite gates on. **The p50 latency column is not.** It is a {k}-sample median over one run of one machine: it has been measured across release runs of this binary between roughly 260 and 620 us, so it moves several-fold with the box's load and must be quoted as a range, never as a regression signal. Re-run it; do not pin it.\n\n| Adapter | P@{k} | R@{k} | Hit rate | p50 latency | n |\n|---|---|---|---|---|---|\n",
+        chrono::Utc::now().format("%Y-%m-%d"),
+        bench_common::profile(),
     );
     for name in ["memory-wire", "grep"] {
         let a = &adapters[name];
