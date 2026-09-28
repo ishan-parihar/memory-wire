@@ -566,3 +566,40 @@ is the ceiling: at 0.75 the fusion reaches 100% R@5 on both needle instruments a
 loses only 0.6pp of LongMemEval R@5, so the headroom that E3 identified is real and
 sized — it just is not free yet, and buying it is a data problem, not a weighting
 one.
+
+## Phase E7 — the oracle-rerank ceiling (sizing, not building)
+
+The deficit section above argues from R@5→R@10 movement that this is a reordering
+problem, not a coverage problem. That argument was inference. It is now measured:
+`examples/oracle_rerank.rs` builds, per question, the exact pool `MemoryService::recall`
+ranks — the same three primitives, the same `FusionWeights::SHIPPED`, in one pass, with
+the reconstructed pool checked row-for-row and score-for-score against what recall
+serves — and asks where the first gold row actually sat. Artifact:
+`eval/ORACLE_RERANK.md`, 500 questions, seed 42.
+
+| First gold rank in pool | 1 | 2–5 | 6–10 | 11–20 | 21–50 | 51–200 | not in pool |
+|---|---|---|---|---|---|---|---|
+| Questions | 419 | 67 | 7 | 5 | 2 | 0 | 0 |
+
+**Oracle R@5 is 100.0%, not 99.6%.** The 99.6% is the *current* R@20; pool coverage
+itself is 500/500, so a perfect reranker over the pool this build already assembles
+would post R@5 = 100.0 against today's 97.2. The whole 2.8pp R@5 deficit is
+rerankable: of the 14 questions recall misses at rank 5, **12** have their gold row at
+rank 6–20, **2** at rank 21–50, and **0** are missing from the pool. The mass is
+concentrated — `single-session-preference` supplies 4 of the 12 on 30 questions
+(86.7% → 100.0%), `temporal-reasoning` 5 of them on 133 — and `knowledge-update` and
+`single-session-assistant` are already at 100% with nothing to gain.
+
+Two corollaries the artifact states and this plan should not lose. The **larger** prize
+is at the top: current R@1 is 83.8% against the same 100.0% oracle, **+16.2pp** against
++2.8pp at R@5, with 419 questions already at rank 1 and 81 not. And the thing that
+actually binds on this suite is **not** the 200-row candidate window — the bank is only
+38–62 rows, so `recall_inputs` reads all of it — but the **token budget**: the
+100,000-token budget leaves a caller 26/35/47 rows against a pool of 38/47/62, on all 500
+questions. That costs nothing at R@5/10/20 (0 questions diverge before rank 20), but it
+does hide the deep candidates a reranker would be reordering.
+
+What this does **not** settle: with 0 questions missing from the pool, this suite has no
+coverage failure for any new retrieval signal to fix, so it can neither support nor
+refute a vector arm or an LLM. And an oracle is a ceiling computed with the gold labels,
+not a prediction — it sizes the prize, it does not say any reranker closes it.
