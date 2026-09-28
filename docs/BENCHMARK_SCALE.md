@@ -63,11 +63,14 @@ would show up here as a drop below 20/20.
   candidate pool: recall used to score every row in the bank, and now scores at
   most 200 plus the BM25 hits, so a 5,000-row bank costs roughly what a 200-row
   one does. Quality held while cost fell, which is the result worth having.
-- Recall path uses FTS5 BM25 + overlap fusion, and those two streams are all
-  this build has. `src/embed.rs` holds the dependency-free cosine/rank kernel a
-  vector stream would consume; there is no embedder, no vector column, and no
-  vector branch in the query path, so a vector stream needs embedding-at-retain
-  plus storage before it can be fused at all.
+- Recall path uses FTS5 BM25 + overlap fusion, and those two streams are all a
+  **default** build has. That qualifier now carries weight: the `embed` feature
+  (off by default, `default = []`) brings in `src/vector.rs`, which *does* have
+  an embedder, a `memory_vectors` column and a third branch in the query path,
+  over vendored int8 MiniLM weights. It changes no ranking — `FusionWeights::vector`
+  ships at `0.0` — so a default build compiles none of it and every number in
+  this file remains a default-build number. `src/embed.rs` remains the
+  dependency-free cosine/rank kernel.
 - To truly exceed: vendor the LongMemEval-S set, store vectors at retain,
   3-stream RRF + cross-encoder rerank, then publish the side-by-side scorecard
   here.

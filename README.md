@@ -1,9 +1,10 @@
 # memory-wire
 
-**Agent memory in one 8.4 MB static binary, 10.7 MiB of RSS, and zero daemons** —
-roughly 1% of Hindsight's documented idle floor. No runtime, no database, no
-install step: retain/recall/reflect with bank isolation, FTS5 BM25 + RRF fusion and
-PII redaction on write, over HTTP or as an MCP stdio server.
+**Agent memory in one 8.4 MiB binary, three shared libraries, 10.7 MiB of RSS and
+zero daemons** — roughly 1% of Hindsight's documented idle floor. No language
+runtime, no database server, no install step: retain/recall/reflect with bank
+isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as an
+MCP stdio server.
 
 - **10.7 MiB** idle RSS · **8.4 MiB** binary · **0** background processes
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · 100% hit-rate coding-life
@@ -114,9 +115,10 @@ as ranges, never as a single run.
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
 | Ship artifact | **8.4 MiB** binary — 8,836,032 B (LTO, incl. the MCP SDK) | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
-| Minimum box | any (binary + SQLite) | **1.5 GB** full / 512 MB slim + external providers + separate DB | Node + engine + 4 ports |
+| Minimum box | any glibc box — one file to copy. SQLite is **compiled in** (`rusqlite` with `features = ["bundled"]`), so there is no database to install and nothing to run | **1.5 GB** full / 512 MB slim + external providers + separate DB | Node + engine + 4 ports |
 | 10k-memories storage | **2.9 MiB** (SQLite+FTS5, 3,022,848 B settled main file — 7,237,496 B while the WAL is unflushed) | Postgres + pgvector (+ reranker) | **35.7 MB** (BM25+vector) |
 | Background processes | **0** | API + worker + UI + DB | REST + streams + viewer + worker WS |
 
@@ -156,10 +158,13 @@ are exact.
 
 The deltas are interesting, and three of them moved in opposite directions.
 **The binary grew, not shrank**: 8,836,032 B against the 8,593,368 B measured at
-`0.1.0`, **+242,664 B (+2.8%)**. The `fastembed` optional dependency and its ONNX
-runtime are gone — there is no `embed` feature and no `fastembed`, `ort` or
-`tokenizers` entry in `Cargo.lock` — but the MCP SDK landed between those two
-measurements, and `rmcp` + `schemars` cost more than `fastembed` ever did. The
+`0.1.0`, **+242,664 B (+2.8%)**. `fastembed` and its ONNX runtime were removed at
+`0.3.0` and are **back in the tree now** as an optional, default-off `embed`
+feature, so `fastembed`, `ort`, `ort-sys` and `tokenizers` *are* in `Cargo.lock`
+again. Every footprint number in this section is still the **default** build and
+is unaffected: `default = []`, so `src/vector.rs` and the weights compile only
+under `--features embed`. The growth itself is the MCP SDK — `rmcp` + `schemars`
+landed between those two measurements and cost more than `fastembed` ever did. The
 binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.4 MiB and not
 smaller, and it is code, not a resident dependency, so idle RSS does not move
 with it.
@@ -289,8 +294,10 @@ API keys, emails, and phone numbers.
 
 ## CLI
 
-Eight subcommands, exactly as `--help` reports them (`help` is clap's own and is
-not one of them):
+Eight subcommands in a default build, exactly as `--help` reports them (`help` is
+clap's own and is not one of them). An `--features embed` build has a ninth,
+`embed <text>`, which prints one 384-d vector as JSON; it is the reason the
+weights survive LTO:
 
 | Command | What it does |
 |---|---|
@@ -489,11 +496,40 @@ Library in `0.3.0`: `src/{api,store,recall,capture,embed,lib,memory}.rs` —
 `/{retain,recall,reflect,config,memories,memories/:mid,stats}` under `/banks/:id`)
 plus four MCP tools.
 
-There is no consolidation ladder and no vector stream in this build. Neither has
-a scheduler, a flag, or a stored column, and neither is reachable from a request:
-what ships is FTS5 BM25 plus token-overlap, fused by RRF. `src/embed.rs` is the
-one deliberate exception — it holds the dependency-free cosine/rank kernel that a
-future vector stream would consume, with no embedder and no producer behind it.
+There is no consolidation ladder in this build, and no vector stream in a
+**default** build. What a default build ships is FTS5 BM25 plus token-overlap,
+fused by RRF, and nothing else is reachable from a request.
+
+The `embed` cargo feature — **off by default**, `default = []` — does add a third
+stream: `src/vector.rs` brings an embedder, the `memory_vectors` column and a
+dense branch in the query path, over ~23 MB of vendored int8 MiniLM weights in
+`models/`. It changes no ranking, because `FusionWeights::vector` ships at `0.0`
+in every build, so none of it is compiled unless you ask for it. Every footprint
+and latency figure in this README is a default-build figure and is unaffected.
+`src/embed.rs` remains the dependency-free cosine/rank kernel.
+
+**What the `embed` build costs, measured rather than estimated.** Building it
+(`cargo build --release --features embed`) produces a **65,007,536 B** binary
+against the default build's **8,874,128 B** — the vendored weights plus ONNX
+Runtime, and nothing else. Two facts about it are worth stating because both were
+assumed the other way:
+
+- **It needs no C++ shared library.** ONNX Runtime normally drags in
+  `libstdc++.so.6`, which would add a fourth dependency the default build does not
+  have. A `build.rs` resolves `libstdc++.a` with `cc -print-file-name` and links it
+  into rustc's existing `-Wl,-Bstatic` group, gated on `#[cfg(feature = "embed")]`
+  and a `*-linux-gnu` target; `--as-needed` then declines to record a
+  `DT_NEEDED` for it at all. A plain `cargo build --release --features embed` needs
+  **no env var, no `RUSTFLAGS` and no `.cargo/config.toml`**.
+- **It runs on the same minimal root as the default build.** A `bwrap` root holding
+  only `ld-linux-x86-64.so.2`, `libc.so.6`, `libm.so.6` and `libgcc_s.so.1` — and
+  deliberately *no* `libstdc++.so.6` — runs `--version` and performs real ONNX
+  inference there, not just the version print.
+
+The full record, including the two rejected alternatives (`crt-static`, which works
+but cannot be scoped to one feature because cargo has no per-feature rustflags, and
+`-static-libstdc++`, which is a 0-byte no-op because rustc links through
+`gcc-ld`/`lld`), is `docs/CONSISTENCY.md` §16.
 
 **Lifecycle ops are routes now — custody, not relevance.** `recall` answers "what is
 relevant"; these answer "what did I actually store, and how do I take it back":
@@ -580,6 +616,17 @@ Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
 defaults, which resolve to this repo and its latest published release
 (`v0.3.0`, asset `memory-wire-linux-x86_64.tar.gz`).
+
+**The published release is `v0.3.0`; the working tree is ahead of it.** `v0.3.0`
+is a real, published GitHub release (published 2026-09-28) and `Cargo.toml` still
+says `0.3.0`, so the version string describes the release and *not* the tree: the
+branch is **19 commits past the `v0.3.0` tag** with a large uncommitted wave on
+top. Nothing described in this README's `embed` paragraphs is in `v0.3.0` — that
+release shipped the lexical arm only, with the `embed` feature absent. So: what
+`curl … | sh` gives you is `v0.3.0`; what this file describes is later work. The
+tree-versus-release position, and the record that retired the older framing and
+then found it true again, are in `docs/CONSISTENCY.md` §15.2 and
+`docs/VERSIONS.md` §0.
 Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 
 ## Roadmap
@@ -602,8 +649,9 @@ Not built yet: a 4-tier consolidation ladder (promote/evict/retention had no
 scheduler and no caller; the code was removed rather than left as a model of
 behaviour that does not run) · vectors at retain + stored embeddings +
 cross-encoder rerank, which would close the −2.2pp to agentmemory hybrid (the
-`embed` feature and its ONNX dependency were removed; the cosine/rank kernel
-survives, unused) · a `DELETE` for a whole bank (one memory at a time only) · `tags` in
+`embed` feature and its ONNX dependency are back in the tree, default-off and
+inert — `FusionWeights::vector` ships at `0.0`, so none of it is reachable from a
+request in a default build; the cosine/rank kernel is likewise unused) · a `DELETE` for a whole bank (one memory at a time only) · `tags` in
 the lifecycle responses (they serve `{content, created_at, id[, context]}`; tag
 filtering stays on `recall`) · `document_id` visible in any response · a `backup`
 subcommand (the `sqlite3 .backup` recipe is the interface) · Postgres/

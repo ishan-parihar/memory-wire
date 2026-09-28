@@ -125,6 +125,19 @@ enum Cmd {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Embed text with the bundled 384-d model and print the vector as JSON.
+    ///
+    /// Only compiled with `--features embed`, which is also the only build that
+    /// carries the 23 MB of weights — a build without it has nothing to print and
+    /// no subcommand to print it with. Offline: no download, no cache, no file on
+    /// disk. This is the Phase D arm's visible surface
+    /// (`docs/EXCEED_PLAN.md` §2); it does not change any ranking, because
+    /// `FusionWeights::vector` still ships at `0.0`.
+    #[cfg(feature = "embed")]
+    Embed {
+        /// The text to embed.
+        text: String,
+    },
 }
 
 #[tokio::main]
@@ -197,6 +210,19 @@ async fn main() -> anyhow::Result<()> {
                 "{}",
                 seed::run(&MemoryService::new(store), &bank, commits, transcripts).render(&bank)
             );
+        }
+        // Phase D's visible surface. Present only in a build that carries the
+        // model, which is the whole point: the weights are reachable from the
+        // shipped executable rather than linked into a library the binary's LTO
+        // pass would strip.
+        #[cfg(feature = "embed")]
+        Cmd::Embed { text } => {
+            let mut embedder = memory_wire::vector::Embedder::new()
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let vector = embedder.embed(&text).map_err(|e| anyhow::anyhow!("{e}"))?;
+            // A bare JSON array of 384 floats, so it pipes straight into
+            // whatever compares two of them.
+            println!("{}", serde_json::to_string(&vector)?);
         }
     }
     Ok(())

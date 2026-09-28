@@ -33,10 +33,29 @@
 //! | Recency stream | [`FusionWeights::recency`] | `0.0` | a third fusion stream over `memories.created_at`, which no stream reads |
 //! | Sentence overlap | [`FusionWeights::overlap_scope`] | [`OverlapScope::Document`] | per-segment instead of whole-document overlap scoring |
 //! | Temporal classifier | [`is_temporal_query`] | not on the recall path | lets the recency weight apply only to time-denoting queries |
+//! | Dense vector stream | [`FusionWeights::vector`] | `0.0` | a fourth stream over learned 384-d embeddings — the one arm that can reach a document *no* lexical stream scores above zero (Phase D, `docs/EXCEED_PLAN.md` §2) |
+//! | Prefix match | [`FusionWeights::keyword_scope`] | [`KeywordScope::Exact`] | the morphological arm BM25's verbatim token match cannot reach (`"migrat"*`) — read [`KeywordScope`] before enabling it, because the measured `bm25()` values argue its value is narrow |
+//! | Synonym expansion | `recallSynonyms` bank config | key absent | user-supplied paraphrase terms at a down-weighted query contribution, where agentmemory hardcodes a 63-line domain table we decline to copy |
 //!
 //! These are `docs/RERANKING_PLAN.md` §8 Step 2 ("restore the BM25 magnitude,
 //! mechanistic, no free parameters") and §4 items 3 and 7, implemented
-//! *before* their values are chosen.
+//! *before* their values are chosen, plus Phase D's vector arm.
+//!
+//! The vector stream is the only one of the six whose *implementation* is behind
+//! a cargo feature: [`crate::vector`] and its 23 MB of vendored weights do not
+//! exist in a default build at all. The weight is inert in both configurations —
+//! `0.0` here is a value in a struct, not a switch that reaches for a model that
+//! is not there.
+//!
+//! The prefix arm is the only one of the six that changes a *query* rather than a
+//! *score*, and it is the only one where the mechanism argument is weaker than
+//! the hype. Unlike the others, its existence was settled by measurement rather
+//! than by algebra, and the measurement came out mostly negative: FTS5 weights a
+//! prefix that expands to several indexed terms at ~1e-6 of a normal term, so
+//! `"migrat"*` recovers a document containing "migration" at a millionth of the
+//! weight `"migration"` gives it. It ships off, and [`KeywordScope`] records the
+//! full table so a selection pass starts from the evidence instead of
+//! rediscovering it.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -100,6 +119,121 @@ pub enum OverlapScope {
     /// query — which is the same thing BM25's term-proximity intuition already
     /// encodes and which a whole-document count cannot.
     BestSentence,
+}
+
+/// How much of the lexicon the BM25 stream's `MATCH` is allowed to reach.
+///
+/// The default is [`KeywordScope::Exact`], which is the whole of the `MATCH`
+/// grammar this crate has ever used: every query token is emitted as one quoted
+/// term and the terms are `OR`ed together.
+///
+/// # Why the other variant exists
+///
+/// [`SqliteStore::fts_match_query`](crate::store::SqliteStore::fts_match_query)
+/// splits a query into alphanumeric tokens and quotes each
+/// one, so BM25 only ever sees documents containing a query token *verbatim*.
+/// English morphology makes that the wrong invariant: a user asking about
+/// "migrate" gets nothing from a memory that says "migration", "migrated" or
+/// "migrating", because those are four distinct index terms and the tokenizer
+/// does no stemming. The loss is not hypothetical and it is not uniform — it
+/// concentrates in the queries whose answer uses a different surface form from
+/// the question.
+///
+/// FTS5 already expresses the fix, natively, as `token*` inside `MATCH`: no new
+/// dependency, no schema change, no second index. This enum is the switch that
+/// chooses whether to emit it.
+///
+/// # The algebra, measured rather than assumed
+///
+/// This is the part that decided the shape, and it was measured against the
+/// `rusqlite 0.32` / SQLite in this crate's `Cargo.lock` before any of it was
+/// written down. Every row below is a real `bm25()` value from a fixture where
+/// each morphologically distinct term lived in its own document, so the number of
+/// index terms a prefix expands to is exactly controlled.
+///
+/// | `MATCH` | expands to | `bm25()` on the matching doc |
+/// |---|---|---|
+/// | `"migration"` | 1 term | `-1.299` |
+/// | `"migration"*` | 1 term | `-1.299` |
+/// | `"cats"` | 1 term | `-1.299` |
+/// | `"cats"*` | 1 term | `-1.299` |
+/// | `"cats" OR "cats"*` | 1 term, twice | `-2.599` |
+/// | `"migrat"*` | 4 terms | `-0.000001` |
+/// | `"migra"*` | 4 terms | `-0.000001` |
+/// | `"migr"*` | 4 terms | `-0.000001` |
+///
+/// Three consequences, and the third is the one that constrains the design:
+///
+/// 1. **`"token"*` is accepted syntax.** It is not a phrase query, so it does not
+///    raise the `phrase queries are not supported (detail!=full)` error that a
+///    genuine multi-term phrase does. This crate ships `detail=none`, so that
+///    error is live and reachable — `"we migrated"` fails outright on the shipped
+///    index. `"migrat"*` does not.
+/// 2. **OR-ing a term with its own prefix double-counts it.** `"cats" OR "cats"*"`
+///    scores `-2.599` against `"cats" OR`-ing nothing. FTS5 sums the contribution
+///    of each *phrase* the row satisfies, and a token that is both the exact term
+///    and the sole expansion of its prefix satisfies two phrases. So the naive
+///    "just add a `*` variant beside each token" shape silently doubles the weight
+///    of every query token whose prefix happens to resolve to only itself — which
+///    is the common case, and is the case where the prefix adds no information at
+///    all. That is why
+///    [`fts_match_query_scoped`](crate::store::SqliteStore::fts_match_query_scoped)
+///    emits *either* the exact term
+///    *or* the prefix, never both.
+/// 3. **A prefix that expands to more than one term collapses to near-nothing.**
+///    `-0.000001` against `-1.299` is a factor of ~1.3 million. FTS5 assigns a
+///    prefix term a negligible weight precisely because it could match almost
+///    anything, and the weight falls off as the expansion widens. This is the
+///    opposite of the usual prefix-search expectation, and it is the reason the
+///    minimum token length below is a *load-bearing* parameter rather than a
+///    tidiness rule.
+///
+/// # What this means for a real deployment
+///
+/// (3) is the honest headline: **on this FTS5, prefix matching is worth almost
+/// nothing for the morphological case it was built for, and worth a full term's
+/// weight only when the prefix expands to exactly one indexed term.** A query
+/// token of "migrat" scores ~1e-6 against a document containing only "migration";
+/// the same document scores a full `-1.299` for the query token "migration".
+/// Morphological recall would need a stemmer at index time (Porter over
+/// `unicode61`, or a second indexed column), which is a schema migration and out
+/// of scope here — that is the honest cost statement, and it belongs in the
+/// selection report rather than being discovered during it.
+///
+/// That does not make this knob worthless, and it is not a reason to ship it on.
+/// A one-token expansion scores a *full* term, so the prefix pass is a real
+/// re-ranking signal on a query whose token happens to be a unique prefix of one
+/// indexed term. Whether that is common enough to matter is a question for the
+/// dev set, which is why this ships off.
+///
+/// # Why an enum and not a `f64` or a `bool`
+///
+/// A weight would be a number nobody can choose, because the two regimes are not
+/// adjacent on a scale — they are two different queries. `Exact` and
+/// `ExactAndPrefix` are discrete shapes of the `MATCH` string, and the
+/// difference between them is a syntax change, not a magnitude change. A `bool`
+/// would have been the same information with less meaning; `prefix_weight: f64`
+/// would have implied a continuum that the measurements in the table above say
+/// does not exist.
+///
+/// # Why it lives on `FusionWeights`
+///
+/// Because the other four inert mechanisms live there, and because turning one on
+/// is then a one-line edit to [`FusionWeights::SHIPPED`] like the rest. It is a
+/// *query-shaping* knob rather than a fusion weight, so it does not participate in
+/// [`rrf_fuse`] and reads no arithmetic — see the field documentation for why that
+/// distinction is deliberate rather than accidental.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum KeywordScope {
+    /// One quoted term per query token, `OR`ed. The default, and therefore the
+    /// shipped behaviour, byte-identical to
+    /// [`fts_match_query`](crate::store::SqliteStore::fts_match_query).
+    #[default]
+    Exact,
+    /// One quoted *prefix* per query token, `OR`ed — `"token"*` in place of
+    /// `"token"`, never both. See the type documentation for the measured
+    /// consequences and for why emitting both is a bug rather than a belt.
+    ExactAndPrefix,
 }
 
 /// When [`FusionWeights::recency`] applies.
@@ -249,6 +383,163 @@ pub struct FusionWeights {
     /// [`OverlapScope::Document`], is the whole-document count that has always
     /// shipped.
     pub overlap_scope: OverlapScope,
+    /// How much of the lexicon the BM25 stream's `MATCH` may reach.
+    /// **Inert at [`KeywordScope::Exact`]**, which is the exact-token `MATCH`
+    /// grammar this crate has always emitted, and the default is the same
+    /// grammar — so this is off by construction rather than by a value that
+    /// happens to cancel.
+    ///
+    /// Deliberately *not* a `f64`, and deliberately not read by
+    /// [`rrf_fuse`]: it is a query-shaping choice, made before there are any
+    /// scores to weigh, and it reaches the store as a syntax switch rather than
+    /// as arithmetic. The weight-looking shape would have implied a continuum
+    /// between exact and prefix matching that the measured `bm25()` values in
+    /// [`KeywordScope`] do not support. See that type for the evidence.
+    pub keyword_scope: KeywordScope,
+    /// Weight on the dense-vector stream (stream 3), the RRF term a
+    /// `rank_by_cosine` ordering is fused under. **Inert at `0.0`, which is what
+    /// ships** and which drops the stream outright, by the same `continue` and the
+    /// same reason that drop streams 0 and 1 — see `a_zero_vector_weight_should_
+    /// remove_its_stream`.
+    ///
+    /// The implementation is [`crate::vector`], which is behind the `embed` cargo
+    /// feature: no model, no tokenizer and no ONNX runtime are compiled into a
+    /// default build. This field is `0.0` in both.
+    ///
+    /// # Why this exists, when three other inert knobs already did not
+    ///
+    /// [`Self::bm25_magnitude`], [`Self::recency`] and [`Self::overlap_scope`]
+    /// all restore something the code *already computes and throws away*: a
+    /// magnitude, a timestamp, a finer granularity. This one adds a signal the
+    /// system cannot currently produce at all, and the gap it closes is the one
+    /// the other three cannot reach.
+    ///
+    /// Both shipped streams are lexical. FTS5 `bm25()` and a distinct-token count
+    /// both score a document by which query *words* it contains, so a memory that
+    /// answers the question in different words scores `0.0` in both, and
+    /// `rank_candidates`' `retain(|&(_, score)| score > 0.0)` drops it from the
+    /// overlap stream while the BM25 `MATCH` never names it. "How did we handle a
+    /// customer who could not log in" does not share a token with "SSO redirect
+    /// loop fixed by clearing the stale session cookie" — and that memory is
+    /// unreachable at every weight that leaves the lexical pair at 1.0 and 0.25.
+    /// Reordering cannot fix unreachable; a new representation can.
+    ///
+    /// # The algebra: what a third stream can and cannot do
+    ///
+    /// The stream is a plain `RankedHit` list and the term is the plain
+    /// `w/(k + rank)`. Nothing about a vector is special here, and that is worth
+    /// stating first, because there is a claim about extra streams that recurs
+    /// in this file and it is *nearly* true in a way that would mislead anyone
+    /// selecting a weight from it.
+    ///
+    /// **The claim, and the correction.** [`Self::recency`]'s docs argue that
+    /// because RRF's discount is the same `1/(k + rank)` shape in every stream, "a
+    /// weight of `1.0` hands the tail `+1/(k+1)` and takes `1/(k+1) - 1/(k+n)` off
+    /// the leader — and for `n >= 2` the leader keeps the higher sum." The first
+    /// half is right and the conclusion does not follow. Write the two rows out
+    /// for a stream `C` that is the *exact* reverse of an existing stream `A`,
+    /// `A`'s leader at rank 1 and `A`'s tail at rank `n`:
+    ///
+    /// ```text
+    /// leader:  1/(k+1) + w/(k+n)
+    /// tail:    1/(k+n) + w/(k+1)
+    /// margin = (1 - w) · (1/(k+1) - 1/(k+n))
+    /// ```
+    ///
+    /// The margin is `(1 - w)` times a positive constant, so it is **zero at
+    /// `w = 1.0` exactly** — not positive, as the quoted argument has it. So the
+    /// true statement is sharper than the one it replaces: `1.0` is not a wash for
+    /// the extremes, it is a **knife edge**. Below it the leader keeps its lead
+    /// (shrinking linearly in `w`), above it the pair reverses, and there is no
+    /// tolerance either side. A tie is not the harmless case either — the fused
+    /// list falls back to its id tiebreak, so two rows the lexical stream
+    /// separated are now separated alphabetically. Pinned exactly, not to a
+    /// tolerance, in
+    /// `a_unit_weight_on_an_inverted_stream_is_a_knife_edge_not_a_wash`.
+    ///
+    /// **And `1.0` is not the only crossing.** The *interior* rows gain different
+    /// amounts, and their crossings are at other weights — for a three-row mirror
+    /// at k=60 the middle row passes the tail at `w = (k+1)/(k+3) ≈ 0.9683`, well
+    /// below 1. So the honest guidance is not "stay far from 1.0": the fused order
+    /// under a mirrored stream is a continuous function of `w` with a crossing at
+    /// every weight that makes two rows' `1/(k+rank)` sums equal, and those are
+    /// rational numbers. A selection sweep that lands between two of them sees a
+    /// stable order, and one that lands on one sees a tie.
+    ///
+    /// Neither regime is a structural feature of *this* arm, though. For
+    /// [`Self::recency`] a near-inversion is close to the normal case —
+    /// `created_at` correlates with lexical relevance in a capture bank, so the
+    /// recency order often partially agrees with BM25's and occasionally inverts
+    /// it, which is exactly where the argument bites. Cosine is computed from a
+    /// learned representation with no access to the token statistics either
+    /// lexical stream ranks on, so an exact reversal is a coincidence rather than
+    /// a regime.
+    ///
+    /// The stronger claim, and the one that makes this arm worth 23 MB: **a
+    /// cosine stream is not required to reorder anything.** Because a semantic
+    /// match with no shared vocabulary is scored `0.0` by both lexical streams,
+    /// the documents it surfaces are frequently *absent from the fusion entirely*
+    /// rather than at the bottom of it. A stream that adds a row the other two
+    /// never named is not a reordering, and no value of `w` can be an algebraic
+    /// wash against an ordering that does not contain the row — pinned by
+    /// `a_vector_stream_can_add_a_row_the_lexical_streams_never_produced`.
+    ///
+    /// # Rejected: fusing the cosine *magnitude* as well as the rank
+    ///
+    /// [`Self::bm25_magnitude`] exists because FTS5 hands back a real score that
+    /// rank-only RRF discards, and the obvious move is to do the same here — add
+    /// `w · cos`, where cos is in `[-1, 1]`.
+    ///
+    /// It is rejected, and the rejection is not a taste. The whole 300-candidate
+    /// window of an RRF stream at k=60 spans `1/61` to `1/360`, a factor of 5.9, so
+    /// any additive term larger than that spread turns the sort into a
+    /// lexicographic one — the boosted arm first, rank a tiebreak. A cosine for a
+    /// MiniLM sentence pair is routinely `0.7`-`0.9`, i.e. **twenty to thirty
+    /// times the entire spread of the rank signal it would be added to**, so
+    /// every `w` above about `0.05` would hand the vector stream total control of
+    /// the order. `docs/EXCEED_PLAN.md` §0.3 records that exact collapse being
+    /// measured in a rival's harness: `recall@20 0.97 -> 0.40`, with the boosted
+    /// arm filling every reranker slot and no semantic-only candidate surviving.
+    /// A magnitude term here would not be a tie-breaker; it would be a
+    /// replacement for the ranking, selected by a weight, on an unselected weight.
+    ///
+    /// The extension, if it is ever wanted, is the bounded form
+    /// `w · u/(k+1)` with `u` min-max normalised over the query's own vector
+    /// stream — the shape [`Self::bm25_magnitude`] already documents, and the
+    /// reason that mechanism is allowed to exist at all. It is not built because a
+    /// second free parameter in a second unit is a second thing to select, and
+    /// nothing has asked for it. The two arms that *are* wanted — the rank and the
+    /// model itself — are here.
+    ///
+    /// # The two constraints this weight is subject to that `overlap` is not
+    ///
+    /// **No ANN index.** The vector stream is an exact brute-force linear scan
+    /// over the recall candidate pool, and so is agentmemory's, which reaches
+    /// 95.2% R@5 with it (`docs/EXCEED_PLAN.md` §0.1). A bank holds tens of
+    /// documents; a scan over the [`crate::store::RECALL_POOL_LIMIT`]-row
+    /// candidate window the recall already reads is arithmetic on vectors that
+    /// are already in memory. HNSW or IVF would be a large amount of code, a
+    /// second on-disk structure, a recall-quality parameter nobody could select
+    /// honestly, and no measurable gain at this cardinality. Revisit at
+    /// 10<sup>5</sup> rows per bank, not before.
+    ///
+    /// **Cosine, not a learned projection.** A trained 384-d to 2-d (or to
+    /// 32-d) map is the standard answer to "the dot product is not the right
+    /// metric", and it is a fitted artefact: its quality is only knowable from a
+    /// labelled set, so shipping one would be shipping a parameter chosen outside
+    /// the dev-set protocol in `docs/EVALUATION_HYGIENE.md` §3. Raw cosine over
+    /// the model's own normalised output is the parameter-free option, and it is
+    /// what the model was trained to be searched with.
+    ///
+    /// # What `0.0` buys
+    ///
+    /// Exact, and provable rather than asserted: `rrf_fuse_with_magnitudes`
+    /// `continue`s on a zero weight before the stream is read at all, so the
+    /// fused list is the same `Vec<(String, f64)>` — the same `f64` *values*, the
+    /// same order, the same reported scores — as the two-stream kernel produced.
+    /// `a_zero_vector_weight_should_leave_the_fusion_bit_identical` pins that at
+    /// the `to_bits` level rather than to a tolerance.
+    pub vector: f64,
 }
 
 impl FusionWeights {
@@ -293,6 +584,15 @@ impl FusionWeights {
         recency_half_life_days: RECENCY_HALF_LIFE_PLACEHOLDER_DAYS,
         recency_policy: RecencyPolicy::Always,
         overlap_scope: OverlapScope::Document,
+        // Inert for the same reason as the row above: `Exact` is the token set
+        // this crate has always handed FTS5, so the emitted `MATCH` string is
+        // unchanged byte for byte. See `KeywordScope` for the measured
+        // `bm25()` values that decided what the other variant emits.
+        keyword_scope: KeywordScope::Exact,
+        // A fourth stream, at a weight that drops it. 0.0 is not "not wired
+        // up" here: the stream is a real [`RankedHit`] list built by
+        // `crate::vector`, and 0.0 is what makes fusing it free.
+        vector: 0.0,
     };
 
     /// The weight of stream `i`, which is positional because the fusion is.
@@ -300,11 +600,21 @@ impl FusionWeights {
     /// Every index it can be handed is named. The fall-through is 1.0 rather
     /// than 0.0 so that a caller adding a stream without a weight gets a
     /// *visible* number in the swept grid rather than a stream that vanished.
+    ///
+    /// Stream 3 is the dense-vector arm and it is positional for a reason worth
+    /// stating, because it is a trap rather than an implementation detail: a
+    /// caller that builds `[bm25, overlap, vector]` gets the vector stream fused
+    /// under `recency`'s weight. A stream past the second is not "the next one
+    /// in" — it is a name here. A caller building the vector stream is expected to
+    /// keep slot 2 occupied with an **empty** stream when recency is off, which
+    /// costs one `Vec::new()` and votes for nothing, because the loop body over an
+    /// empty stream cannot touch `scores` or `found_in`.
     fn of(&self, i: usize) -> f64 {
         match i {
             0 => self.bm25,
             1 => self.overlap,
             2 => self.recency,
+            3 => self.vector,
             _ => 1.0,
         }
     }
@@ -1871,6 +2181,7 @@ mod tests {
         assert_eq!(s.recency_weight_for("what did I do today"), 0.0);
         assert_eq!(s.overlap_scope, OverlapScope::Document);
         assert_eq!(s.recency_policy, RecencyPolicy::Always);
+        assert_eq!(s.vector, 0.0, "the dense stream is dropped");
         assert_eq!(s, FusionWeights::default());
     }
 
@@ -1893,5 +2204,225 @@ mod tests {
         assert_eq!(ids, ["m2", "m1"], "the dropped stream must contribute nothing");
         let live = rrf_fuse(&streams(), &FusionWeights { recency: 1.0, ..FusionWeights::SHIPPED });
         assert!(live.iter().any(|(id, _)| id == "m3"), "a live stream must vote");
+    }
+
+    // ---- (f) dense vector stream ---------------------------------------------
+
+    /// A three-row lexical stream, and its exact mirror as the dense stream's
+    /// shape. Three rows rather than two so the *interior* element is exercised:
+    /// with two rows a reversal only ties them, and the interesting arithmetic is
+    /// in the row that gains from both streams.
+    fn reverse_stream() -> Vec<RankedHit> {
+        vec![
+            RankedHit { id: "a".to_string(), rank: 1 },
+            RankedHit { id: "b".to_string(), rank: 2 },
+            RankedHit { id: "c".to_string(), rank: 3 },
+        ]
+    }
+
+    fn mirrored_stream() -> Vec<RankedHit> {
+        vec![
+            RankedHit { id: "c".to_string(), rank: 1 },
+            RankedHit { id: "b".to_string(), rank: 2 },
+            RankedHit { id: "a".to_string(), rank: 3 },
+        ]
+    }
+
+    /// What the wash argument on [`FusionWeights::vector`] claims, and what is
+    /// actually true — the correction pinned rather than left in prose.
+    ///
+    /// With a stream that is the exact reverse of the lexical one, the leader's
+    /// margin over the tail is `(1 - w) · (1/(k+1) - 1/(k+3))`, so the extremes
+    /// tie *exactly* at `w = 1.0` and reverse above it. But `1.0` is not the only
+    /// crossing: the middle row passes the tail at `w = (k+1)/(k+3)`, which at
+    /// k=60 is `61/63 ≈ 0.9683`. Every band is asserted, because a test that only
+    /// checked the extremes would call `0.99` safe when it is not — which is
+    /// exactly the mistake the field docs warn about.
+    #[test]
+    fn a_unit_weight_on_an_inverted_stream_is_a_knife_edge_not_a_wash() {
+        let bm25 = reverse_stream();
+        let mirrored = mirrored_stream();
+        let ids = |rows: Vec<(String, f64)>| -> Vec<String> {
+            rows.into_iter().map(|(id, _)| id).collect()
+        };
+        let at = |w: f64| {
+            rrf_fuse(
+                &[bm25.clone(), Vec::new(), Vec::new(), mirrored.clone()],
+                &FusionWeights { vector: w, ..FusionWeights::SHIPPED },
+            )
+        };
+        let score = |rows: &Vec<(String, f64)>, id: &str| {
+            rows.iter().find(|(i, _)| i == id).map(|(_, s)| *s).expect("id present")
+        };
+        let k = FusionWeights::SHIPPED.k;
+        assert_eq!(
+            ids(rrf_fuse(
+                &[bm25.clone(), Vec::new(), Vec::new(), Vec::new()],
+                &FusionWeights::SHIPPED,
+            )),
+            ["a", "b", "c"],
+            "the lexical order this is measured against"
+        );
+
+        // Comfortably below every crossing: the order survives untouched.
+        for w in [0.0, 0.25, 0.5, 0.9] {
+            assert_eq!(ids(at(w)), ["a", "b", "c"], "w={w} must preserve the order");
+        }
+        // Between the interior crossing and the extremes' crossing: the middle row
+        // has already fallen behind and the extremes have not yet tied. A weight
+        // in this band looks stable and is not.
+        let interior_cross = (k + 1.0) / (k + 3.0);
+        assert!(
+            (interior_cross - 61.0 / 63.0).abs() < 1e-12,
+            "the interior crossing is (k+1)/(k+3)"
+        );
+        // The midpoint of the two crossings, so the band is provably inside it.
+        let band_weight = interior_cross + (1.0 - interior_cross) / 2.0;
+        let band = at(band_weight);
+        assert_eq!(
+            ids(band.clone()),
+            ["a", "c", "b"],
+            "past the interior crossing, w={band_weight}"
+        );
+        assert!(
+            score(&band, "a") > score(&band, "c"),
+            "but the extremes have not tied below w = 1.0"
+        );
+        // At one: the extremes tie *exactly*, so the id tiebreak decides a pair
+        // the lexical stream separated. This is the value to avoid.
+        let unit = at(1.0);
+        assert_eq!(ids(unit.clone()), ["a", "c", "b"]);
+        assert_eq!(
+            score(&unit, "a").to_bits(),
+            score(&unit, "c").to_bits(),
+            "the margin is (1 - w)·(1/(k+1) - 1/(k+3)), exactly 0 at w = 1.0"
+        );
+        // And the margin really is that expression — checked against the
+        // arithmetic, not against an ordering.
+        for w in [0.5, 0.9, 1.0, 1.1] {
+            let rows = at(w);
+            let got = score(&rows, "a") - score(&rows, "c");
+            let want = (1.0 - w) * (1.0 / (k + 1.0) - 1.0 / (k + 3.0));
+            assert!(
+                (got - want).abs() < 1e-15,
+                "margin at w={w}: got {got:.3e}, algebra says {want:.3e}"
+            );
+        }
+        // Above one: the extremes reverse. Asserted on the *scores* rather than
+        // on a full order, because the interior has its own crossings and
+        // pinning all three would be pinning a coincidence of this particular
+        // three-row shape rather than the algebra.
+        for w in [1.01, 1.1, 2.0] {
+            let rows = at(w);
+            assert!(
+                score(&rows, "c") > score(&rows, "a"),
+                "w={w} must put the lexical tail above the lexical leader"
+            );
+        }
+        // Far enough above every crossing, the whole order is mirrored.
+        assert_eq!(ids(at(2.0)), ["c", "b", "a"]);
+    }
+
+    /// The counterpart, and the reason the arm is not the recency arm: a stream
+    /// containing an id the lexical pair never named is *not* a reordering, so no
+    /// weight can be an algebraic wash against an ordering that does not contain
+    /// the row. A semantic match with no shared vocabulary is exactly this shape.
+    #[test]
+    fn a_vector_stream_can_add_a_row_the_lexical_streams_never_produced() {
+        let lexical = vec![RankedHit { id: "a".to_string(), rank: 1 }];
+        let semantic = vec![
+            RankedHit { id: "semantic-only".to_string(), rank: 1 },
+            RankedHit { id: "a".to_string(), rank: 2 },
+        ];
+        let fused = rrf_fuse(
+            &[lexical.clone(), Vec::new(), Vec::new(), semantic.clone()],
+            &FusionWeights { vector: 1.0, ..FusionWeights::SHIPPED },
+        );
+        let ids: Vec<&str> = fused.iter().map(|(id, _)| id.as_str()).collect();
+        assert!(
+            ids.contains(&"semantic-only"),
+            "a row no lexical stream named cannot be an algebraic wash"
+        );
+        // And at the shipped weight it is absent, which is the whole of the
+        // default-off claim from the other direction.
+        let off = rrf_fuse(
+            &[lexical, Vec::new(), Vec::new(), semantic],
+            &FusionWeights::SHIPPED,
+        );
+        assert_eq!(off.len(), 1);
+        assert_eq!(off[0].0, "a");
+    }
+
+    /// A zero weight on stream 3 drops it exactly the way it drops streams 0, 1
+    /// and 2 — the same `continue`, the same reason, one more index in `of()`.
+    /// The four empty slots are what a caller that built the dense stream would
+    /// hand over, so this is the shipped shape and not a synthetic one.
+    #[test]
+    fn a_zero_vector_weight_should_remove_its_stream() {
+        let streams = || {
+            vec![
+                vec![
+                    RankedHit { id: "m1".to_string(), rank: 1 },
+                    RankedHit { id: "m2".to_string(), rank: 2 },
+                ],
+                vec![RankedHit { id: "m2".to_string(), rank: 1 }],
+                Vec::new(),
+                vec![RankedHit { id: "m3".to_string(), rank: 1 }],
+            ]
+        };
+        let dropped = rrf_fuse(&streams(), &FusionWeights::SHIPPED);
+        let ids: Vec<&str> = dropped.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, ["m2", "m1"], "the dropped stream must contribute nothing");
+        let live = rrf_fuse(
+            &streams(),
+            &FusionWeights { vector: 1.0, ..FusionWeights::SHIPPED },
+        );
+        assert!(live.iter().any(|(id, _)| id == "m3"), "a live stream must vote");
+    }
+
+    /// The default-off claim as a bit-identity claim, the same shape as
+    /// `a_zero_bm25_magnitude_should_leave_the_fusion_bit_identical` and for the
+    /// same reason: an approximate comparison passes even when a stray `1e-18`
+    /// leaked in and a downstream tiebreak turned it into a reordered list.
+    ///
+    /// This is the test that pins "the default build's recall is bit-identical
+    /// with the vector arm off", and it needs no model and no `embed` feature —
+    /// `of()` skips the stream before it is read, so a default build can prove it
+    /// about a stream it has no implementation for.
+    #[test]
+    fn a_zero_vector_weight_should_leave_the_fusion_bit_identical() {
+        let two = || {
+            vec![
+                vec![
+                    RankedHit { id: "m1".to_string(), rank: 1 },
+                    RankedHit { id: "m2".to_string(), rank: 2 },
+                ],
+                vec![RankedHit { id: "m2".to_string(), rank: 1 }],
+            ]
+        };
+        // What a caller hands over with the arm built but the weight shipped.
+        let padded = || {
+            let mut s = two();
+            s.push(Vec::new());
+            s.push(vec![
+                RankedHit { id: "m3".to_string(), rank: 1 },
+                RankedHit { id: "m1".to_string(), rank: 2 },
+            ]);
+            s
+        };
+        let plain = rrf_fuse(&two(), &FusionWeights::SHIPPED);
+        let inert = rrf_fuse(&padded(), &FusionWeights::SHIPPED);
+        assert_eq!(
+            plain.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            inert.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            "padding the stream list and zero-weighting the dense stream must not reorder"
+        );
+        for ((id, a), (_, b)) in plain.iter().zip(&inert) {
+            assert_eq!(a.to_bits(), b.to_bits(), "score at {id} is not the same f64");
+        }
+        // And the default really is zero, in this build, with no feature gate on
+        // the field itself.
+        assert_eq!(FusionWeights::SHIPPED.vector, 0.0);
+        assert_eq!(FusionWeights::default().vector, 0.0);
     }
 }

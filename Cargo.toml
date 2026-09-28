@@ -33,8 +33,44 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 rmcp = { version = "1.8", default-features = false, features = ["server", "transport-io"] }
 
+# The dense-vector retrieval arm (`src/vector.rs`). OFF by default so the shipped
+# build stays a single small binary with no ONNX runtime in it.
+#
+# `default-features = false` is load-bearing, not tidiness. fastembed's default
+# set pulls `hf-hub` (a network download client) and `image-models`; this crate
+# only ever calls `TextEmbedding::try_new_from_user_defined`, which is *not*
+# gated on `hf-hub`, so dropping the feature removes the download path from the
+# binary entirely rather than merely declining to call it. The one feature kept
+# is `ort-download-binaries`, which is what makes ort-sys fetch a prebuilt ONNX
+# Runtime at BUILD time and emit `cargo:rustc-link-lib=static=onnxruntime` — a
+# static link, so the release binary needs no `.so` for the runtime itself.
+# `rustls-tls` rather than `native-tls` for the same reason the dev-dependency
+# below uses it.
+#
+# ort-sys additionally emits `cargo:rustc-link-lib=stdc++`, which resolves to the
+# SHARED `libstdc++.so.6` and is the one thing that would put a C++ runtime on the
+# embed binary's `DT_NEEDED` list. `build.rs` links the static `libstdc++.a`
+# instead, so an `--features embed` build needs no C++ shared library and starts
+# on a root holding only the loader, libc, libm and libgcc_s — like the default
+# build, which still has exactly three `DT_NEEDED` entries. Measured, and
+# including the three options that did not work: `docs/CONSISTENCY.md` §16.
+fastembed = { version = "7.1", optional = true, default-features = false, features = [
+    "ort-download-binaries-rustls-tls",
+] }
+
 [features]
 default = []
+# Vendored, offline, dense-vector retrieval. Adds ~23 MB of model weights to the
+# binary and the ONNX runtime that runs them; turns on nothing at runtime by
+# itself, because `FusionWeights::vector` still ships at 0.0.
+#
+# OPT-IN AND NOT PART OF THE DEPLOYMENT. The shipped artifact is the default
+# build; `install/get-memory-wire.sh` fetches a release tarball and the release
+# is cut without this feature, so nothing that ships contains ONNX Runtime or the
+# vendored weights. Build it with `cargo build --release --features embed`; it
+# needs no network at build time beyond ort-sys's one binary download, and none
+# at run time. See `docs/CONSISTENCY.md` §16 for the measurements.
+embed = ["dep:fastembed"]
 
 [dev-dependencies]
 # The only HTTP client in the tree, and it is used by exactly one target:

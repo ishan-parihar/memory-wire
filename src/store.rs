@@ -4,6 +4,7 @@
 //! agentmemory: SQLite/KV + in-memory vector index, zero external DBs.
 //! memory-wire: single `Store` trait, SQLite first, Postgres when `DATABASE_URL` is set.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, TryLockError};
@@ -12,6 +13,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, ToS
 use serde::Serialize;
 
 use crate::capture::hash_content;
+use crate::recall::KeywordScope;
 use crate::memory::{Bank, Memory};
 
 /// Default database file: `$XDG_DATA_HOME/memory-wire/memory.db`, falling back
@@ -37,6 +39,17 @@ pub enum StoreError {
     /// Bank id missing or empty.
     #[error("invalid bank id")]
     InvalidBank,
+    /// A vector was offered that is empty, is not the width the store holds, or
+    /// carries a non-finite component.
+    ///
+    /// Its own variant rather than a folded `Sqlite` because it is a *caller*
+    /// error — the value never reaches SQL — and because the width check is the
+    /// only thing standing between one model's output and another's: a 384-d
+    /// MiniLM vector and a 768-d one are both "a vector", and mixing them in one
+    /// bank would make every cosine between them `0.0` (see
+    /// [`crate::embed::cosine`]'s length-mismatch rule) with nothing to explain it.
+    #[error("invalid embedding vector")]
+    InvalidVector,
     /// Bank row does not exist.
     #[error("unknown bank")]
     UnknownBank,
@@ -93,6 +106,11 @@ const CONTENT_HASH_COLUMN: &str = "content_hash";
 /// `banks.ttl_days`, added after the table shipped; `NULL` means the bank never
 /// expires anything.
 const TTL_DAYS_COLUMN: &str = "ttl_days";
+
+/// Side table holding one dense vector per memory, added after the schema
+/// shipped. See [`SqliteStore::put_vector`] for why it is a table and not a
+/// column on `memories`.
+const VECTOR_TABLE: &str = "memory_vectors";
 
 /// `banks.background`, removed after the table shipped. The bank preamble reads
 /// `background` from the config JSON, so this column was a second home for a
@@ -247,11 +265,56 @@ const FTS_DETAIL_MARKER: &str = "fts_detail_none";
 /// the fusion instead of being dropped for being old.
 pub const RECALL_POOL_LIMIT: usize = 200;
 
+/// Most distinct synonym weights one query will run a separate FTS5 scan for.
+///
+/// FTS5's `MATCH` has no per-term weight — `bm25()` scores the query as a whole
+/// and the grammar cannot say "this term counts for 0.7 of a term" — so a
+/// weighted synonym has to be applied by running one scan per weight and summing
+/// the results. That makes the *number of distinct weights* the cost of the
+/// feature, so it is bounded.
+///
+/// Three is not a fitted number: it is the smallest bound that still expresses the
+/// shape the mechanism needs, namely base terms at `1.0` plus at least two
+/// different down-weights, which is what agentmemory's single `0.7` generalises
+/// to. Bank config with more distinct weights than this does not error — the
+/// surplus weights are dropped, so a config stays serviceable, and the bound is
+/// a cost ceiling rather than a validation rule. Raise it if a bank genuinely
+/// needs more, at the cost of one FTS5 scan each.
+pub const MAX_SYNONYM_WEIGHT_GROUPS: usize = 3;
+
 /// BM25 hits as `(memory_id, rank)`, best-first.
 pub type KeywordHits = Vec<(String, f64)>;
 
 /// The two retrieval streams of one recall: the bank's memories and its BM25 hits.
 pub type RecallInputs = (Vec<Memory>, KeywordHits);
+
+/// Everything the BM25 stream needs to build its `MATCH`, beyond the query text.
+///
+/// Carried as one bundle rather than as extra positional parameters on
+/// [`Store::recall_inputs_lexical`] because the expansion is a *pair* — scope and
+/// synonyms both mean "the query the user typed, plus what else to match" — and
+/// adding parameters to a trait method that three backends already implement is
+/// a change to all of them for no reason.
+///
+/// The default is the query alone: [`KeywordScope::Exact`] and no synonyms, which
+/// is byte-identical to the `MATCH` this crate has always emitted. That default
+/// is not advisory — [`SqliteStore`] short-circuits to the plain path when both
+/// are default, so the shipped behaviour is identical by construction rather than
+/// by argument.
+#[derive(Debug, Clone, Default)]
+pub struct LexicalQuery<'q> {
+    /// The user's query, unsplit. Tokenized and quoted by the store.
+    pub text: &'q str,
+    /// Whether each token is matched exactly or as a prefix.
+    pub scope: KeywordScope,
+    /// Extra terms to match, with the weight each contributes.
+    ///
+    /// `(term, weight)`, where `weight` scales that term's BM25 contribution and
+    /// `1.0` is a full-weight term. Resolved by the caller from bank config, not
+    /// by the store: the store cannot know which of a bank's synonym keys a query
+    /// actually mentions.
+    pub synonyms: Vec<(String, f64)>,
+}
 
 /// Row counts and age bounds for one bank.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -277,6 +340,55 @@ fn memory_from_row(row: &Row<'_>) -> rusqlite::Result<Memory> {
         // that exists has a stamp and the only way to express one is `Some`.
         created_at: Some(row.get(4)?),
     })
+}
+
+/// Encode a vector as little-endian `f32` bytes for the [`VECTOR_TABLE`] blob.
+///
+/// Raw little-endian rather than the base64 agentmemory uses
+/// (`vector-index.ts:169-211`). Base64 is a JavaScript constraint: a
+/// `Float32Array` has to cross into a string-keyed store, and base64 is the
+/// cheapest text encoding of it. A SQLite `BLOB` is already bytes, so encoding
+/// costs 1,536 bytes for a 384-d vector against base64's ~2,048 — 25% more to
+/// store, plus a decode pass on every read of every row. The two are otherwise
+/// identical in information, and both are trivially recoverable in Rust.
+fn encode_vector(v: &[f32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(v.len() * 4);
+    for x in v {
+        out.extend_from_slice(&x.to_le_bytes());
+    }
+    out
+}
+
+/// Decode a [`VECTOR_TABLE`] blob, or `None` for a row that cannot be trusted.
+///
+/// `None` on every failure rather than a partial vector, and the failures are
+/// the ones a sort would silently mishandle: a length that is not a whole number
+/// of `f32`, a length that disagrees with the row's own `dim`, or any non-finite
+/// component. A `NaN` in a cosine would propagate into `partial_cmp` and drop
+/// the whole fused list onto its id tiebreak — a silent reordering of the recall
+/// rather than a failure, which is the same reason
+/// [`crate::recall::add_bm25_magnitude`] refuses a non-finite magnitude. A row
+/// that cannot be scored is dropped from the vector stream, not guessed at.
+///
+/// `pub(crate)` rather than private because the codec is the contract between two
+/// halves of one feature — this table and the ranking that reads it — and the
+/// test that pins "an undecodable row is dropped" belongs next to the arm that
+/// drops it, not behind a wall.
+pub(crate) fn decode_vector(blob: &[u8], dim: i64) -> Option<Vec<f32>> {
+    if dim <= 0 || blob.len() != (dim as usize).checked_mul(4)? {
+        return None;
+    }
+    let out: Vec<f32> = blob
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
+    if out.iter().all(|x| x.is_finite()) {
+        Some(out)
+    } else {
+        None
+    }
 }
 
 /// `AND EXISTS (... t.tag IN (?,...))` for a non-empty tag list, else empty.
@@ -424,6 +536,34 @@ pub trait Store: Send + Sync {
     ) -> Result<RecallInputs, StoreError> {
         Err(StoreError::Unsupported("recall inputs"))
     }
+    /// [`Self::recall_inputs`] over an explicit [`LexicalQuery`], for a recall
+    /// that widens the `MATCH` beyond the query text.
+    ///
+    /// A separate method rather than extra parameters on [`Self::recall_inputs`]
+    /// because three backends already implement that one and prefix/synonym
+    /// expansion is a *SQLite FTS5* capability — a Postgres `tsvector` backend
+    /// would implement it with a completely different mechanism, and giving it
+    /// two ways to ignore the flags is how a flag silently stops meaning
+    /// anything.
+    ///
+    /// The default delegates to [`Self::recall_inputs`] with the query text and
+    /// **discards** the scope and synonyms, which is a lie for a backend that
+    /// cannot honour them. It is chosen over a `Unsupported` default because
+    /// [`KeywordScope::Exact`] and an empty synonym list are the default state of
+    /// [`LexicalQuery`], so the default implementation is *correct* for every
+    /// caller that has not opted in — and the service only passes a widened
+    /// query after reading a bank config or a `SHIPPED` edit, so a backend
+    /// ignoring the flag degrades to today's exact-match ranking rather than
+    /// failing the request. A backend that can honour the flags should override.
+    fn recall_inputs_lexical(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        tags: &[String],
+        fts_limit: usize,
+    ) -> Result<RecallInputs, StoreError> {
+        self.recall_inputs(bank_id, lq.text, tags, fts_limit)
+    }
     /// Raw bank config JSON, or `None` when the bank does not exist.
     fn get_bank_config(&self, _bank_id: &str) -> Result<Option<String>, StoreError> {
         Ok(None)
@@ -440,6 +580,39 @@ pub trait Store: Send + Sync {
     /// config JSON, which is what the `ttl_days` column exists for.
     fn bank_ttls(&self) -> Result<Vec<(String, Option<u32>)>, StoreError> {
         Err(StoreError::Unsupported("bank retention"))
+    }
+    /// Store the dense vector for one memory, replacing any previous one.
+    ///
+    /// Called once per retained memory, on the write path, so a recall never has
+    /// to embed the bank it is searching. The vector is the query-time
+    /// representation of the memory's *content*: the store never re-embeds it, and
+    /// a content that is edited under a `document_id` gets a new row and a new
+    /// vector, which is why there is nothing to invalidate.
+    ///
+    /// `bank_id` is taken alongside `memory_id` rather than looked up from the
+    /// memory row, because the check that matters is isolation: a caller naming a
+    /// bank it does not own gets [`StoreError::InvalidBank`], and a vector can
+    /// never be filed against another bank's id.
+    ///
+    /// Default is [`StoreError::Unsupported`], like every other operation a
+    /// backend cannot honour — a default that silently discarded the vector would
+    /// leave a recall that looks configured and ranks on two streams.
+    fn put_vector(&self, _bank_id: &str, _memory_id: &str, _vector: &[f32]) -> Result<(), StoreError> {
+        Err(StoreError::Unsupported("put vector"))
+    }
+    /// Every stored vector in one bank, as `(memory_id, vector)`.
+    ///
+    /// Bank-scoped by construction: the signature names a bank and there is no
+    /// way to ask for "all vectors", so a query cannot read another bank's rows
+    /// even by accident. The caller narrows to its own candidate pool — the
+    /// vector scan is a linear sweep over the rows it already holds, not a
+    /// second index.
+    ///
+    /// Rows whose blob is unreadable are omitted rather than returned as an
+    /// error: one corrupt row must not take a whole recall down, and the rows
+    /// that do decode are still exactly the ranking. See `decode_vector`.
+    fn bank_vectors(&self, _bank_id: &str) -> Result<Vec<(String, Vec<f32>)>, StoreError> {
+        Err(StoreError::Unsupported("bank vectors"))
     }
     /// Delete a bank's memories created strictly before `cutoff`; returns how
     /// many went. `dry_run` counts them instead of deleting.
@@ -996,6 +1169,42 @@ impl SqliteStore {
             )?;
             tx.commit()?;
         }
+        // The dense-vector side table. Created unconditionally, like
+        // `memory_tags` and unlike the marker-gated work above: it is one
+        // `CREATE TABLE IF NOT EXISTS` on an empty set, it migrates no rows (a
+        // row written before this column existed has no vector and gains none
+        // until something embeds it), and gating it would mean two databases
+        // whose schemas differ by a table for no benefit.
+        //
+        // A side table rather than a `memories` column, for three reasons that
+        // are all about not touching the rest of the store:
+        //
+        // 1. `MEMORY_COLUMNS` is the fixed column list every `memories` read
+        //    selects, and `memory_from_row` maps it positionally into the public
+        //    `Memory` struct. A new column would either change every read in the
+        //    crate or need a second, divergent read for one caller.
+        // 2. `ON DELETE CASCADE` is the whole delete story. A `DELETE ... WHERE
+        //    bank_id` sweep and a single-memory `delete` both retire the vector
+        //    for free, exactly as they retire the tag rows — so the index can
+        //    never cite a memory that is gone.
+        // 3. A `BLOB` on the `memories` row itself would put up to 1,536 bytes
+        //    of vector into the table b-tree for the 100% of memories that are
+        //    not searchable yet, in a store whose README quotes 2.9 MB for ten
+        //    thousand memories.
+        //
+        // `bank_id` is stored rather than joined so that `bank_vectors` is one
+        // indexed seek, and so that the bank scope is visible in the row a
+        // future operator inspects rather than implied by a join.
+        conn.execute_batch(&format!(
+            "CREATE TABLE IF NOT EXISTS {VECTOR_TABLE} (
+               memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+               bank_id TEXT NOT NULL,
+               dim INTEGER NOT NULL,
+               vector BLOB NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_memory_vectors_bank
+               ON {VECTOR_TABLE}(bank_id);"
+        ))?;
         // Triggers are dropped and recreated rather than created-if-absent: a
         // trigger body that drifted from this version (or was never indexing at
         // all) is otherwise kept forever, and the FTS index then quietly stops
@@ -1259,7 +1468,110 @@ impl SqliteStore {
         limit: usize,
         tags: &[String],
     ) -> Result<KeywordHits, StoreError> {
-        let m = Self::fts_match_query(query);
+        Self::keyword_search_lexical_conn(
+            conn,
+            bank_id,
+            &LexicalQuery { text: query, ..LexicalQuery::default() },
+            limit,
+            tags,
+        )
+    }
+
+    /// [`Self::keyword_search_conn`] over an explicit [`LexicalQuery`].
+    ///
+    /// The exact-match path delegates here with a default-constructed
+    /// [`LexicalQuery`], so the shipped behaviour is the *same code path*, not a
+    /// parallel one that has to be argued to agree.
+    fn keyword_search_lexical_conn(
+        conn: &Connection,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        limit: usize,
+        tags: &[String],
+    ) -> Result<KeywordHits, StoreError> {
+        let base = Self::fts_hits_conn(
+            conn,
+            bank_id,
+            &Self::fts_match_query_scoped(lq.text, lq.scope),
+            limit,
+            tags,
+        )?;
+        if lq.synonyms.is_empty() {
+            return Ok(base);
+        }
+        // Synonyms are quoted *exactly*, never as prefixes. A prefix would let a
+        // user-supplied paraphrase term silently widen into every indexed term
+        // sharing its first characters, and per the measurements on
+        // [`crate::recall::KeywordScope`] such a term scores ~1e-6 of a real one
+        // anyway — so it would be both dangerous and useless.
+        let groups = Self::group_synonyms(&lq.synonyms);
+        let mut combined: HashMap<String, f64> = base.into_iter().collect();
+        for (weight, terms) in &groups {
+            let m = Self::quote_terms(terms);
+            // One scan per distinct weight, because FTS5 has no per-term weight
+            // and this is the only place the weight can be applied. `Σ wᵢ·bm25ᵢ`
+            // over groups is the same algebra as scoring each term at `wᵢ` in
+            // one pass, at the cost of a scan per group — bounded by
+            // [`MAX_SYNONYM_WEIGHT_GROUPS`].
+            for (id, score) in Self::fts_hits_conn(conn, bank_id, &m, limit, tags)? {
+                *combined.entry(id).or_insert(0.0) += weight * score;
+            }
+        }
+        // BM25 is negative-more-is-better, so the sum of weighted negatives is
+        // the ranking key directly and `total_cmp` is the honest total order on
+        // it (it also fixes the sign of a `-0.0` a single group can produce).
+        let mut out: KeywordHits = combined.into_iter().collect();
+        out.sort_by(|a, b| a.1.total_cmp(&b.1));
+        out.truncate(limit);
+        Ok(out)
+    }
+
+    /// Group `(term, weight)` pairs by weight, dropping the surplus.
+    ///
+    /// A `Vec` rather than a map because `f64` is neither [`Eq`] nor [`Ord`], and
+    /// because the group count is bounded by [`MAX_SYNONYM_WEIGHT_GROUPS`] — a
+    /// linear scan over three entries is not a thing worth optimising. Terms
+    /// beyond the bound are *dropped*, never promoted to a weight nobody chose.
+    fn group_synonyms(synonyms: &[(String, f64)]) -> Vec<(f64, Vec<String>)> {
+        let mut groups: Vec<(f64, Vec<String>)> = Vec::new();
+        for (term, weight) in synonyms {
+            if let Some(slot) = groups.iter_mut().find(|(w, _)| w == weight) {
+                slot.1.push(term.clone());
+            } else if groups.len() < MAX_SYNONYM_WEIGHT_GROUPS {
+                groups.push((*weight, vec![term.clone()]));
+            }
+        }
+        groups
+    }
+
+    /// `"a" OR "b"` over already-tokenized terms, exact and deduplicated.
+    ///
+    /// The quoting is the same discipline as [`Self::fts_match_query`]: a term
+    /// arrives here from bank config rather than from a user query, and config is
+    /// still HTTP input, so it gets the same quotes stripped and the same
+    /// wrapping rather than being trusted.
+    fn quote_terms(terms: &[String]) -> String {
+        let mut out: Vec<String> = Vec::new();
+        for t in terms {
+            let q = format!("\"{}\"", t.replace('"', ""));
+            if !out.contains(&q) {
+                out.push(q);
+            }
+        }
+        out.join(" OR ")
+    }
+
+    /// One FTS5 `bm25` query for one bank, tag-filtered, best-first.
+    ///
+    /// Returns empty for an empty `MATCH` string, which is the caller's signal
+    /// that the query had no usable tokens.
+    fn fts_hits_conn(
+        conn: &Connection,
+        bank_id: &str,
+        m: &str,
+        limit: usize,
+        tags: &[String],
+    ) -> Result<KeywordHits, StoreError> {
         if m.is_empty() {
             return Ok(Vec::new());
         }
@@ -1306,6 +1618,72 @@ impl SqliteStore {
         toks.join(" OR ")
     }
 
+    /// Build a safe FTS5 MATCH query, prefix-aware.
+    ///
+    /// Under [`KeywordScope::Exact`] this returns
+    /// [`Self::fts_match_query`]'s output *bit for bit* — it delegates rather than
+    /// reimplementing, so the shipped path cannot drift from the function that
+    /// has always run. Under [`KeywordScope::ExactAndPrefix`] it emits one quoted
+    /// prefix per token, `"token"*`, in place of `"token"`.
+    ///
+    /// # `either` the exact term `or` the prefix, never both
+    ///
+    /// The obvious implementation ORs both forms per token. Measurement says
+    /// do not: FTS5 sums the contribution of each *phrase* a row satisfies, and a
+    /// token that is both the exact indexed term and the only expansion of its own
+    /// prefix satisfies two phrases. On a fixture where `"cats"` scores
+    /// `-1.299`, `"cats" OR "cats"*` scores `-2.599` — an exact doubling, for
+    /// every query token whose prefix resolves to itself, which is the case where
+    /// the prefix carries no information at all. So the prefix *replaces* the
+    /// exact term rather than accompanying it.
+    ///
+    /// The measurement, and why it is a load-bearing constraint rather than a
+    /// curiosity, is tabulated on [`KeywordScope`]. The short version: a prefix
+    /// expanding to one indexed term scores a full term's weight, and a prefix
+    /// expanding to several scores ~1e-6 of one.
+    ///
+    /// # Safety
+    ///
+    /// Identical discipline to [`Self::fts_match_query`], and that is the point: a
+    /// `MATCH` string is a query-language program, so the only safe form is one in
+    /// which no byte of user input can escape its quotes. This function keeps the
+    /// same three properties that make [`Self::fts_match_query`] safe:
+    ///
+    /// 1. The query is split on every non-alphanumeric character, so the
+    ///    characters FTS5 treats as syntax — `"` `*` `(` `)` `:` `NEAR` `OR` `AND`
+    ///    `NOT` `+` `-` — cannot survive tokenization as themselves. A quote is
+    ///    additionally stripped from each token.
+    /// 2. Every surviving token is wrapped in double quotes, which is FTS5's
+    ///    string-literal syntax, so a token can never re-open the grammar.
+    /// 3. The only character this function appends outside those quotes is the
+    ///    single `*` terminating a prefix — a constant, not caller-controlled.
+    ///
+    /// On the single-quote question specifically: FTS5's string literals are
+    /// double-quoted, and the tokenizer splits on `'` because it is not
+    /// alphanumeric, so a single quote is removed at step 1 like any other
+    /// non-alphanumeric character rather than needing its own escape. It cannot
+    /// reach the grammar. The hostile-input tests in this file pin all of this
+    /// against real FTS5 rather than against the string builder.
+    pub fn fts_match_query_scoped(query: &str, scope: KeywordScope) -> String {
+        if scope == KeywordScope::Exact {
+            return Self::fts_match_query(query);
+        }
+        let mut toks = Vec::new();
+        for tok in query.split(|c: char| !c.is_alphanumeric()) {
+            let t = tok.trim().to_lowercase();
+            // The same `>= 2` floor as the exact builder, deliberately. It is
+            // not primarily a length rule: FTS5's `unicode61` tokenizer does not
+            // index 1-character tokens at all, so a 1-char query token can never
+            // match anything however it is written, and a 2-char prefix expands
+            // to enough of a lexicon to be a query-planner hazard while carrying
+            // no usable signal. Emitting `a*` would be pure cost.
+            if t.len() >= 2 {
+                toks.push(format!("\"{}\"*", t.replace('\"', "")));
+            }
+        }
+        toks.join(" OR ")
+    }
+
     /// BM25 keyword search scoped to one bank (FTS5 `bm25`, lower rank is better).
     ///
     /// Returns `(memory_id, rank)` ordered best-first, up to `limit` rows.
@@ -1317,6 +1695,23 @@ impl SqliteStore {
     ) -> Result<KeywordHits, StoreError> {
         let conn = self.read_conn()?;
         Self::keyword_search_conn(&conn, bank_id, query, limit, &[])
+    }
+
+    /// [`Self::keyword_search_fts`] over an explicit [`LexicalQuery`], for a
+    /// caller that widens the `MATCH` with [`KeywordScope::ExactAndPrefix`] or
+    /// weighted synonyms.
+    ///
+    /// A default-constructed [`LexicalQuery`] reproduces
+    /// [`Self::keyword_search_fts`] exactly, which is what
+    /// `the_default_lexical_query_should_reach_the_original_search` pins.
+    pub fn keyword_search_lexical(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        limit: usize,
+    ) -> Result<KeywordHits, StoreError> {
+        let conn = self.read_conn()?;
+        Self::keyword_search_lexical_conn(&conn, bank_id, lq, limit, &[])
     }
 }
 
@@ -1517,11 +1912,26 @@ impl Store for SqliteStore {
         tags: &[String],
         fts_limit: usize,
     ) -> Result<RecallInputs, StoreError> {
+        self.recall_inputs_lexical(
+            bank_id,
+            &LexicalQuery { text: query, ..LexicalQuery::default() },
+            tags,
+            fts_limit,
+        )
+    }
+
+    fn recall_inputs_lexical(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        tags: &[String],
+        fts_limit: usize,
+    ) -> Result<RecallInputs, StoreError> {
         let conn = self.read_conn()?;
         // BM25 first: the pool it feeds is bounded by the window *plus* these
         // hits, so the hit list has to be in hand before the pool can be asked
         // for. Doing it the other way round would need a second FTS scan.
-        let hits = Self::keyword_search_conn(&conn, bank_id, query, fts_limit, tags)?;
+        let hits = Self::keyword_search_lexical_conn(&conn, bank_id, lq, fts_limit, tags)?;
         // Borrowed, not cloned: these are SQL bind parameters that are only ever
         // read, and `hits` outlives the statement.
         let hit_ids: Vec<&str> = hits.iter().map(|(id, _)| id.as_str()).collect();
@@ -1578,6 +1988,63 @@ impl Store for SqliteStore {
         Ok(out)
     }
 
+    fn bank_vectors(&self, bank_id: &str) -> Result<Vec<(String, Vec<f32>)>, StoreError> {
+        if bank_id.trim().is_empty() {
+            return Err(StoreError::InvalidBank);
+        }
+        let conn = self.read_conn()?;
+        // The whole bank, not the candidate pool: the pool is chosen *by* the
+        // lexical streams, and a document the vector stream exists to reach is
+        // precisely one those streams do not select. Narrowing here would make
+        // the arm unable to surface anything it was added for.
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT memory_id, dim, vector FROM {VECTOR_TABLE} WHERE bank_id = ?1 ORDER BY memory_id"
+        ))?;
+        let rows = stmt.query_map(params![bank_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, Vec<u8>>(2)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, dim, blob) = row?;
+            // Omitted, not errored: see `decode_vector`. One unreadable row must
+            // not take the whole recall down, and the rows that do decode are
+            // still exactly the ranking.
+            if let Some(v) = decode_vector(&blob, dim) {
+                out.push((id, v));
+            }
+        }
+        Ok(out)
+    }
+
+    fn put_vector(&self, bank_id: &str, memory_id: &str, vector: &[f32]) -> Result<(), StoreError> {
+        if bank_id.trim().is_empty() {
+            return Err(StoreError::InvalidBank);
+        }
+        if vector.is_empty() || !vector.iter().all(|x| x.is_finite()) {
+            return Err(StoreError::InvalidVector);
+        }
+        let conn = self.conn()?;
+        // The write connection, deliberately, not a pooled reader: this is a
+        // write. Same `try_lock`-then-lock contract as every other write here.
+        conn.execute(
+            &format!(
+                "INSERT INTO {VECTOR_TABLE} (memory_id, bank_id, dim, vector) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(memory_id) DO UPDATE SET bank_id = ?2, dim = ?3, vector = ?4"
+            ),
+            params![
+                memory_id,
+                bank_id,
+                i64::try_from(vector.len()).map_err(|_| StoreError::InvalidVector)?,
+                encode_vector(vector)
+            ],
+        )?;
+        Ok(())
+    }
+
     fn expire_before(&self, bank_id: &str, cutoff: &str, dry_run: bool) -> Result<usize, StoreError> {
         let mut conn = self.conn()?;
         // One transaction per bank: a bank that fails to expire leaves every other
@@ -1611,6 +2078,7 @@ impl Store for SqliteStore {
 mod tests {
     use super::*;
     use crate::memory::{Bank, Memory};
+    use crate::recall::FusionWeights;
 
     fn bank(id: &str) -> Bank {
         Bank {
@@ -1691,6 +2159,358 @@ mod tests {
     fn keyword_should_ignore_short_tokens() {
         assert!(SqliteStore::fts_match_query("a I").is_empty());
     }
+
+    // ---- Phase B: prefix matching and synonym expansion -------------------
+    //
+    // The inertness claim in `KeywordScope` is that `Exact` is the grammar this
+    // crate has always emitted. It is asserted here as string equality rather
+    // than asserted in prose, over queries chosen to be awkward.
+
+    /// The exact builder must be untouched by the prefix work — not
+    /// "equivalent", byte-identical, for every query. If this fails, the prefix
+    /// form changed shipped behaviour.
+    #[test]
+    fn the_exact_scope_should_be_byte_identical_to_the_original_builder() {
+        for q in [
+            "token bucket rate limiting",
+            "migrate",
+            "MIGRATE Migration",
+            "a I 1",
+            "",
+            "   ",
+            "don't stop",
+            "foo-bar_baz.qux",
+            "\"quoted\"",
+            "naive cafe",
+            "trailing-",
+            "((()))",
+            "NEAR AND OR NOT",
+            "col:value",
+            "1 OR 2",
+        ] {
+            assert_eq!(
+                SqliteStore::fts_match_query_scoped(q, KeywordScope::Exact),
+                SqliteStore::fts_match_query(q),
+                "Exact scope changed the MATCH string for {q:?}"
+            );
+        }
+    }
+
+    /// The shipped default must be `Exact`, so a caller that constructs a
+    /// default-constructed lexical query gets the original string.
+    #[test]
+    fn the_default_keyword_scope_should_be_exact() {
+        assert_eq!(KeywordScope::default(), KeywordScope::Exact);
+        assert_eq!(
+            FusionWeights::SHIPPED.keyword_scope,
+            KeywordScope::Exact,
+            "the prefix arm must not ship on"
+        );
+    }
+
+    /// A prefix query is one `"token"*` per token, and *not* the exact term
+    /// alongside it. The double-count is a measured defect, not a style
+    /// question: `"cats" OR "cats"*` scores -2.599 against `"cats"`'s -1.299.
+    #[test]
+    fn prefix_scope_should_emit_one_prefix_per_token_and_never_both_forms() {
+        assert_eq!(
+            SqliteStore::fts_match_query_scoped("migrat", KeywordScope::ExactAndPrefix),
+            "\"migrat\"*"
+        );
+        assert_eq!(
+            SqliteStore::fts_match_query_scoped("cat dog", KeywordScope::ExactAndPrefix),
+            "\"cat\"* OR \"dog\"*"
+        );
+        // The exact term must not also be present, or every query token whose
+        // prefix resolves to itself is counted twice.
+        let m = SqliteStore::fts_match_query_scoped("cat", KeywordScope::ExactAndPrefix);
+        assert!(!m.contains("\" OR "), "emitted both forms: {m:?}");
+    }
+
+    /// The minimum prefix length. One- and two-character query tokens emit
+    /// nothing beyond the same `>= 2` floor the exact builder uses — so the
+    /// prefix form can never emit `a*`, and a query of only short tokens yields
+    /// an empty `MATCH` exactly as the exact builder would.
+    #[test]
+    fn a_short_token_should_emit_no_prefix() {
+        for q in ["a", "x", "a b", "I a"] {
+            assert_eq!(
+                SqliteStore::fts_match_query_scoped(q, KeywordScope::ExactAndPrefix),
+                SqliteStore::fts_match_query_scoped(q, KeywordScope::Exact),
+                "the two forms disagree on a short-token query {q:?}"
+            );
+        }
+        let m = SqliteStore::fts_match_query_scoped("a b c", KeywordScope::ExactAndPrefix);
+        assert!(!m.contains("\"a\"*"), "emitted a 1-char prefix: {m:?}");
+    }
+
+    /// Hostile input against *real* FTS5, not against the string builder.
+    ///
+    /// The property under test is that a `MATCH` string built from arbitrary
+    /// user text either parses or is empty — never an error, and never a term
+    /// that is not a quoted string. Hostile inputs are the ones that could
+    /// plausibly break out of the quoting.
+    #[test]
+    fn hostile_input_should_never_error_or_change_the_operator_count() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware")).expect("put");
+
+        let hostile = [
+            "\"", "'", "`", "\\", "NEAR", "NEAR(a b)", "OR", "AND", "NOT",
+            "a OR b", "a NEAR b", "a*", "*", "**", "a**", "x:y", "a:b:c",
+            "-a", "+a", "^a", "(a", "a)", "[a]", "{a}", "-", "()", "* (",
+            "\" OR \"", "\"*", "\" OR 1=1 --", "%", "_", ":", "..",
+            "a b OR OR b", "\"\"", "\"\"*",
+        ];
+        for q in hostile {
+            for scope in [KeywordScope::Exact, KeywordScope::ExactAndPrefix] {
+                let m = SqliteStore::fts_match_query_scoped(q, scope);
+                // Structural claim: nothing outside the quotes but a single
+                // trailing `*`, and no `OR` that this function did not emit.
+                for term in m.split(" OR ").filter(|t| !t.is_empty()) {
+                    let inner = term
+                        .strip_prefix('"')
+                        .and_then(|t| t.strip_suffix('"'))
+                        .or_else(|| {
+                            term.strip_prefix('"').and_then(|t| t.strip_suffix("\"*"))
+                        });
+                    assert!(
+                        inner.is_some_and(|i| !i.contains('"')),
+                        "{scope:?} produced a term that is not a quoted string: \
+                         {term:?} from {q:?}"
+                    );
+                }
+                // The real assertion: FTS5 must accept it.
+                s.keyword_search_lexical(
+                    "a",
+                    &LexicalQuery { text: q, scope, ..LexicalQuery::default() },
+                    10,
+                )
+                .unwrap_or_else(|e| panic!("FTS5 rejected {m:?} from {q:?} ({scope:?}): {e}"));
+            }
+        }
+    }
+
+    /// A single quote is a documented FTS5 hazard; assert it is neutralised
+    /// rather than reasoned about. FTS5's literals are double-quoted, and the
+    /// tokenizer splits on `'`, so it must never reach the grammar.
+    #[test]
+    fn a_single_quote_should_not_reach_the_fts5_grammar() {
+        let m = SqliteStore::fts_match_query_scoped("don't stop", KeywordScope::ExactAndPrefix);
+        assert!(!m.contains('\''), "a single quote survived into {m:?}");
+    }
+
+    /// End-to-end: prefix matching reaches a morphological variant the exact
+    /// grammar cannot. The query says "migrated"; only the memory says
+    /// "migration". Under `Exact` there are no hits at all, and under
+    /// `ExactAndPrefix` there is one — the mechanism claim, in the only form
+    /// that would be worth anything.
+    #[test]
+    fn a_prefix_should_reach_a_morphological_variant_the_exact_form_cannot() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "the database migration needs a backup")).expect("put");
+
+        let exact = s
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery { text: "migrated", scope: KeywordScope::Exact, ..Default::default() },
+                10,
+            )
+            .expect("exact search");
+        assert!(exact.is_empty(), "the exact grammar must not match a variant: {exact:?}");
+
+        let prefix = s
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery {
+                    text: "migrat",
+                    scope: KeywordScope::ExactAndPrefix,
+                    ..Default::default()
+                },
+                10,
+            )
+            .expect("prefix search");
+        assert_eq!(prefix.len(), 1, "prefix must reach the variant: {prefix:?}");
+        assert_eq!(prefix[0].0, "m1");
+    }
+
+    /// The measured claim that makes prefix matching a narrow tool: a prefix
+    /// expanding to several indexed terms is worth a tiny fraction of one
+    /// expanding to a single term. Pinned so a future SQLite bump cannot quietly
+    /// change the story the documentation tells.
+    #[test]
+    fn a_wide_prefix_should_score_far_below_a_narrow_one() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        // `cats` is the only indexed term starting with it, so `"cats"*` is a
+        // one-term expansion. `migrat` reaches two here, so `"migrat"*` is a
+        // multi-term expansion.
+        s.put(&content_mem("a", "narrow", "alpha cats omega")).expect("put");
+        s.put(&content_mem("a", "wide", "alpha migration omega")).expect("put");
+        s.put(&content_mem("a", "mid", "alpha migrating omega")).expect("put");
+
+        let score_of = |text: &str, id: &str| -> f64 {
+            s.keyword_search_lexical(
+                "a",
+                &LexicalQuery {
+                    text,
+                    scope: KeywordScope::ExactAndPrefix,
+                    ..Default::default()
+                },
+                10,
+            )
+            .expect("search")
+            .iter()
+            .find(|(found, _)| found == id)
+            .map(|(_, v)| *v)
+            .unwrap_or(0.0)
+        };
+        let narrow = score_of("cats", "narrow");
+        let wide = score_of("migrat", "wide");
+        assert!(narrow < 0.0 && wide < 0.0, "both prefixes must match: {narrow} {wide}");
+        assert!(
+            wide > narrow / 1000.0,
+            "a multi-term prefix should be far below a one-term one: {wide} vs {narrow}"
+        );
+    }
+
+    /// Synonyms reach the query as extra exact terms at a weight, and the weight
+    /// is applied by summing weighted `bm25` — FTS5 has no per-term weight,
+    /// which is why the store runs one scan per distinct weight.
+    #[test]
+    fn a_synonym_should_reach_a_document_the_query_does_not_name() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "the postgres refactor is scheduled")).expect("put");
+
+        let plain = s
+            .keyword_search_lexical("a", &LexicalQuery { text: "migrate", ..Default::default() }, 10)
+            .expect("plain search");
+        assert!(plain.is_empty(), "the query alone must not match: {plain:?}");
+
+        let expanded = s
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery {
+                    text: "migrate",
+                    synonyms: vec![("refactor".to_string(), 0.7)],
+                    ..Default::default()
+                },
+                10,
+            )
+            .expect("expanded search");
+        assert_eq!(expanded.len(), 1, "the synonym must reach it: {expanded:?}");
+        assert_eq!(expanded[0].0, "m1");
+    }
+
+    /// A down-weighted synonym must rank below a document that matches the
+    /// query itself. This is the whole meaning of the weight, so it is asserted
+    /// as an ordering rather than as a stored number.
+    #[test]
+    fn a_down_weighted_synonym_should_rank_below_a_direct_match() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "direct", "migrate the database now")).expect("put");
+        s.put(&content_mem("a", "synonym", "the postgres refactor is scheduled")).expect("put");
+
+        let hits = s
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery {
+                    text: "migrate",
+                    synonyms: vec![("refactor".to_string(), 0.7)],
+                    ..Default::default()
+                },
+                10,
+            )
+            .expect("search");
+        assert_eq!(hits.len(), 2, "both must be found: {hits:?}");
+        assert_eq!(hits[0].0, "direct", "the direct match must outrank a 0.7 synonym: {hits:?}");
+    }
+
+    /// A higher synonym weight must rank higher, because the weight is applied
+    /// to a summed `bm25` rather than stored anywhere.
+    #[test]
+    fn a_higher_synonym_weight_should_rank_higher() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "heavy", "alpha refactor omega")).expect("put");
+        s.put(&content_mem("a", "light", "alpha fiddle omega")).expect("put");
+        let hits = s
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery {
+                    text: "zzztrigger",
+                    synonyms: vec![("refactor".to_string(), 1.0), ("fiddle".to_string(), 0.2)],
+                    ..Default::default()
+                },
+                10,
+            )
+            .expect("search");
+        assert_eq!(hits.len(), 2, "both must be found: {hits:?}");
+        assert_eq!(hits[0].0, "heavy", "1.0 must outrank 0.2: {hits:?}");
+    }
+
+    /// The default `LexicalQuery` is the shipped one, so the exact path is the
+    /// original code path rather than a parallel one to be argued equal.
+    #[test]
+    fn the_default_lexical_query_should_reach_the_original_search() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware")).expect("put");
+        let q = "jose middleware";
+        let via_lexical = s
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery { text: q, ..LexicalQuery::default() },
+                10,
+            )
+            .expect("lexical search");
+        assert_eq!(
+            via_lexical,
+            s.keyword_search("a", q, 10).expect("original"),
+            "the default lexical query must be the original query"
+        );
+    }
+
+    /// The weight-group ceiling is a cost bound and must drop rather than
+    /// error: a config with more distinct weights than the bound stays
+    /// serviceable, losing the surplus.
+    #[test]
+    fn synonym_weights_beyond_the_ceiling_should_drop_not_error() {
+        let syn = (0..MAX_SYNONYM_WEIGHT_GROUPS + 3)
+            .map(|i| (format!("t{i}"), 0.1 * (i as f64 + 1.0)))
+            .collect::<Vec<_>>();
+        let groups = SqliteStore::group_synonyms(&syn);
+        assert_eq!(groups.len(), MAX_SYNONYM_WEIGHT_GROUPS);
+        let total: usize = groups.iter().map(|(_, t)| t.len()).sum();
+        assert_eq!(total, MAX_SYNONYM_WEIGHT_GROUPS, "one term per group, no more");
+    }
+
+    /// A synonym term is quoted exactly like a query token — config is HTTP
+    /// input, so it gets the same discipline rather than being trusted.
+    #[test]
+    fn a_synonym_term_should_be_quoted_not_interpreted() {
+        assert_eq!(SqliteStore::quote_terms(&["plain".to_string()]), "\"plain\"");
+        assert_eq!(
+            SqliteStore::quote_terms(&["NEAR(a b)".to_string()]),
+            "\"NEAR(a b)\"",
+            "a config term must be a quoted literal, never an operator"
+        );
+        assert_eq!(
+            SqliteStore::quote_terms(&["a\" OR \"b".to_string()]),
+            "\"a OR b\"",
+            "an embedded quote must be stripped, not escaped into the grammar"
+        );
+        // Duplicates collapse, so a term listed twice cannot double-count.
+        assert_eq!(
+            SqliteStore::quote_terms(&["x".to_string(), "x".to_string()]),
+            "\"x\""
+        );
+    }
+
 
     fn tmp_db(tag: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
@@ -3454,4 +4274,80 @@ fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp()
     );
     // …and the sentinel is gone, because "unknown age" is older than any cutoff.
 }
+}
+
+#[cfg(test)]
+mod probe_prefix {
+    use super::*;
+    use crate::memory::Memory;
+
+    fn mem(bank: &str, id: &str, content: &str) -> Memory {
+        Memory { id: id.into(), bank_id: bank.into(), content: content.into(), context: None, created_at: None }
+    }
+
+    #[test]
+    fn probe() {
+        let s = SqliteStore::open_in_memory().unwrap();
+        s.put_bank(&Bank { id: "a".into(), name: "a".into() }).unwrap();
+        s.put(&mem("a", "m1", "the migration plan for postgres")).unwrap();
+        s.put(&mem("a", "m2", "we migrated the database last week")).unwrap();
+        s.put(&mem("a", "m3", "cafeteria menu noodles")).unwrap();
+        let conn = s.read_conn().unwrap();
+        println!("sqlite version: {}", rusqlite::version());
+        for q in [
+            "\"migrat\"",
+            "\"migrat\"*",
+            "\"migrate\"*",
+            "\"migrating\"*",
+            "\"mig\"*",
+            "\"or\"*",
+            "or*",
+            "\"and\"*",
+            "\"not\"*",
+            "\"caf\"*",
+            "\"postgres\"*",
+            "\"migration\" OR \"migration\"*",
+            "\"nomatchxyz\"*",
+            "\"caf\" OR \"caf\"*",
+        ] {
+            let sql = "SELECT memories.id, bm25(memories_fts) AS rank FROM memories_fts JOIN memories ON memories.rowid = memories_fts.rowid WHERE memories_fts MATCH ? AND memories.bank_id = ? ORDER BY rank";
+            let mut stmt = conn.prepare(sql).unwrap();
+            let r: Result<Vec<(String, f64)>, rusqlite::Error> = (|| {
+                let rows = stmt.query_map(params![q, "a"], |row| Ok((row.get::<_,String>(0)?, row.get::<_,f64>(1)?)))?;
+                let mut v = Vec::new();
+                for x in rows { v.push(x?); }
+                Ok(v)
+            })();
+            match r {
+                Ok(v) => {
+                    let t: Vec<String> = v.into_iter().map(|(i, sc)| format!("{i}={sc:.4}")).collect();
+                    println!("OK   {q:?} -> [{}]", t.join(", "));
+                }
+                Err(e) => println!("ERR  {q:?} -> {e}"),
+            }
+        }
+        // Which Rust-alphanumeric characters does unicode61 split on? Any that
+        // does turns a quoted single token into a multi-token PHRASE, which
+        // detail=none rejects outright.
+        let sql = "SELECT memories.id FROM memories_fts JOIN memories ON memories.rowid = memories_fts.rowid WHERE memories_fts MATCH ? AND memories.bank_id = ?";
+        let mut bad = Vec::new();
+        for cp in 0x20u32..0x2FA1F {
+            let Some(c) = char::from_u32(cp) else { continue };
+            if !c.is_alphanumeric() { continue; }
+            let tok = format!("x{c}y");
+            if tok.chars().count() < 2 || tok.len() < 2 { continue; }
+            let q = format!("\"{tok}\"");
+            let res: Result<(), rusqlite::Error> = (|| {
+                let mut stmt = conn.prepare(sql).unwrap();
+                let mut rows = stmt.query(params![q, "a"])?;
+                while rows.next()?.is_some() {}
+                Ok(())
+            })();
+            if let Err(e) = res {
+                bad.push((format!("U+{cp:04X}"), tok, e.to_string()));
+            }
+        }
+        println!("ALNUM CHARS FTS5 REJECTS: {}", bad.len());
+        for b in bad.iter().take(40) { println!("  {} {:?} {}", b.0, b.1, b.2); }
+    }
 }

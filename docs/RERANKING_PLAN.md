@@ -2,7 +2,12 @@
 
 Status: proposal, nothing implemented. Supersedes nothing.
 Author: audit of 2026-09-28, from `eval/ORACLE_RERANK.md` and the registry.
-Constraint: the single ~8.4 MB static binary, offline, no model download stays.
+Constraint: the single ~8.4 MiB binary, offline, no model download stays. **It is
+not a statically linked ELF** — the release binary is dynamically linked against
+exactly three shared libraries (`libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, verified
+with `readelf -d`), which are present on any glibc box. "Single" here means one
+file to copy and no daemon, not zero `DT_NEEDED` entries. See
+`docs/CONSISTENCY.md` §16.6 for both configurations.
 
 > **READ `docs/EVALUATION_HYGIENE.md` FIRST.** It changes the order of this
 > document. Section 5 below is superseded by §5′. The measurements in §§1–4 stand
@@ -91,11 +96,24 @@ ONNX, 23 MB int8. `ort` needs ONNX Runtime, whose static library is
 **108 MB** uncompressed. `bge-reranker-base` is 278M parameters / 1.1 GB — that
 alone is Hindsight-scale, which is the thing we exist to avoid.
 
+> **Addendum 2026-09-29 — the "+108 MB runtime" figure above is an artifact size,
+> not a binary size, and the verdict is unchanged.** The `.a` really is
+> 105,481,448 B, so the arithmetic was not wrong; what was wrong was reading it as
+> what a shipped artifact would weigh. Measured on this tree, an ONNX build with
+> `ort-download-binaries` and `--gc-sections` lands at **65,007,536 B** with **4**
+> `DT_NEEDED` entries — `docs/CONSISTENCY.md` §16.6, with the `libstdc++` link
+> mechanism and a minimal-root portability test in §16.5–§16.6. So the install-size
+> objection to the cross-encoder is real but smaller than 108 MB, and the
+> disqualifier is the ~600–800 ms above, which no packaging change touches. The
+> dated 108 MB line stays as written; it describes the audit, not the current
+> binary.
+
 The decisive number is latency. Measured on a 2019 i7-9750H, MiniLM-L6 int8
 reranking **50 documents takes 578 ms** (fp32: 773 ms). Our pool is ~47 rows. So
 the cheapest viable cross-encoder adds **roughly 600–800 ms to every recall**,
 against a current 1–6 ms. That is a 100× latency regression to chase +16.2pp at
-R@1, and it breaks the single-binary claim by 3–11×.
+R@1, and it makes the shipped artifact several times larger — see the addendum
+above for what several times larger now measures.
 
 ## 4. Features worth fitting a model over
 

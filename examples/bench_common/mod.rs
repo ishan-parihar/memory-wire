@@ -249,9 +249,20 @@ pub fn wait_healthy(addr: &str, timeout: Duration) -> Option<Duration> {
     None
 }
 
-/// The `overlap` weight that `docs/EVALUATION_HYGIENE.md` §2.1 records as
-/// **fitted**: the winner of 46 configurations scored on LongMemEval-S's own 500
-/// questions, so it was selected on the test set (`AGENTS.md` §1).
+/// The `overlap` weight that `docs/EVALUATION_HYGIENE.md` §2.1 audits: the
+/// winner of 46 configurations scored on LongMemEval-S's own 500 questions
+/// (`eval/SWEEP_FUSION.md`, run 2026-09-28), so it was selected on the test set
+/// (`AGENTS.md` §1). That history is unchanged — it is why the caveat below
+/// travels with the weight — and the weight itself is unchanged by what follows.
+///
+/// **The `provisional:` marker on it is discharged, as a replication and not as
+/// an endorsement** (`docs/CONSISTENCY.md` §14.1): `eval/LOCOMO.md` measured it
+/// on 1,531 LoCoMo queries that never chose it, and it beat equal weight on
+/// every ordering metric, by +5.6pp R@1, +1.4pp R@5, +2.9pp NDCG@10 and +3.7pp
+/// MRR with R@20 flat. So the *direction* is confirmed on independent data and
+/// the *magnitude* is not. The +4.2pp is still the maximum of 46 draws on the
+/// test set, and §14.1's out-of-sample estimate is ≈94.4% R@5 rather than the
+/// R@5 this weight measures here.
 ///
 /// Named once, here, because a marker is worth nothing when it is emitted from
 /// anything other than the weight the build actually used: a second hard-coded
@@ -259,18 +270,26 @@ pub fn wait_healthy(addr: &str, timeout: Duration) -> Option<Duration> {
 /// the same failure five copies of [`out_md`] would be.
 pub const FITTED_OVERLAP: f64 = 0.25;
 
-/// The `provisional:` paragraph a generated artifact carries when it reports
-/// retrieval accuracy measured at [`FITTED_OVERLAP`], and `None` for every other
-/// weight.
+/// The caveat paragraph a generated artifact carries when it reports retrieval
+/// accuracy measured at [`FITTED_OVERLAP`], and `None` for every other weight.
 ///
-/// `AGENTS.md` §1 requires a fitted value to be marked provisional in the code
-/// and in the docs, and `AGENTS.md` §2 requires a number in prose to exist in a
-/// committed artifact. A generated artifact quoting a fitted number is
-/// therefore exactly where a reader is most likely to take it for a
-/// generalisation estimate, which is why the marker belongs to the generator
-/// rather than to the file: one typed into the artifact by hand is deleted by
-/// the next regeneration, and a marker that silently disappeared is worse than
-/// no marker at all.
+/// The weight it describes is still fitted — see [`FITTED_OVERLAP`] — and the
+/// paragraph says so. What changed is the *status*: an independent set has since
+/// confirmed it, so `AGENTS.md` §1's `provisional:` marker is discharged, as a
+/// replication rather than as an endorsement (`docs/CONSISTENCY.md` §14.1). The
+/// paragraph therefore states the replication and its provenance, the part the
+/// discharge does not cover — that the magnitude is not thereby earned — and the
+/// null result recorded next to it in §14.2, so a reader meeting the word
+/// "replicated" cannot over-read it in either direction.
+///
+/// `AGENTS.md` §2 requires a number in prose to exist in a committed artifact,
+/// and a generated artifact quoting a fitted number is exactly where a reader is
+/// most likely to take it for a generalisation estimate. Which is why the
+/// paragraph belongs to the generator rather than to the file: one typed into
+/// the artifact by hand is deleted by the next regeneration, and a caveat that
+/// silently disappeared is worse than no caveat at all. The same rule that
+/// carries the discharge is the rule that would have carried the marker, so the
+/// two cannot disagree by construction.
 ///
 /// `None` rather than a generic caveat for an unfitted weight, so a harness
 /// re-based onto a value that was never chosen by looking at the test set drops
@@ -280,15 +299,33 @@ pub fn fitted_weight_note(weights: &FusionWeights) -> Option<String> {
         return None;
     }
     Some(format!(
-        "> **provisional:** every retrieval number in this artifact was measured at \
-         `overlap: {overlap:.2}` with `k: {k:.0}`, and that weight is **fitted, not \
-         earned** — it won 46 configurations scored on the test set \
-         (`AGENTS.md` §1), so it was chosen by looking at the same questions this \
-         table reports. Read every column as a measurement at a fitted value, not as \
-         a generalisation estimate, and do not quote the difference from an unfitted \
-         configuration as earned. See `docs/EVALUATION_HYGIENE.md` §2.1 for the \
-         audit, §3 for the three-set protocol that replaces it, and \
-         `eval/SWEEP_FUSION.md` for the grid that chose it.",
+        "> **replicated on independent data, magnitude not earned:** every retrieval \
+         number in this artifact was measured at `overlap: {overlap:.2}` with `k: {k:.0}`. \
+         That weight is fitted — it won 46 configurations scored on this same test set on \
+         2026-09-28 (`AGENTS.md` §1, `eval/SWEEP_FUSION.md`) — and an independent set has \
+         since confirmed the direction: over 1,531 LoCoMo queries that never chose it, \
+         `0.25` beat the unfitted equal weight by +5.6pp R@1, +1.4pp R@5, +2.9pp NDCG@10 \
+         and +3.7pp MRR, with R@20 unchanged (`eval/LOCOMO.md`; the decision in \
+         `docs/CONSISTENCY.md` §14.1). `AGENTS.md` §1 holds a fitted value `provisional:` \
+         until an independent set confirms it, so the marker is **discharged as a \
+         replication, not as an endorsement** — and the size of the gain is not discharged \
+         with it. The margin this weight shows over the unfitted configuration is still the \
+         maximum of 46 draws on these same 500 questions, while the independently measured \
+         value of that delta is +1.4pp; per `docs/CONSISTENCY.md` §14.1 the clean unfitted \
+         LongMemEval number is 93.0% R@5 and the best out-of-sample estimate of the shipped \
+         configuration is **≈94.4% R@5**. Read every column below as a measurement at a \
+         weight whose direction is replicated and whose magnitude is not: it is not a \
+         generalisation estimate, and the difference from an unfitted configuration must not \
+         be quoted as earned. One null result stands beside it and is recorded, not acted \
+         on: on LoCoMo, `overlap: 0.00` — the token-overlap stream deleted — ties `0.25` on \
+         R@1 and NDCG@10, edges it by 0.3pp on R@5 and loses it by 0.2pp on MRR, so what \
+         replicated is a direction, not a demonstrated need for this weight. LoCoMo banks \
+         hold 19–32 documents against LongMemEval's ~50 and `tests/scale.rs`'s 5,000, so the \
+         dev set under-measures the pool size at which a second lexical voter would pay, \
+         which is why `docs/CONSISTENCY.md` §14.2 leaves the stream in place pending a \
+         pool-scale re-test. No configuration is recommended here. See \
+         `docs/EVALUATION_HYGIENE.md` §2.1 for the audit, §3 for the three-set protocol, \
+         and `eval/SWEEP_FUSION.md` for the grid that chose the value.",
         overlap = weights.overlap,
         k = weights.k,
     ))

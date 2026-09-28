@@ -41,3 +41,9 @@ pub mod embed;
 pub mod memory;
 pub mod recall;
 pub mod store;
+/// The vendored, offline dense-vector arm: 23 MB of int8 MiniLM weights plus the
+/// tokenizer, compiled into the binary behind the `embed` cargo feature. Absent
+/// from a default build entirely, which is what keeps the shipped artifact
+/// small and the vector arm honestly attributable.
+#[cfg(feature = "embed")]
+pub mod vector;

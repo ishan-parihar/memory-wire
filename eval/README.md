@@ -48,7 +48,9 @@ Two committed artifacts are **stale relative to their own generator**, because
 the configurations they record were removed from `src/` after they were measured.
 Running their generator today silently deletes the evidence for those removals.
 This is the same hazard `README.md` documents for `SWEEP_FUSION.md`; it applies
-here too, and the list below is the complete set.
+here too, and the list below is the complete set **as of 2026-09-29, checked
+against the generators in the tree on that date**. The other grid artifacts in
+this directory are the opposite case and are covered in the next section.
 
 | artifact | what a re-run would destroy |
 |---|---|
@@ -64,6 +66,41 @@ and carries 12 rows.
 So: read these two, do not run their generators. If a future change genuinely
 needs a refreshed coding-life sweep, the removed arms have to be restored to the
 generator first, and that is a `docs/NEXT_ITERATION.md` question, not a refresh.
+
+## The two `SELECTION*` grids are the opposite case — safe, and stale
+
+`eval/SELECTION.md` and `eval/SELECTION_VECTOR_AXIS_FIXED.md` come from
+`examples/select_fusion.rs`, which the list above never named. **They are not on
+the hazard list, and adding them would be the wrong warning**: a re-run of the
+current generator would *add* rows to `SELECTION.md`, not delete any.
+
+The check is the axis table. `SELECTION.md`'s pass-2 table declares **six** axes,
+and the generator's current axis constants are **seven** — the six are identical
+value-for-value, and `VECTOR` is the new one:
+
+| axis | `SELECTION.md` pass-2 table | generator constant today | same? |
+|---|---|---|---|
+| `overlap` | 0.00, 0.10, 0.25, 0.50, 0.75, 1.00 | `OVERLAP` = same six | yes |
+| `k` | 5.00, 10.00, 20.00, 40.00, 60.00, 120.00 | `K` = same six | yes |
+| `bm25_magnitude` | 0.00, 0.25, 0.50, 1.00, 2.00, 4.00 | `BM25_MAGNITUDE` = same six | yes |
+| `agreement` | 0.00, 0.05, 0.10, 0.25, 0.50 | `AGREEMENT` = same five | yes |
+| `recency` | 0.00, 0.10, 0.25, 0.50, 1.00 | `RECENCY` = same five | yes |
+| `recency_half_life_days` | 1.00, 7.00, 30.00, 90.00 | `RECENCY_HALF_LIFE` = same four | yes |
+| `vector` | **absent** | `VECTOR` = 0.00, 0.10, 0.25, 0.50, 0.75, 1.00, 1.50 | **new** |
+
+So `SELECTION.md` is a strict subset: regenerating it in a default (non-`embed`)
+build reproduces its six axes and loses nothing, and in an `--features embed` build
+it gains a seventh. `SELECTION_VECTOR_AXIS_FIXED.md` (02:08, newer) already carries
+all seven and matches the generator exactly, so it is the current one.
+
+**`SELECTION_VECTOR_AXIS_FIXED.md` also carries a known template defect, and it is
+worth knowing about before quoting §5 of that file.** Where the walk's measured set
+is empty, the "spanning `k` from X to Y" line renders its bounds as
+`179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368`
+— `f64::MAX`, the fold identity over an empty iterator. It is a formatting bug in
+`examples/select_fusion.rs`, not a measurement, and per `AGENTS.md` §2 the fix is in
+the generator, which this directory does not own. Both files are untracked, so
+neither is yet the committed record.
 
 ## Method
 
@@ -159,3 +196,11 @@ cargo run --release --example soak               --out-md eval/SOAK.md
 
 Wall-clock latency in these artifacts is measured against whatever else the
 machine is doing. Read the provenance line before quoting a number.
+
+The eighth harness is `select_fusion` (`examples/select_fusion.rs`), the dev-set
+axis grid behind `eval/SELECTION*.md` described above. Two things separate it from
+the six: it is the only one that needs `--features embed` for its dense axis, and
+it is the only one that must never be read as a recommendation — it emits tables
+in evaluation order, not sorted by score, precisely so that nothing in the file
+can be mistaken for a ranking. `cargo run --release --example select_fusion
+-- --axes all` writes to `$TMPDIR` unless `--out-md` names a path.

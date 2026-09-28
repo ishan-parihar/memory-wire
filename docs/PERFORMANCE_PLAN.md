@@ -208,11 +208,11 @@ a guessed ceiling; the ceiling is now measured (+16.2pp R@1, +2.8pp R@5) and the
 options can be compared against a real number.
 
 - **(a) Do nothing.** Accept R@1 83.8%. The honest default if P2 and P3 both fail.
-- **(b) Out-of-process optional reranker.** Keeps the 8.4 MB binary and the
+- **(b) Out-of-process optional reranker.** Keeps the 8.4 MiB binary and the
   single-file promise intact; costs a separate install and an IPC hop.
-- **(c) Bundle a small ONNX cross-encoder** (~20–80 MB). Destroys the "8.4 MB,
-  one static binary, nothing to install" claim, which is the product's main
-  competitive argument against Hindsight's 0.8–1.0 GB.
+- **(c) Bundle a small ONNX cross-encoder** (~20–80 MB). Destroys the "8.4 MiB,
+  three shared libraries, one file, nothing to install" claim, which is the
+  product's main competitive argument against Hindsight's 0.8–1.0 GB.
 - **(d) ONNX with first-run weight download.** Keeps the artifact small and
   breaks offline-first-use, the same objection that killed the vector arm.
 

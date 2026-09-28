@@ -1,6 +1,6 @@
 # LongMemEval-S retrieval results (memory-wire)
 
-> **provisional:** every retrieval number in this artifact was measured at `overlap: 0.25` with `k: 60`, and that weight is **fitted, not earned** — it won 46 configurations scored on the test set (`AGENTS.md` §1), so it was chosen by looking at the same questions this table reports. Read every column as a measurement at a fitted value, not as a generalisation estimate, and do not quote the difference from an unfitted configuration as earned. See `docs/EVALUATION_HYGIENE.md` §2.1 for the audit, §3 for the three-set protocol that replaces it, and `eval/SWEEP_FUSION.md` for the grid that chose it.
+> **replicated on independent data, magnitude not earned:** every retrieval number in this artifact was measured at `overlap: 0.25` with `k: 60`. That weight is fitted — it won 46 configurations scored on this same test set on 2026-09-28 (`AGENTS.md` §1, `eval/SWEEP_FUSION.md`) — and an independent set has since confirmed the direction: over 1,531 LoCoMo queries that never chose it, `0.25` beat the unfitted equal weight by +5.6pp R@1, +1.4pp R@5, +2.9pp NDCG@10 and +3.7pp MRR, with R@20 unchanged (`eval/LOCOMO.md`; the decision in `docs/CONSISTENCY.md` §14.1). `AGENTS.md` §1 holds a fitted value `provisional:` until an independent set confirms it, so the marker is **discharged as a replication, not as an endorsement** — and the size of the gain is not discharged with it. The margin this weight shows over the unfitted configuration is still the maximum of 46 draws on these same 500 questions, while the independently measured value of that delta is +1.4pp; per `docs/CONSISTENCY.md` §14.1 the clean unfitted LongMemEval number is 93.0% R@5 and the best out-of-sample estimate of the shipped configuration is **≈94.4% R@5**. Read every column below as a measurement at a weight whose direction is replicated and whose magnitude is not: it is not a generalisation estimate, and the difference from an unfitted configuration must not be quoted as earned. One null result stands beside it and is recorded, not acted on: on LoCoMo, `overlap: 0.00` — the token-overlap stream deleted — ties `0.25` on R@1 and NDCG@10, edges it by 0.3pp on R@5 and loses it by 0.2pp on MRR, so what replicated is a direction, not a demonstrated need for this weight. LoCoMo banks hold 19–32 documents against LongMemEval's ~50 and `tests/scale.rs`'s 5,000, so the dev set under-measures the pool size at which a second lexical voter would pay, which is why `docs/CONSISTENCY.md` §14.2 leaves the stream in place pending a pool-scale re-test. No configuration is recommended here. See `docs/EVALUATION_HYGIENE.md` §2.1 for the audit, §3 for the three-set protocol, and `eval/SWEEP_FUSION.md` for the grid that chose the value.
 
 Methodology: per-question fresh index, session-as-document, question-text query — same as agentmemory `longmemeval-bench.ts` (retrieval-only, no LLM judge).
 
@@ -18,10 +18,10 @@ run, not a property of the build. Do not pin it.
 
 | Slice | R@1 | R@5 | R@10 | R@20 | NDCG@10 | MRR | p50 ms | n |
 |---|---|---|---|---|---|---|---|---|
-| knowledge-update | 94.9% | 100.0% | 100.0% | 100.0% | 96.8% | 97.1% | 8 | 78 |
-| multi-session | 87.2% | 97.0% | 98.5% | 99.2% | 86.0% | 91.4% | 9 | 133 |
-| single-session-assistant | 85.7% | 100.0% | 100.0% | 100.0% | 92.8% | 90.4% | 12 | 56 |
-| single-session-preference | 43.3% | 86.7% | 93.3% | 100.0% | 66.2% | 58.2% | 9 | 30 |
-| single-session-user | 87.1% | 98.6% | 100.0% | 100.0% | 94.3% | 92.3% | 8 | 70 |
-| temporal-reasoning | 80.5% | 96.2% | 97.7% | 99.2% | 85.3% | 87.1% | 9 | 133 |
-| **overall** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** | **9** | **500** |
+| knowledge-update | 94.9% | 100.0% | 100.0% | 100.0% | 96.8% | 97.1% | 16 | 78 |
+| multi-session | 87.2% | 97.0% | 98.5% | 99.2% | 86.0% | 91.4% | 15 | 133 |
+| single-session-assistant | 85.7% | 100.0% | 100.0% | 100.0% | 92.8% | 90.4% | 22 | 56 |
+| single-session-preference | 43.3% | 86.7% | 93.3% | 100.0% | 66.2% | 58.2% | 17 | 30 |
+| single-session-user | 87.1% | 98.6% | 100.0% | 100.0% | 94.3% | 92.3% | 15 | 70 |
+| temporal-reasoning | 80.5% | 96.2% | 97.7% | 99.2% | 85.3% | 87.1% | 16 | 133 |
+| **overall** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** | **16** | **500** |

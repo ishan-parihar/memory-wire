@@ -20,16 +20,47 @@ use crate::recall::{
     RankedHit,
 };
 pub use crate::store::BankStats;
-use crate::store::{Store, StoreError, UpdateMode};
+use crate::store::{LexicalQuery, Store, StoreError, UpdateMode};
 
 /// FTS5 candidates pulled per recall — the LIMIT is pushed into the SQL.
-const FTS_LIMIT: usize = 50;
+///
+/// Public only so [`crate::vector`]'s parallel recall arm builds its streams
+/// from the *same* numbers. Duplicating them there would be one more place for
+/// the two arms to disagree, and a vector arm that silently fused a 200-row
+/// overlap stream against a 50-row lexical one would be a bug with no test able
+/// to see it.
+pub const FTS_LIMIT: usize = 50;
 /// Token-overlap candidates fused per recall.
-const OVERLAP_LIMIT: usize = 200;
+///
+/// Public for the same reason as [`FTS_LIMIT`].
+pub const OVERLAP_LIMIT: usize = 200;
 /// Hard ceiling on memories returned by one recall.
-const MAX_RESULTS: usize = 100;
+///
+/// Public for the same reason as [`FTS_LIMIT`]. The vector arm honours it, so a
+/// vector-fused recall returns the same shape of answer as a lexical one.
+pub const MAX_RESULTS: usize = 100;
 /// Recall budget used when neither the request nor the bank config sets one.
-pub const DEFAULT_RECALL_BUDGET: usize = 2000;
+///
+/// **8,000 tokens = 3 × the 2,626-token median session** measured in
+/// `docs/CONSISTENCY.md` §14.9, at the store's own 4-chars-per-token rule.
+///
+/// Chosen on size arithmetic, not on a score. The trim is a hard ceiling, so a
+/// budget below the size of a stored memory cannot return it: the top hit is cut
+/// to the cap and everything below it is skipped. The previous 2,000 therefore
+/// admitted *zero* median-size sessions whole and truncated 64.4% of them. Three
+/// medians is the smallest multiple that admits several whole sessions rather than
+/// one, so a conversation-shaped bank gets its second and third best hits back
+/// instead of a truncated first. Every budget at or above 8,000 is identical on
+/// §14.9's size table; the step that matters is crossing the median.
+///
+/// No value was compared on LongMemEval before choosing this one and none was
+/// tried after. `eval/RESULTS.md` cannot move for this change at all: its harness
+/// passes its own explicit 100,000-token budget (`examples/longmemeval.rs:235`).
+///
+/// Atomic-memory banks are unaffected in content — "auth uses jose" was always far
+/// under 2,000 tokens, so the same hits come back. Only the ceiling on context per
+/// recall moves; [`MAX_RESULTS`] (100) bounds the other end.
+pub const DEFAULT_RECALL_BUDGET: usize = 8000;
 /// Ceiling on tags stored per memory (request tags ∪ bank `retainTags`).
 pub const MAX_TAGS: usize = 20;
 
@@ -164,6 +195,52 @@ struct BankConfig {
     recall_max_tokens: Option<usize>,
     /// `retainTags` — added to every retain in this bank.
     retain_tags: Vec<String>,
+    /// `recallSynonyms` — user-supplied paraphrase terms, keyed by the term the
+    /// user's query must actually contain. Empty when the key is absent, which is
+    /// the shipped default and means no expansion at all.
+    ///
+    /// Keyed, not a flat list, because the only safe moment to expand a query is
+    /// after reading it: a list could be ORed in unconditionally and would then
+    /// apply to every query in the bank regardless of what was asked. Keying on a
+    /// trigger term means a bank that says `"migrate"` is a *rule*, not a tax on
+    /// recall, and a query that says nothing about migrating is unaffected.
+    ///
+    /// Empty by default and not merely by convention: [`BankConfig::parse`]
+    /// produces an empty table for a config that omits the key, a config that
+    /// spells it wrong, and a config that is not an object at all.
+    recall_synonyms: SynonymTable,
+}
+
+/// `recallSynonyms` as parsed: lowercased trigger term to its entry.
+type SynonymTable = HashMap<String, RecallSynonyms>;
+
+/// The empty synonym table, shared by every call site that reads no config.
+///
+/// A `const`-adjacent shared value rather than a fresh `HashMap::new()` per call so
+/// the shipped `recall` path — which is the sweep entry point and must not change
+/// cost — provably allocates nothing for a feature it has not enabled. `Sync` is
+/// what makes this sound: it is never mutated, and [`expand_synonyms`] takes
+/// `&`.
+static EMPTY_SYNONYMS: std::sync::LazyLock<SynonymTable> =
+    std::sync::LazyLock::new(HashMap::new);
+
+/// One `recallSynonyms` entry: the terms to add, and how much each is worth.
+///
+/// Flat `{"terms": [...], "weight": 0.7}` rather than the per-term-object shape.
+/// Per-term weights were the alternative and they are the wrong shape here for
+/// two reasons: FTS5 has no per-term weight, so expressing one would mean a
+/// separate index scan per distinct weight for a table that is a hand-written
+/// convenience, and a table where most entries are a bare word list would spend
+/// most of its bytes on `{"terms":` and `}`.
+#[derive(Debug, Clone, PartialEq)]
+struct RecallSynonyms {
+    /// Terms to add to the query when the key matches.
+    terms: Vec<String>,
+    /// How much each added term counts against a full-weight one. `1.0` is a
+    /// full term. Clamped to `(0, 1]` on read: a synonym that counts *more* than
+    /// the term the user typed inverts the ranking in favour of the paraphrase,
+    /// which is never what "a synonym" means.
+    weight: f64,
 }
 
 impl BankConfig {
@@ -194,8 +271,96 @@ impl BankConfig {
                 .and_then(|n| n.as_u64())
                 .and_then(|n| usize::try_from(n).ok()),
             retain_tags,
+            recall_synonyms: parse_recall_synonyms(&value),
         }
     }
+}
+
+/// Read `recallSynonyms`, discarding every entry that is not well formed.
+///
+/// Drops rather than errors for the same reason [`BankConfig::parse`] does on
+/// every other key: a typo in a hand-written config must not take recall down.
+/// The raw JSON is still served by `GET .../config`, so the typo stays visible.
+///
+/// The clamps are the interesting part. `weight` outside `(0, 1]` is coerced
+/// rather than dropped, because a negative weight would make a synonym
+/// *subtract* from a document's score and a weight above 1.0 would let a
+/// paraphrase outrank the term the user actually typed — both are a config that
+/// says something no reader meant, and both are safer to bound than to honour.
+fn parse_recall_synonyms(value: &serde_json::Value) -> HashMap<String, RecallSynonyms> {
+    let Some(obj) = value.get("recallSynonyms").and_then(|v| v.as_object()) else {
+        return HashMap::new();
+    };
+    let mut out = HashMap::new();
+    for (key, entry) in obj {
+        // Keys are matched case-insensitively against the lowercased query token,
+        // so the stored key is lowercased to make that a hash lookup. Without
+        // this, a config written `"Migrate"` would silently never fire.
+        let key = key.to_lowercase();
+        let terms: Vec<String> = entry
+            .get("terms")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|t| t.as_str()).map(String::from).collect())
+            .unwrap_or_default();
+        if terms.is_empty() {
+            continue;
+        }
+        let weight = entry
+            .get("weight")
+            .and_then(|w| w.as_f64())
+            .unwrap_or(DEFAULT_SYNONYM_WEIGHT)
+            .clamp(f64::MIN_POSITIVE, 1.0);
+        out.insert(key, RecallSynonyms { terms, weight });
+    }
+    out
+}
+
+/// Weight a synonym gets when its entry omits one.
+///
+/// 0.7, matching agentmemory's `search-index.ts:105-110` single constant. Copied
+/// as a *shape* — a synonym below full weight — and not as a selected value:
+/// this build has no table to apply it to, so there is nothing here for 0.7 to
+/// have been fitted to, and a bank that wants a different ratio sets it per entry.
+const DEFAULT_SYNONYM_WEIGHT: f64 = 0.7;
+
+/// The `(term, weight)` pairs one query expands to, deduplicated and lowercased.
+///
+/// Returns empty for an empty table, which is the case for every bank that has
+/// not configured `recallSynonyms` — so the common path allocates nothing and
+/// the store's synonym branch is skipped entirely.
+///
+/// The query is matched with the *same* tokenization the store uses for the
+/// `MATCH` string, rather than a substring test. A substring test would fire on
+/// `"migrate"` inside `"unmigrated"`, and it would not fire on a trigger term
+/// split across a hyphen the tokenizer treats as a separator. Matching tokens is
+/// the only version that agrees with the query that will actually be issued.
+fn expand_synonyms(table: &SynonymTable, query: &str) -> Vec<(String, f64)> {
+    if table.is_empty() {
+        return Vec::new();
+    }
+    let tokens: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let mut out: Vec<(String, f64)> = Vec::new();
+    for token in &tokens {
+        let Some(entry) = table.get(token) else {
+            continue;
+        };
+        for term in &entry.terms {
+            let term = term.to_lowercase();
+            if term == *token || out.iter().any(|(t, _)| *t == term) {
+                // A synonym equal to its own trigger adds nothing, and emitting it
+                // would double-count that term's BM25 — the same effect
+                // `KeywordScope` documents for an exact term ORed with its prefix.
+                continue;
+            }
+            out.push((term, entry.weight));
+        }
+    }
+    out
 }
 
 /// A recalled memory with its fused rank score.
@@ -361,14 +526,18 @@ impl<S: Store> MemoryService<S> {
     /// Recall with an optional tag filter and an optional budget override.
     ///
     /// Budget precedence: explicit `budget` > the bank's `recallMaxTokens` >
-    /// [`DEFAULT_RECALL_BUDGET`]. An explicit budget skips the config read
-    /// entirely, so the override path costs no extra query.
+    /// [`DEFAULT_RECALL_BUDGET`].
     ///
-    /// The config read is propagated, not swallowed. It used to be
-    /// `.ok().and_then(…)`, which turned a storage fault into a *successful*
-    /// recall trimmed to a budget the bank never asked for — a 200 carrying an
-    /// answer the caller had no way to know was wrong. `retain_doc` already
-    /// propagates the same call; this was an oversight, not a policy.
+    /// The config read is propagated, not swallowed, on the branch where the
+    /// budget comes from it. It used to be `.ok().and_then(…)`, which turned a
+    /// storage fault into a *successful* recall trimmed to a budget the bank
+    /// never asked for — a 200 carrying an answer the caller had no way to know
+    /// was wrong. `retain_doc` already propagates the same call; this was an
+    /// oversight, not a policy.
+    ///
+    /// The config is read on the explicit-budget branch too, for
+    /// `recallSynonyms` only, and a fault there is non-fatal: the budget is the
+    /// caller's there, so no wrong budget can be served.
     pub fn recall_filtered(
         &self,
         bank_id: &str,
@@ -377,17 +546,44 @@ impl<S: Store> MemoryService<S> {
         tags: &[String],
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         Self::require_bank(bank_id)?;
-        let budget = match budget {
-            Some(b) => b,
-            None => self
-                .config_of(bank_id)?
-                .recall_max_tokens
-                .unwrap_or(DEFAULT_RECALL_BUDGET),
+        // Both branches read the config, because `recallSynonyms` is independent
+        // of the budget: a caller who passes an explicit `budget` named the token
+        // cap, not the ranking, and HTTP and MCP *both* always pass a budget, so
+        // reading the config only when the budget is absent meant a bank that
+        // configured `recallSynonyms` never got expansion on either real surface.
+        let owned;
+        let (budget, synonyms) = match budget {
+            Some(b) => {
+                // Best-effort on this branch only. The fault the budget used to
+                // swallow cannot arise here — the budget is the caller's, so a
+                // config read that fails cannot make this recall answer at a
+                // budget the caller did not ask for, and
+                // `a_failed_config_read_should_fail_the_recall_that_needed_it`
+                // keeps passing unchanged. What is lost on a fault is the
+                // optional expansion, not the correctness of the cap.
+                owned = self.config_of(bank_id).unwrap_or_default();
+                (b, &owned.recall_synonyms)
+            }
+            None => {
+                // Hoisted out of the arm so the borrow of `cfg.recall_synonyms`
+                // lives as long as the tuple does.
+                owned = self.config_of(bank_id)?;
+                (
+                    owned.recall_max_tokens.unwrap_or(DEFAULT_RECALL_BUDGET),
+                    &owned.recall_synonyms,
+                )
+            }
         };
-        self.recall_with(bank_id, query, budget, tags, &FusionWeights::SHIPPED)
+        self.recall_with(bank_id, query, budget, tags, &FusionWeights::SHIPPED, synonyms)
     }
 
     /// Recall top memories for `query` within `budget_tokens`.
+    ///
+    /// Reads no bank config at all — not `recallMaxTokens`, not `retainTags`, and
+    /// so not `recallSynonyms` either. That is the existing contract of this
+    /// entry point and it is not widened here: an explicit budget means the
+    /// caller has already said what it wants, and a library caller with no config
+    /// read should not start paying one.
     pub fn recall(
         &self,
         bank_id: &str,
@@ -395,7 +591,14 @@ impl<S: Store> MemoryService<S> {
         budget_tokens: usize,
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         Self::require_bank(bank_id)?;
-        self.recall_with(bank_id, query, budget_tokens, &[], &FusionWeights::SHIPPED)
+        self.recall_with(
+            bank_id,
+            query,
+            budget_tokens,
+            &[],
+            &FusionWeights::SHIPPED,
+            &EMPTY_SYNONYMS,
+        )
     }
 
     /// Recall with explicit fusion weights instead of [`FusionWeights::SHIPPED`].
@@ -414,7 +617,14 @@ impl<S: Store> MemoryService<S> {
         weights: &FusionWeights,
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         Self::require_bank(bank_id)?;
-        self.recall_with(bank_id, query, budget_tokens, &[], weights)
+        self.recall_with(
+            bank_id,
+            query,
+            budget_tokens,
+            &[],
+            weights,
+            &EMPTY_SYNONYMS,
+        )
     }
 
     /// Recall top memories for `query`, restricted to memories carrying any of
@@ -432,6 +642,7 @@ impl<S: Store> MemoryService<S> {
         budget_tokens: usize,
         tags: &[String],
         weights: &FusionWeights,
+        synonyms: &SynonymTable,
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         let normalized = normalize_tags(tags);
         if !tags.is_empty() && normalized.is_empty() {
@@ -441,9 +652,20 @@ impl<S: Store> MemoryService<S> {
             // that look exactly like a real result.
             return Ok(Vec::new());
         }
+        // The lexical query the BM25 stream is built from, assembled from what
+        // the caller already holds. No store call and no config read happens
+        // here: `synonyms` arrived from the caller's own config read (or is a
+        // shared empty map), and the two paths that read no config at all pass an
+        // empty one, so the shipped `recall` pays exactly what it paid before
+        // this existed.
+        let lexical = LexicalQuery {
+            text: query,
+            scope: weights.keyword_scope,
+            synonyms: expand_synonyms(synonyms, query),
+        };
         let (all, keyword_hits) = self
             .store
-            .recall_inputs(bank_id, query, &normalized, FTS_LIMIT)?;
+            .recall_inputs_lexical(bank_id, &lexical, &normalized, FTS_LIMIT)?;
         // Stream A: real BM25 from SQLite FTS5 (bank- and tag-scoped in SQL).
         let fts_stream: Vec<RankedHit> = keyword_hits
             .iter()
@@ -658,7 +880,7 @@ async fn put_bank_config<S: Store + 'static>(
 mod tests {
     use super::*;
     use crate::recall::{
-        is_temporal_query, rank_candidates, recency_rank, OverlapScope, RecencyPolicy,
+        is_temporal_query, rank_candidates, recency_rank, KeywordScope, OverlapScope, RecencyPolicy,
     };
     use crate::memory::Bank;
     use crate::store::{SqliteStore, UpdateMode};
@@ -1112,6 +1334,13 @@ mod tests {
                 recency_half_life_days: crate::recall::RECENCY_HALF_LIFE_PLACEHOLDER_DAYS,
                 recency_policy: RecencyPolicy::Always,
                 overlap_scope: OverlapScope::Document,
+                // Phase D's fourth stream, shipped off. Listed here rather than
+                // elided with `..SHIPPED` because the point of this test is that
+                // the literal *is* the shipped value: a field that only ever
+                // appears through a struct update could be set to anything without
+                // this test noticing.
+                vector: 0.0,
+                keyword_scope: crate::recall::KeywordScope::Exact,
             },
             "the shipped default moved off the configuration E1 measured"
         );
@@ -1829,5 +2058,254 @@ mod tests {
             .recall_inputs("b", "token bucket", &[], FTS_LIMIT)
             .expect("inputs");
         assert_eq!(recency_rank(&all, chrono::Utc::now(), 30.0).len(), all.len());
+    }
+
+    // ---- Phase B: the lexical query config ---------------------------------
+    //
+    // The bank-config half of the default-off claim. `KeywordScope` is proven
+    // inert in `store.rs`; what is proven here is that a bank that has never
+    // heard of `recallSynonyms` gets exactly the ranking it got before, and that
+    // a bank that has can turn the feature on for itself without a build.
+
+    /// A config with no `recallSynonyms` key must produce an empty table, so the
+    /// store's synonym branch never runs for the overwhelming majority of banks.
+    #[test]
+    fn an_absent_recall_synonyms_key_should_expand_to_nothing() {
+        for raw in [
+            "{}",
+            r#"{"recallMaxTokens": 500}"#,
+            r#"{"retainTags": ["auth"]}"#,
+            // A typo is absent, not fatal: the same rule every other key follows.
+            r#"{"recallSynonym": {"a": {"terms": ["b"]}}}"#,
+            r#"{"recallSynonyms": []}"#,
+            r#"{"recallSynonyms": "not an object"}"#,
+            "not json at all",
+        ] {
+            let table = BankConfig::parse(raw).recall_synonyms;
+            assert!(table.is_empty(), "{raw} should have produced no synonyms: {table:?}");
+            assert!(expand_synonyms(&table, "a b migrate").is_empty(), "{raw} expanded");
+        }
+    }
+
+    /// An entry is keyed by a trigger term the query must actually contain, and
+    /// fires only then. This is the property that makes a synonym table a *rule*
+    /// rather than a tax on every query in the bank.
+    #[test]
+    fn a_synonym_should_fire_only_when_the_query_names_its_trigger() {
+        let table = BankConfig::parse(
+            r#"{"recallSynonyms": {"migrate": {"terms": ["refactor"], "weight": 0.7}}}"#,
+        )
+        .recall_synonyms;
+
+        assert_eq!(
+            expand_synonyms(&table, "we should migrate soon"),
+            vec![("refactor".to_string(), 0.7)],
+            "a matching trigger must expand"
+        );
+        assert!(
+            expand_synonyms(&table, "what about the budget").is_empty(),
+            "an unrelated query must not expand"
+        );
+        // Token matching, not substring: a trigger inside a longer word does not
+        // count, and a trigger the tokenizer would split does not either.
+        assert!(
+            expand_synonyms(&table, "unmigrated").is_empty(),
+            "a substring must not fire a synonym"
+        );
+    }
+
+    /// Trigger matching is case-insensitive, in both directions: the config key
+    /// is lowercased on read and the query token is lowercased on the way in, so
+    /// `"Migrate"` in a config and `"MIGRATE"` in a query meet in the middle.
+    #[test]
+    fn synonym_trigger_matching_should_ignore_case_in_both_directions() {
+        let table = BankConfig::parse(
+            r#"{"recallSynonyms": {"Migrate": {"terms": ["REFACTOR"]}}}"#,
+        )
+        .recall_synonyms;
+        assert_eq!(expand_synonyms(&table, "MIGRATE this").len(), 1);
+        assert_eq!(expand_synonyms(&table, "migrate this").len(), 1);
+        assert_eq!(expand_synonyms(&table, "MiGrAtE this").len(), 1);
+    }
+
+    /// A synonym that is its own trigger adds nothing, and emitting it would
+    /// double-count that term's BM25 — the same defect `KeywordScope` documents
+    /// for an exact term ORed with its own prefix.
+    #[test]
+    fn a_synonym_equal_to_its_trigger_should_not_be_emitted() {
+        let table = BankConfig::parse(
+            r#"{"recallSynonyms": {"migrate": {"terms": ["migrate", "Migrate"]}}}"#,
+        )
+        .recall_synonyms;
+        assert!(
+            expand_synonyms(&table, "migrate now").is_empty(),
+            "a self-referential synonym must not double-count"
+        );
+    }
+
+    /// A duplicated synonym across two firing triggers must be emitted once, so
+    /// two triggers cannot silently double-weight one term.
+    #[test]
+    fn a_synonym_firing_from_two_triggers_should_be_emitted_once() {
+        let table = BankConfig::parse(
+            r#"{"recallSynonyms": {
+                   "migrate": {"terms": ["refactor"]},
+                   "postgres": {"terms": ["refactor"]}
+               }}"#,
+        )
+        .recall_synonyms;
+        let got = expand_synonyms(&table, "migrate the postgres database");
+        assert_eq!(got.len(), 1, "one term, one weight: {got:?}");
+    }
+
+    /// Malformed entries are dropped and out-of-range weights are clamped. A
+    /// hand-written config must not be able to make a synonym subtract from a
+    /// document's score or outrank the term the user actually typed.
+    #[test]
+    fn a_malformed_or_out_of_range_synonym_should_be_dropped_or_clamped() {
+        // No terms: dropped, because a synonym with no terms is not an entry.
+        for raw in [
+            r#"{"recallSynonyms": {"a": {}}}"#,
+            r#"{"recallSynonyms": {"a": {"terms": []}}}"#,
+            r#"{"recallSynonyms": {"a": {"terms": "not a list"}}}"#,
+            r#"{"recallSynonyms": {"a": "not an object"}}"#,
+        ] {
+            assert!(
+                BankConfig::parse(raw).recall_synonyms.is_empty(),
+                "{raw} should have been dropped"
+            );
+        }
+
+        // Weight above 1.0 is clamped to a full term.
+        let over = BankConfig::parse(
+            r#"{"recallSynonyms": {"a": {"terms": ["b"], "weight": 5.0}}}"#,
+        )
+        .recall_synonyms;
+        assert_eq!(expand_synonyms(&over, "a query"), vec![("b".to_string(), 1.0)]);
+
+        // A negative weight is clamped up to the smallest positive weight rather
+        // than honoured: a synonym must not be able to *subtract*.
+        let under = BankConfig::parse(
+            r#"{"recallSynonyms": {"a": {"terms": ["b"], "weight": -3.0}}}"#,
+        )
+        .recall_synonyms;
+        let got = expand_synonyms(&under, "a query");
+        assert_eq!(got.len(), 1);
+        assert!(got[0].1 > 0.0, "a negative weight must not survive: {:?}", got);
+
+        // A missing weight takes the documented default, not zero and not one.
+        let none = BankConfig::parse(r#"{"recallSynonyms": {"a": {"terms": ["b"]}}}"#)
+            .recall_synonyms;
+        assert_eq!(expand_synonyms(&none, "a query"), vec![("b".to_string(), DEFAULT_SYNONYM_WEIGHT)]);
+    }
+
+    /// The end-to-end default-off proof, in the form the brief asks for: with no
+    /// `recallSynonyms` configured, the ranking is not merely close but the same
+    /// ids in the same order carrying the same `f64` bit patterns.
+    #[test]
+    fn a_bank_without_recall_synonyms_should_recall_exactly_as_before() {
+        let svc = mechanism_bank();
+        let query = "token bucket rate limiting";
+
+        // `recall` reads no config at all, so it is the reference.
+        let reference = svc.recall("b", query, 100_000).expect("reference recall");
+        assert!(!reference.is_empty(), "the fixture must actually match");
+
+        // The config-aware entry point, with a config that has no synonym key.
+        svc.set_bank_config("b", r#"{"recallMaxTokens": 100000}"#).expect("config");
+        let got = svc.recall_filtered("b", query, None, &[]).expect("configured recall");
+
+        assert_eq!(
+            got.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            reference.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            "a config without the key moved the order"
+        );
+        for (want, have) in reference.iter().zip(&got) {
+            assert_eq!(
+                have.score.to_bits(),
+                want.score.to_bits(),
+                "score for {} is not the same f64: {:?} vs {:?}",
+                want.memory.id,
+                have.score,
+                want.score
+            );
+        }
+    }
+
+    /// A bank that *does* configure a synonym sees it applied, end to end
+    /// through the public API. Without this the config key would be parsed,
+    /// tested in isolation, and never observed to do anything.
+    #[test]
+    fn a_configured_synonym_should_reach_a_recall_the_query_alone_misses() {
+        let svc = svc_with_banks(&["b"]);
+        svc.retain("b", "postgres schema change scheduled friday", None)
+            .expect("retain");
+
+        // One token, sharing nothing with the memory. A longer query would make
+        // this test pass or fail for the wrong reason: `fts_match_query` ORs
+        // every token of length >= 2, so a query carrying "the" or "database"
+        // matches almost any sentence and the "before" assertion below would
+        // fail on a stopword rather than on the synonym.
+        let query = "migrate";
+        assert_eq!(
+            svc.recall_filtered("b", query, None, &[]).expect("before").len(),
+            0,
+            "the query alone must not match"
+        );
+
+        svc.set_bank_config(
+            "b",
+            r#"{"recallSynonyms": {"migrate": {"terms": ["schema"], "weight": 0.7}}}"#,
+        )
+        .expect("config");
+        let after = svc.recall_filtered("b", query, None, &[]).expect("after");
+        assert_eq!(after.len(), 1, "the configured synonym must reach it: {after:?}");
+        assert!(after[0].memory.content.contains("schema change"));
+
+        // …and the same expansion survives an explicit `budget`, which is the
+        // branch HTTP and MCP always take. It used to discard the whole synonym
+        // table, so a bank that configured the key got no expansion on either
+        // real surface while the key parsed, unit-tested and did nothing.
+        let explicit = svc
+            .recall_filtered("b", query, Some(DEFAULT_RECALL_BUDGET), &[])
+            .expect("explicit-budget recall");
+        assert_eq!(
+            explicit.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            after.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            "an explicit budget must not drop the configured synonyms"
+        );
+    }
+
+    /// The prefix arm, end to end through the public API and gated on the
+    /// shipped weights being off. `recall_with_weights` is the only entry point
+    /// that can select it, which is what makes this a selection knob rather than
+    /// a request parameter.
+    #[test]
+    fn the_prefix_arm_should_be_selectable_through_weights_and_off_by_default() {
+        let svc = svc_with_banks(&["b"]);
+        svc.retain("b", "the database migration needs a backup", None).expect("retain");
+        let query = "migrat";
+
+        // Off: nothing. The exact grammar cannot see "migration" from "migrat".
+        let off = svc.recall_with_weights("b", query, 100_000, &FusionWeights::SHIPPED)
+            .expect("off recall");
+        assert!(
+            off.iter().all(|h| !h.memory.content.contains("migration")),
+            "the exact grammar must not match the variant: {off:?}"
+        );
+
+        // On: the same code path, one field different.
+        let on = svc
+            .recall_with_weights(
+                "b",
+                query,
+                100_000,
+                &FusionWeights { keyword_scope: KeywordScope::ExactAndPrefix, ..FusionWeights::SHIPPED },
+            )
+            .expect("on recall");
+        assert!(
+            on.iter().any(|h| h.memory.content.contains("migration")),
+            "the prefix scope must reach the variant: {on:?}"
+        );
     }
 }

@@ -4,14 +4,20 @@ Synthesis date: 2026-09-27. All numbers below are the exact inputs the current
 Rust code was transmuted from. To update: `git -C _audit/<repo> pull`, re-run
 the audit deltas, record the new SHAs here, then port behavior per §3.
 
-> **These pins describe the tree as published in `v0.3.0`.** The earlier
-> "the tree is ahead of the published release" banner is retired: the SQLite /
-> recall work, the TTL sweep, `detail=none` and the five benchmark harnesses are
-> all in the `v0.3.0` tag and release. §1's competitor SHAs are the synthesis
-> baseline the current code was transmuted from and were deliberately not
-> re-pulled for this cut; §2 is the toolchain that built it; §3 is its locked
-> direct dependency set. The per-build evidence for `v0.2.0` and earlier stays
-> where it was measured, in `docs/BENCHMARK.md` and `docs/CONSISTENCY.md`.
+> **These pins describe the tree as published in `v0.3.0`, and the tree is now
+> ahead of that.** `v0.3.0` **is** a published GitHub release (2026-09-28, asset
+> `memory-wire-linux-x86_64.tar.gz`), which is why the earlier "the tree is ahead
+> of the published release" banner was retired. That retirement no longer holds:
+> `HEAD` is **19 commits past the `v0.3.0` tag**, with a large uncommitted wave on
+> top, while `Cargo.toml` still says `0.3.0`. So the version string describes the
+> release and not the tree, and nothing in §1–§3 below covers the `embed` feature,
+> `build.rs` or `src/vector.rs` — all of which are post-`v0.3.0` tree state.
+> §1's competitor SHAs are the synthesis baseline the current code was transmuted
+> from and were deliberately not re-pulled for this cut; §2 is the toolchain that
+> built it; §3 is its locked direct dependency set. The per-build evidence for
+> `v0.2.0` and earlier stays where it was measured, in `docs/BENCHMARK.md` and
+> `docs/CONSISTENCY.md`, and the record of this framing being retired and then
+> becoming true again is `docs/CONSISTENCY.md` §15.2.
 
 ## 1. Competitor snapshots (`_audit/`, git, branch `main` both)
 
@@ -50,10 +56,20 @@ patched.
 features = ["server", "transport-io"] }`. Its `schemars 1.2.2` is transitive and
 correctly does not belong in this list.
 
-**Removed, and confirmed absent from `Cargo.lock` (2026-09-28):** `fastembed`,
-`ort`, `tokenizers` — zero matches for all three names. The `embed` cargo feature
-is gone from `Cargo.toml`. This is what the README means when it says the ONNX
-dependency is gone; the lockfile is the proof.
+**Removed at `v0.3.0`, and back since — the lock state has moved again.** On
+2026-09-28, at the `v0.3.0` cut, `fastembed`, `ort` and `tokenizers` had zero
+matches in `Cargo.lock` and the `embed` cargo feature was gone from `Cargo.toml`.
+**None of that is true of the tree now.** `Cargo.toml` carries
+`fastembed = { version = "7.1", optional = true, default-features = false }` under
+`embed = ["dep:fastembed"]`, and `fastembed`, `ort`, `ort-sys` and `tokenizers`
+are all present in `Cargo.lock` again.
+
+The direct-dependency list above still describes a **default** build correctly,
+because `default = []` and nothing outside the `embed` feature references
+`fastembed`, so a default build does not activate it. `cargo tree --depth 1`
+shows the default graph; `cargo tree --depth 1 --features embed` is the
+invocation that shows `fastembed`. Re-run §4 and regenerate the list once
+`embed` is settled, since the two graphs now differ.
 
 - Full transitive lock: `memory-wire/Cargo.lock` (commit it; CI uses `--locked`)
 

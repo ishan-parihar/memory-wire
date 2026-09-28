@@ -1150,3 +1150,828 @@ the open questions are the slice size (n=25) and the judge, neither of which a
 repeat run narrows. Wall clock differed sharply between the two (286.5s vs 21.1s)
 on an identical 100-call workload, which is a caution against reading anything into
 per-call timing from that gateway.
+
+---
+
+# §15 — closeout inventory, and the doc claims that were false (2026-09-29)
+
+Read-only audit of the tree at `edd5acb` plus a large uncommitted wave, plus
+corrections to the doc claims it falsified. **No measurement in this section is a
+measurement** — nothing was built or run. Every number below is a byte count, a
+row count, a version string or a file size read off the tree.
+
+## 15.1 `fastembed` / the `embed` feature — the removal claims are false, and were
+
+`§8`, `§12.1` #4, `§12.8`, `README.md`, `docs/BENCHMARK.md` §5 and
+`docs/VERSIONS.md` §3 all recorded, as fact, that the `fastembed` dependency and
+its ONNX runtime were *removed, not deferred*, and cited the lockfile as proof:
+"no `embed` feature and no `fastembed`, `ort` or `tokenizers` entry in
+`Cargo.lock`" (`README.md`), "zero matches for all three names … The `embed` cargo
+feature is gone from `Cargo.toml`" (`docs/VERSIONS.md` §3), "`Cargo.lock` has no
+`fastembed`, `ort` or `tokenizers` entry" (`docs/BENCHMARK.md` §5).
+
+**All three were true at the `v0.3.0` cut and are false of the tree now.**
+Re-verified immediately before correcting, 2026-09-29:
+
+| Claim | Tree state |
+|---|---|
+| "`embed` feature is gone" | `Cargo.toml:57` — `embed = [\"dep:fastembed\"]` |
+| "`fastembed` is not a dependency" | `Cargo.toml:44` — `fastembed = { version = \"7.1\", optional = true, default-features = false, features = [\"ort-download-binaries-rustls-tls\"] }` |
+| "no `fastembed`/`ort`/`tokenizers` in `Cargo.lock`" | all four present — `fastembed` (553), `ort` (1331), `ort-sys` (1344), `tokenizers` (2159), plus `ndarray` (1236) |
+
+The arm behind the feature is not a stub: `src/vector.rs` (45,697 B) is a
+retain-time dense arm with an embedder, a `memory_vectors` column and a
+query-path branch, and `models/` carries 6 files / **23 MB** of vendored int8
+MiniLM weights plus a `PROVENANCE.md`. `src/main.rs` grows a ninth CLI
+subcommand, `embed <text>`, behind `#[cfg(feature = \"embed\")]`.
+
+**What did *not* move, and why the correction is narrower than it looks.**
+`default = []`, and nothing outside the `embed` feature references `fastembed`, so
+a default build activates none of it. Every footprint figure this file and the
+README publish — 8,836,032 B binary, 10,716–11,080 kB idle RSS, 3,022,848 B 10k
+store, and the rest — remains a **default-build** figure and is unaffected. The *decision* to decline vector retrieval also stands:
+`FusionWeights::vector` ships at `0.0` in every build, so no ranking and no HTTP
+request reaches the stream.
+
+**Corrected in place** (these files are not historical records): `README.md`
+(×2), `docs/BENCHMARK.md` §5, `docs/VERSIONS.md` §3, `docs/BENCHMARK_SCALE.md`.
+**Deliberately left as written:** §8, §12.1 #4 and §12.8 above. They are the
+record of what was true at the `v0.3.0` cut, and `AGENTS.md` §2 keeps a
+deliberate dated record. This section is the correction, appended rather than
+back-edited.
+
+## 15.2 The "the tree is ahead of the published release" banner is retired, and it is true again
+
+The top-of-file banner (and the copy in `docs/VERSIONS.md` §0, and §12.0 below)
+retires the "the tree on `main` is substantially ahead of the published `v0.2.0`
+tag" framing on the grounds that `v0.3.0` is published and `Cargo.toml` says
+`0.3.0`, "so the version string describes the tree as well as the release." That
+grounding no longer holds. `v0.3.0` is tagged at `3e902ff`; `HEAD` is `edd5acb`,
+which is **19 commits past the tag**, on top of the uncommitted wave in §15.3.
+`Cargo.toml` still says `0.3.0`, so the version string no longer describes the
+tree.
+
+The §12 sections are left alone — they are correctly scoped to the release. This
+paragraph restores the pointer.
+
+## 15.3 The uncommitted wave
+
+`git status --porcelain` at `edd5acb`: **9 modified tracked files, 8 untracked
+paths.** `git diff --stat HEAD` totals **2,775 insertions / 347 deletions** across
+9 files.
+
+| | |
+|---|---|
+| modified | `Cargo.lock` (+714), `Cargo.toml` (+20), `src/api.rs` (+478), `src/recall.rs` (+533), `src/store.rs` (+900), `src/embed.rs` (+95), `src/main.rs` (+26), `src/lib.rs` (+6), `examples/locomo.rs` (−350 net, mostly deletions) |
+| untracked, source | `src/vector.rs` (45,697 B), `examples/select_fusion.rs` (118,999 B), `eval/locomo_dev.rs` (22,139 B) |
+| untracked, data | `models/` — 6 files, **23 MB** |
+| untracked, artifacts | `eval/SELECTION.md` (36,059 B), `eval/SELECTION_VECTOR_AXIS_FIXED.md` (35,926 B), `eval/results_selection.json` (1,543,396 B), `eval/results_selection_vector_axis_fixed.json` (423,078 B) |
+
+`Cargo.lock` grew by 714 lines — the fastembed/ort/tokenizers/ndarray subtree.
+None of the four `eval/SELECTION*` or `results_selection*` paths is tracked, and
+`.gitignore` does not cover them, so they are all staged-for-nothing and at risk.
+`models/` at 23 MB is a poor commit candidate for a repository whose headline is
+an 8.4 MB binary; `.gitignore` does not cover it either.
+
+## 15.4 `eval/SELECTION.md` is not a regeneration hazard, and `eval/README.md` is wrong about its own list
+
+`eval/README.md`'s "Artifacts that must NOT be regenerated" section states the
+list "is the complete set" and names two artifacts. **It is neither complete nor
+accurate for the new work, and the premise of the section does not cover what is
+actually in the tree.**
+
+`eval/SELECTION.md` (36,059 B, untracked) does **not** have the `SWEEP_FUSION.md` /
+`CODING_LIFE.md` hazard. Those two lose evidence: a re-run drops 8 of 12 rows and 2
+of 10 columns because the arms were removed from the generator. `SELECTION.md`'s
+axis table declares four pass-2 axes — `overlap`, `k`, `bm25_magnitude`,
+`agreement` — while `examples/select_fusion.rs:178` now defines a fifth,
+`const VECTOR: &[f64] = &[0.00, 0.10, 0.25, 0.50, 0.75, 1.00, 1.50]`. A re-run
+would **add** a vector axis, not delete rows. The failure mode is the opposite
+one, and it is not a hazard: it is a stale artifact.
+
+Two further facts, neither determinable from a re-run:
+
+- `eval/SELECTION_VECTOR_AXIS_FIXED.md` is **newer** (02:08 vs 21:43) and carries
+  a section the older file does not, explaining that the original vector axis
+  would have read as a null **for the wrong reason** — the dev corpus ingests via
+  `store.put`, which writes no vector, and `vector::vector_stream` returns an
+  empty stream for a vectorless bank by design. The fix embeds all 272 documents
+  before the sweep and aborts rather than publishing a grid if the counts
+  disagree. So `SELECTION.md` was produced by a harness that did **not** have that
+  guard, and `SELECTION_VECTOR_AXIS_FIXED.md` supersedes it for the vector axis.
+- Both artifacts carry the same **commit-under-test `edd5acb`**, and both disclose
+  in their own provenance block that 14 and 15 paths respectively were uncommitted
+  at run time, so neither is attributable to any commit. Neither is a committed
+  artifact at all, so `AGENTS.md` §2's rule about not hand-editing them does not
+  apply — the honest disposition is to regenerate with `--out-md` named, or to
+  leave both untracked and unclaimed.
+
+`eval/README.md` also never mentions `select_fusion.rs` at all, and its
+do-not-regenerate list predates both artifacts. It should name the new harness in
+its harness inventory and correct "the complete set" — **not** by adding
+`SELECTION.md` (which would be the wrong warning) but by saying the new grid
+artifacts are superseded-by-regeneration rather than preserved-because-lost.
+
+## 15.5 The consultation count is not recorded anywhere
+
+`docs/EVALUATION_HYGIENE.md` §3.3 is the **counting rule**, not a count. It says
+"Every selection made on the test set is logged in `docs/CONSISTENCY.md` with the
+date, the parameter, the search space size, and the delta. The count is the
+project's overfitting budget and it is meant to be visible and finite."
+
+`AGENTS.md` §1 says `docs/CONSISTENCY.md` records the count. It does not. §14.8 —
+the section that exists to address exactly this — says "The count of test-set
+consultations is unchanged from `docs/EVALUATION_HYGIENE.md` §2.1", and §2.1 is a
+prose audit of **one** confirmed violation, not a tally. So the budget is
+described as visible and finite in two governing documents and is stated as a
+number in none of them.
+
+**The count is determinable by hand and is 1.** The only parameter ever selected
+on the test set is `overlap: 0.25` (E1, 46 configurations on the 500 questions).
+§14.2's `overlap: 0.00` is a diagnostic bound, not a candidate. The `--budget`
+sweep in §14.9 varied a harness input, not a shipped value, and §14.8 already
+rules it a non-selection on stated grounds. §14.4's recency fix was verified
+behaviour-neutral at 0 per-question differences. The k-axis in the new
+`select_fusion.rs` grid is the live risk: `docs/EVALUATION_HYGIENE.md` §2.6 records
+`k = 60` as borrowed-and-never-fitted, and a grid that scores six `k` values on
+the dev set is fine, but the moment a `k` is chosen that is a second selection and
+the count becomes 2.
+
+Left as a gap rather than written in, because this section is the wrong place to
+open a tally: §3.3 asks for per-selection entries (date, parameter, search-space
+size, delta) and the audit of 2026-09-28 recorded the E1 sweep in prose without
+them. Adding the number without the log it counts would make the budget look
+tighter than the record supports.
+
+## 15.6 The `provisional:` marker — promoted in the docs, still live in a generated artifact
+
+`§14.1` already decided it: the marker on `overlap: 0.25` "is discharged — as a
+replication, not as an endorsement", on the strength of the LoCoMo result
+(+1.4pp R@5, +2.9pp NDCG@10 over 1,531 queries that never chose it). That
+decision had not been propagated to the documents that still assert the opposite.
+
+**Promoted** in `docs/EVALUATION_HYGIENE.md` §2.1, §2.2 and §3.2, which claimed
+"The shipped value is provisional", described independent confirmation as
+outstanding, and described the harness as unbuilt work. The rule that governs the
+promotion is `AGENTS.md` §1 — a fitted value carries a `provisional:` marker
+"until an independent set confirms it" — and an independent set has confirmed it.
+Promotion retires the **marker only**: §2.1 now states the measured
+out-of-sample delta (+1.4pp R@5 / +2.9pp NDCG@10) and the ≈94.4% best-estimate
+alongside the historical [0, +4.2pp] bound, so the +4.2pp cannot be quoted
+detached from its correction.
+
+**Not promoted, and this is a real remaining inconsistency.** The marker's primary
+carrier is generated. `eval/RESULTS.md:3` still opens with the `provisional:`
+paragraph, and that text is emitted by
+`examples/bench_common::fitted_weight_note` (`examples/bench_common/mod.rs:278`),
+which hard-codes "**fitted, not earned** … do not quote the difference from an
+unfitted configuration as earned". `AGENTS.md` §2 forbids hand-editing a generated
+artifact — "Fix the generator" — and the generator is under `examples/`, which
+this change does not own and did not touch. So a reader of `eval/RESULTS.md` still
+meets the discharged marker stated at full volume.
+
+**This is the one doc fix in this pass that cannot be completed from here.** It
+needs `fitted_weight_note` to either re-word to "replicated on independent data,
+magnitude not earned" or to take the promotion as a parameter, and then
+`eval/RESULTS.md` regenerated. Until then the honest state is: the decision is
+recorded in §14.1 and in `docs/EVALUATION_HYGIENE.md`, and one generated artifact
+has not caught up.
+
+## 15.7 Test counts — a null result, and the reason it is one
+
+Three documents carry **237**: the top banner (describing §12.9's gate),
+`docs/BENCHMARK.md:114`, and `docs/NEXT_ITERATION.md:7`. §14.7 records a later,
+larger gate: **258 passed / 0 failed** (158 lib + 94 bin + 2 backup + 2 e2e + 1
+scale + 1 doc-test), "baseline was 237, +21 from the mechanism tests".
+
+**None of the three 237s is stale, and none was changed.** `docs/BENCHMARK.md` §5
+is headed "Current matrix — memory-wire 0.3.0 tree" and its rows are the
+`v0.3.0` release figures (8,836,032 B binary included). §14.7's 258 was measured
+*after* the tag, at a later commit. Moving the 0.3.0 matrix to 258 would make a
+table headed "Status at 0.3.0" describe a tree that `v0.3.0` does not contain —
+the same error §12.8 fixed in the other direction when it moved 217 → 237. The
+counts are consistent once their scopes are read; they only look like a conflict
+side by side.
+
+**The count for the tree as it stands is not determinable without a build**, and
+nothing here was built. The uncommitted wave adds `src/vector.rs` and ~2,000 lines
+across `src/{api,recall,store}.rs`, so the count has almost certainly moved again
+past 258 in both directions. **Needs a `cargo test --locked` on the working tree
+before any release claim quotes a count.**
+
+## 15.8 Retracted and load-confounded numbers — nothing re-quotes them
+
+Checked every occurrence of the two figures this file records as retracted or
+load-confounded: the pre-correction README "recall p50 6 ms / p95 10 ms"
+(`§12.8`), the 22,116 KB under-load RSS and the 1311 µs coding-life p50 (§6, §9),
+and README's former "p50 1.2ms" (§10. All ten hits are either inside this file's
+own append-only record, where a retracted number belongs as history, or in
+`README.md:201`, which quotes the 6 ms / 10 ms pair **in order to say it is not
+re-pinned** and to point at the store's own committed recall figures instead. No
+document re-publishes a retracted number as a current claim. Nothing to fix.
+
+## 15.9 Deferred decisions — the register, as of 2026-09-29
+
+Five, of which two are the ones previously known and three were not recorded in
+one place before:
+
+1. **A bad `update_mode` string answers `400 invalid content`.** §7.1. The frozen
+   error table has no field-specific message, so `update_mode: "upsert"` rides the
+   content error even though the content was fine. Kept because adding a
+   field-specific code is a contract change, not a doc fix. Deferred at least
+   twice — recorded in §7.1 and carried in the README's error contract.
+2. **`trim_to_budget`'s signature is frozen**, so the duplicate `contents` map
+   cannot collapse to one. §7.2. Eliminating the map means changing
+   `pub fn … contents: &HashMap<&str, &str>`, and the overlap scorer was already
+   made buffer-reusing around it. The map is the last remaining allocation and
+   removing it needs the unfreeze.
+3. **`install/get-memory-wire.sh:56-57` prints the default data directory** in its
+   uninstall message, not the `--db` path the user passed. Recorded in §4.5, still
+   open in §10, and never re-examined since — `install/` has been outside every
+   phase's write scope across four of them.
+4. **The E1 open contradiction**, `docs/NEXT_ITERATION.md:127`: the claim that the
+   two streams already agree on their ordering "cannot be true, and the sweep
+   artifact proves it two ways". The data needed to settle it was never collected.
+   `docs/PERFORMANCE_PLAN.md` P1 is the phase that settles it, and every fusion
+   decision rests on it.
+5. **The vector arm's product trade**, `docs/EXCEED_PLAN.md:218`: a model download
+   on first use breaks the "one static binary, offline" property. The plan records
+   it as "a real product trade and the user's call, not mine." The uncommitted
+   wave has now taken that decision unilaterally in one direction — vendored and
+   offline, ~23 MB of weights in-tree — without the trade being recorded anywhere
+   as answered.
+
+**Not deferred, and worth saying so:** the `overlap: 0.00` null result (§14.2) and
+the `detail=none` latency claim that could not exist (§12.5) are recorded results,
+not open questions. `§12.5` is a negative finding that stands, and re-proposing a
+latency win for `detail=none` would be re-litigating a rejected lever under
+`AGENTS.md` §4.
+
+---
+
+# §16 — the `embed` build's `libstdc++.so.6`, and what it took to remove it (2026-09-29)
+
+§15.1 corrected the *bookkeeping* about the `embed` feature being present. This
+section is the part that could only be answered by building: **what the feature
+does to the shipped artifact's shared-library dependencies, and what a plain
+`cargo build --release --features embed` now costs.**
+
+Every number here is a byte count, an ELF `DT_NEEDED` entry, a test count or a
+verbatim command. **No latency and no RSS is quoted anywhere in this section**,
+so `AGENTS.md` §3 does not apply to any of it; the box was at `loadavg` 21.29 on
+24 cores throughout and that is recorded only so nobody assumes the number means
+anything it does not.
+
+## 16.0 The toolchain this was measured on, because two of the findings are toolchain-specific
+
+`rustc 1.98.0` (`88d9e12ae`, 2026-08-18), `cargo 1.98.0`, LLVM 22.1.8, host
+`x86_64-unknown-linux-gnu`, **gcc 16.2.1**. rustc links through
+`rust-lld` via rustup's `gcc-ld` wrapper with `-fuse-ld=lld` and `-nodefaultlibs`;
+the release profile is `lto = true`, `codegen-units = 1`. `bubblewrap 0.12.0` for
+the minimal-root harness. The glibc static caveats named in `16.4` are
+toolchain-independent; the `-static-libstdc++` no-op in `16.2` is a consequence
+of the LLD/`gcc-ld` path and would not reproduce on a toolchain that still uses
+GNU `ld` as the default linker.
+
+## 16.1 The regression, reproduced before anything was changed
+
+| Configuration | Size (B) | `readelf -d` `NEEDED` | minimal-root |
+|---|---|---|---|
+| default, no features | **8,874,144** | `libgcc_s.so.1`, `libm.so.6`, `libc.so.6` — **3** | **passes** |
+| `--features embed` | **62,632,504** | `libstdc++.so.6`, `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, `ld-linux-x86-64.so.2` — **5** | **fails** |
+
+The failing run, verbatim:
+
+```text
+$ memory-wire --version          # inside the minimal root
+/memory-wire: error while loading shared libraries: libstdc++.so.6: cannot open shared object file: No such file or directory
+exit 127
+```
+
+**The mechanism, read out of the dependency's own source rather than guessed.**
+`ort-sys 2.0.0-rc.13` fetches a prebuilt *static* `libonnxruntime.a` and emits
+`cargo:rustc-link-lib=static=onnxruntime`, so the ONNX runtime itself needs no
+`.so`. But `build/static_link/mod.rs:21-34` also emits
+`cargo:rustc-link-lib=stdc++`, and that resolves to the **shared**
+`libstdc++.so.6`. The captured link line shows the two regions:
+
+```text
+[3]  -Wl,-Bstatic
+[4]  …/libonig_sys-….rlib
+[5]  …/libort_sys-….rlib          <- carries libonnxruntime.a
+[6]  …/libsqlite3_sys-….rlib
+[7]  …/libcompiler_builtins-….rlib
+[8]  -Wl,-Bdynamic
+[9]  -lstdc++                      <- shared; becomes a DT_NEEDED
+[10] -lgcc_s … -lc
+```
+
+so ONNX Runtime's C++ symbols are satisfied *by the shared library*, which is
+precisely what puts a C++ runtime on a Rust binary's load list.
+
+## 16.2 Two options that do not work, kept here so they are not re-proposed
+
+**`-static-libstdc++` is a no-op, and the previous attempt's own figure was
+wrong.** Built with `RUSTFLAGS="-C link-arg=-static-libstdc++"`:
+
+| | Size (B) | `NEEDED` |
+|---|---|---|
+| `--features embed` | 62,632,504 | 5, `libstdc++.so.6` first |
+| the same build + `-static-libstdc++` | **62,632,504** | **identical, 5** |
+
+**0 bytes, not the +128 B previously recorded.** The conclusion ("a driver flag
+cannot override an explicit `rustc-link-lib`") reproduces; the magnitude does
+not, so the +128 B figure is wrong and is not carried forward. The reason is more
+specific than "a driver flag cannot override": rustc links through
+`-B …/bin/gcc-ld -fuse-ld=lld`, and that wrapper forwards the library list to
+LLLD without expanding gcc's link specs, so `-static-libstdc++` is parsed and
+then ignored. `-C link-arg` position is not the issue — the flag never reaches a
+linker that would act on it.
+
+**`ORT_CXX_STDLIB=static` is not the value that suppresses anything.** From
+`ort-sys`'s own code, `static_link_prerequisites` does:
+
+```rust
+if let Some(stdlib) = vars::get_any(vars::CXX_STDLIB) {
+    if stdlib.is_empty() { None } else { Some(stdlib) }
+}
+```
+
+so the value is used **verbatim** as a library name. `ORT_CXX_STDLIB=static`
+would emit `cargo:rustc-link-lib=static` and ask the linker for `libstatic`.
+The only value that suppresses the directive is the **empty string**, and it
+suppresses it completely — which is also why it is not the answer here, because
+it removes the C++ runtime without replacing it. Verified rather than reasoned:
+replaying the captured link line with `-lstdc++` deleted and nothing put in its
+place **fails to link**, with `undefined symbol: std::__throw_out_of_range_fmt(…)`
+among a cascade the linker declined to finish ("too many errors emitted,
+stopping now").
+
+## 16.3 What actually works: a static `libstdc++.a`, in position
+
+Two link-line shapes were measured by replaying the captured `cc` invocation
+against a snapshot of its own inputs, so each variant is the real link and not a
+reconstruction. Both leave `-lstdc++` exactly where rustc put it:
+
+| Variant | Size (B) | `NEEDED` | minimal-root |
+|---|---|---|---|
+| baseline | 62,632,504 | 5 | fails |
+| static `libstdc++.a` **replacing** `-lstdc++` at its own position | 63,748,384 | 4 | **passes** |
+| static `libstdc++.a` **inside the `-Bstatic` group**, `-lstdc++` left in place | **65,006,360** | **4** | **passes** |
+
+The second shape is the one shipped, and the reason is that it needs no
+cooperation from ort-sys at all. rustc already links with `-Wl,--as-needed`, so
+if every C++ symbol ONNX Runtime needs is satisfied *before* the shared
+`libstdc++.so.6` is reached, the linker declines to record a `DT_NEEDED` for it.
+The same measurement, twice, on a real build and on a replayed link, gave
+65,006,360 and 65,007,536 — the 1,176 B difference is link-layout slack between
+two different `rcgu.o` sets, not a different result.
+
+**`libsupc++.a` is deliberately not linked.** With and without it the binary is
+byte-identical: modern `libstdc++.a` already contains the C++ ABI objects. The
+only symbol-level claim worth making is a negative one that survives a partial
+scan: `libonnxruntime.a` does reference `dlopen`, `dlsym`, `dlclose`, `dladdr`
+and `dlerror`, which matters for `16.4` and nowhere else.
+
+## 16.4 `crt-static` works, and is still the wrong answer for this repository
+
+| Form | Result |
+|---|---|
+| `RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --features embed` | **does not build**: `error: cannot produce proc-macro for async-trait v0.1.92 as the target x86_64-unknown-linux-gnu does not support these crate types` |
+| the same **plus `--target x86_64-unknown-linux-gnu`** | **65,214,520 B, zero `NEEDED`**, static-PIE, minimal-root passes, `memory-wire embed` returns a real 384-d vector inside the sandbox |
+
+So the glibc-static caveats were checked rather than assumed, and they do not bite
+here. `libonnxruntime.a` links into a static-PIE with no relocation errors
+(it is built `-fPIC`, and the bundle is the same object set the `.so` is built
+from). `dlopen`/`dlsym`/`dlclose`/`dladdr` *are* referenced by the ONNX bundle
+(they are in the 1,030), so under static glibc they are the stub
+implementations that fail gracefully rather than load anything; the CPU execution
+provider is compiled in rather than loaded, which the `embed` subcommand
+returning a correct vector inside the sandbox is direct evidence of. NSS is not
+reached: nothing in this crate resolves a user or a hostname.
+
+**It is still rejected**, for a reason that has nothing to do with glibc: cargo
+has no per-feature `rustflags`, so `-C target-feature=+crt-static` lands on the
+default build too and turns a 3-`NEEDED` dynamic binary into a 0-`NEEDED` static
+one. That is a different artifact, not a fix to this one, and it needs a user-set
+environment variable and an explicit `--target`. Recorded as working, rejected
+for scope.
+
+## 16.5 The shipped fix: `build.rs`, and what it does and does not touch
+
+`build.rs` (new, 111 lines) resolves the C++ runtime with
+`cc -print-file-name=libstdc++.a` and emits
+`cargo:rustc-link-search=native=<dir>` + `cargo:rustc-link-lib=static=stdc++`,
+**gated on `#[cfg(feature = "embed")]` and on a `*-linux-gnu` target**. A plain
+`cargo build --release --features embed` needs **no environment variable, no
+`RUSTFLAGS`, and no `.cargo/config.toml`**. If the runtime cannot be located it
+emits one `cargo:warning` and leaves the toolchain default in place rather than
+breaking a build that used to work.
+
+rustc places the archive in the `-Wl,-Bstatic` group ahead of the shared
+`-lstdc++`, which is the position `16.3` measured. Confirmed in the link line of
+the real build — the group grew from four entries to six:
+
+```text
+[2]  -Wl,--as-needed
+[3]  -Wl,-Bstatic
+[4]  …/libmemory_wire-….rlib      <- carries the bundled libstdc++.a
+[5]  …/libonig_sys-….rlib
+[6]  …/libort_sys-….rlib          <- carries libonnxruntime.a
+[7]  …/liblibsqlite3_sys-….rlib
+[8]  …/libcompiler_builtins-….rlib
+[9]  -Wl,-Bdynamic
+[10] -lstdc++                      <- reached with nothing left undefined; --as-needed declines it
+```
+
+**The default build is not degraded, and the claim is measured rather than
+asserted.** Building the same tree with `build.rs` moved aside reproduces the
+pre-`build.rs` binary **byte for byte** (`cmp` clean, 8,874,144 B), so the
+toolchain here is deterministic and the comparison is meaningful. With
+`build.rs` present the default binary is **8,874,128 B** — 16 B *smaller* — and
+the only section whose size changes is **`.strtab`, by −12 B**; the remaining 4 B
+are the ELF header and build-id. `.text`, `.rodata` and `.data.rel.ro` are
+byte-for-byte the same size. A build script changes the crate's `-C metadata`
+hash, which changes mangled symbol names, which shortens the string table. **No
+instruction changed.** The `DT_NEEDED` list is still exactly three.
+
+## 16.6 The minimal-root test, both configurations, and proof the C++ runtime is real
+
+The root contains `ld-linux-x86-64.so.2`, `libc.so.6`, `libm.so.6` and
+`libgcc_s.so.1` and nothing else. No `libstdc++.so.6` is present, and it was
+deliberately left out rather than included to make the test pass.
+
+| Configuration | Size (B) | `NEEDED` | `memory-wire --version` in the root |
+|---|---|---|---|
+| **default** | **8,874,128** | `libgcc_s.so.1`, `libm.so.6`, `libc.so.6` — **3** | `memory-wire 0.3.0`, exit 0 |
+| **`--features embed`** | **65,007,536** | `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, `ld-linux-x86-64.so.2` — **4** | `memory-wire 0.3.0`, exit 0 |
+
+**A passing `--version` is not evidence the C++ runtime works**, so it was
+exercised, in the sandbox, on the shipped artifact:
+
+```text
+$ memory-wire embed "auth uses jose middleware and rotating keys"
+[-0.030153006,-0.022352213,-0.047021147,-0.0957627,0.03199739,0.012406587,…]
+$ memory-wire embed "the rate limiter is a token bucket"
+[-0.093209974,0.0070842616,-0.010345894,-0.04167332,0.06556005,-0.03236901,…]
+```
+
+384 floats each, and different — that is real ONNX Runtime inference from the
+23 MB vendored int8 MiniLM, in a root with no C++ shared library. Separately, the
+six `vector::tests` that load the model (`the_embedder_returns_384_dimensions`,
+`the_embedder_separates_a_paraphrase_from_an_unrelated_pair`,
+`the_stored_vector_is_the_embedding_of_the_redacted_text`,
+`the_vendored_model_is_the_file_the_provenance_records`,
+`the_vendored_tokenizer_is_the_fast_tokenizers_serialisation`,
+`the_default_weight_never_embeds_anything`) were run **inside the same sandbox**
+and all six pass. A full `memory_retain` → `memory_recall` MCP round trip on the
+same binary, same root, also passes, so the non-C++ paths are unaffected.
+
+**One difference is not fixed and is not claimed to be:** the embed build
+carries a fourth `DT_NEEDED` entry, `ld-linux-x86-64.so.2`, that the default
+build does not. It is present in the *unfixed* embed build too, so it comes from
+the dependency graph rather than from the C++ runtime, and the minimal root
+carries the loader, so it costs nothing. Its origin was not chased further; the
+default build's three-entry list is unchanged, which is the property that
+matters.
+
+## 16.7 Gates, verbatim, on this tree
+
+| Gate | Result |
+|---|---|
+| `cargo test --locked` | **288 passed, 0 failed** — 188 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test |
+| `cargo test --release --locked --features embed --lib` | **203 passed, 0 failed** — the 15 extra are `vector::tests` |
+| `cargo clippy --all-targets --all-features --locked -- -D warnings` | clean, exit 0 |
+| `cargo doc --no-deps --all-features --locked` | 0 warnings, exit 0 |
+| `cargo build --release --locked` | ok, 8,874,128 B, 3 `NEEDED` |
+| `cargo build --release --locked --features embed` | ok, 65,007,536 B, 4 `NEEDED` |
+| minimal-root, both configurations | both exit 0, `memory-wire 0.3.0` |
+
+**288 is not comparable to any count earlier in this file.** §15.7 already
+recorded that the uncommitted wave moves the count and that "the count for the
+tree as this stands is not determinable without a build". 288 is that build,
+on the tree as it stood at 2026-09-29 03:0x, with `src/vector.rs` and the
+`src/{api,recall,store,main,lib,embed}.rs` wave present. §12.9's 237 and §14.7's
+258 describe different trees at different commits and stay as they are.
+
+## 16.8 Feature disposition: **keep-and-working**
+
+The decision the user took is that **the deployment ships the lexical arm only**.
+That is a statement about the deployment, and it was already true before this
+section: `default = []`, `install/get-memory-wire.sh` downloads a release
+tarball rather than building, and nothing in the release path passes
+`--features embed`. What changed is that "opt-in, and starts on a minimal root
+like the default build does" is now a **measured, tested** property rather than a
+hope.
+
+Kept, because it is real work that is now correct:
+
+- `src/vector.rs` (45,697 B) with a test that runs the vendored model, a
+  `memory_vectors` column, a retain-time arm and a query-path branch.
+- 23 MB of vendored int8 MiniLM with a provenance table and a SHA-256 test that
+  re-derives the digest, satisfying the Apache-2.0 §4 obligation in source.
+- 15 unit tests that exercise ONNX Runtime end to end, six of which pass inside
+  a root with no C++ shared library.
+- A `memory-wire embed <text>` subcommand that makes the weights reachable from
+  the shipped executable rather than stripped by LTO.
+
+A working fix existed. Descoping would have discarded correct, tested work and
+the measurement record that justifies keeping it, and the brief's own condition
+for descoping — no option works — was not met.
+
+**The vector arm still ships inert.** `FusionWeights::vector` is `0.0` in every
+build, so no ranking and no request reaches the stream. Nothing in this section
+changes that, and nothing here is evidence for any fusion configuration.
+
+## 16.9 Left for a human
+
+1. **The `ld-linux-x86-64.so.2` fourth `NEEDED`** (`16.6`) is untraced. Harmless
+   on the minimal root, but "three dependencies" and "four dependencies" are
+   different sentences and the second one now applies to the embed build.
+2. **Cross-compiling the `embed` feature.** `build.rs` asks `$CC` (default `cc`)
+   for the static runtime, which is right when the target is the host and wrong
+   when it is not. `CC=aarch64-linux-gnu-gcc` is the fix and is not wired up or
+   tested, because the release pipeline builds each architecture on its own
+   runner and never crosses. Worth a line in the release docs if that changes.
+3. **`ORT_CXX_STDLIB=` remains unset**, deliberately: the shipped fix does not
+   need it (`16.3`), and setting it globally in `.cargo/config.toml` would break
+   a macOS embed build, where `libc++` is the right answer. If a future change
+   wants the shared library *kept* on Linux, that is the knob and it is one line.
+4. **The six "static binary" / "no runtime" assertions** elsewhere in the docs
+   (`README.md:3`, `README.md:116`, `docs/RERANKING_PLAN.md:5`,
+   `docs/PERFORMANCE_PLAN.md:213-215`, `docs/EXCEED_PLAN.md:216-218`,
+   `plugin/skills/memory-wire/SKILL.md:3` and `:8`) are outside this section's
+   write scope. None of them is newly false — the default build has always been
+   dynamically linked to three libraries — but none of them says so either, and
+   the `embed` build's four-library list is now on the record here for the first
+   time. Left for the task that owns those files.
+5. **Two doc claims that are false against the tree and are not covered by
+   §15.1's disclaimer.** `§15.1` lists "deliberately left as written" as §8
+   (`:263`), §12.1 #4 (`:558`) and §12.8 (`:782`). Two more are not on that list:
+   - **`docs/CONSISTENCY.md:289`** — "The `fastembed` removal is real, but it is
+     more than offset by the MCP SDK landing…". False (the removal is not real)
+     and nothing disclaims it. This is the one line in the file that a reader
+     could take at face value today.
+   - **`docs/RERANKING_PLAN.md:67` and `:91`** — "ort needs ONNX Runtime, whose
+     static library is **108 MB** uncompressed". The `.a` really is 105,481,448 B,
+     so the arithmetic is roughly right, but the *artifact* is not: with
+     `ort-download-binaries` plus `--gc-sections` it lands inside a 65,007,536 B
+     binary, and the cross-encoder remains disqualified either way. A dated
+     rejection record, so it stays; it just should not be read as a claim about
+     the current binary's size.
+
+---
+
+# §17 — the assertions that were false, closed out, and the consultation budget stated (2026-09-29)
+
+Continues §16, which closed item 4 of its own §16.9 register. **Appended, like
+every section here.** §16's measurements are not repeated, only pointed at; nothing
+was built and no test was run for this section, except the one `readelf -d` call
+below, which reads an existing binary and contends on nothing.
+
+Two of the four work items here are corrections to claims that were *never*
+false — they were never *true*, and no document had said otherwise. One is a
+number no document stated. One is a framing a prior commit retired correctly and
+which has since become true again.
+
+## 17.1 The "static binary" assertions: closed, with the measurement
+
+`§16.9` item 4 left six assertions to the task that owns those files. Re-verified
+on this tree, from the release binary that exists in `target/release/`:
+
+```text
+$ readelf -d target/release/memory-wire | grep -c NEEDED
+3
+$ readelf -d target/release/memory-wire | grep NEEDED
+ (NEEDED)  Shared library: [libgcc_s.so.1]
+ (NEEDED)  Shared library: [libm.so.6]
+ (NEEDED)  Shared library: [libc.so.6]
+$ file target/release/memory-wire
+ELF 64-bit LSB pie executable, x86-64, dynamically linked,
+interpreter /lib64/ld-linux-x86-64.so.2, … not stripped
+```
+
+**The default build has never been statically linked.** It is a dynamically
+linked PIE with three `DT_NEEDED` entries, all of which are part of any glibc
+system. That is a strong and *checkable* claim — three is a number, and a reader
+can run the same command — and it is what the docs now say. The pitch is not
+weakened by it: the real advantage was never staticness, it is that the whole
+service is one file with no daemon, no language runtime, no database server and
+three libraries the OS already has.
+
+Corrected, in the four files their own owners hold:
+
+| file:line | before | after |
+|---|---|---|
+| `README.md:3` | "Agent memory in one 8.4 MB static binary" | "one 8.4 MiB binary, three shared libraries", and "No runtime" → "No language runtime, no database server" |
+| `README.md:116` (footprint table) | no dependency row at all | a **Shared libraries** row naming all three, plus a **Minimum box** cell that stops implying you install SQLite — `rusqlite` is declared `features = ["bundled"]`, so the database is compiled in |
+| `docs/RERANKING_PLAN.md:5` | "the single ~8.4 MB static binary, offline" | "the single ~8.4 MiB binary, offline … **It is not a statically linked ELF**" + the three names |
+| `docs/PERFORMANCE_PLAN.md:213-215` | "the '8.4 MB, one static binary, nothing to install' claim" | "the '8.4 MiB, three shared libraries, one file, nothing to install' claim" |
+| `docs/EXCEED_PLAN.md:216-218` | "breaks `docs/PERFORMANCE_AUDIT.md`'s 'one static binary, offline' property" | the same trade, stated without the false attribution — see §17.6 |
+
+**`docs/EXCEED_PLAN.md`'s citation was false in a second, separate way, and that
+is the more serious half.** `docs/PERFORMANCE_AUDIT.md` never states any such
+property — a case-insensitive search of that file for `static`, `offline`,
+`single file` and `install` returns **nothing**. The document was invoked as the
+authority for a constraint it does not contain. The line now names the property
+and its real home instead of citing a file that never made the claim.
+
+**Two places still say it, and neither is a doc fix.**
+
+- **`plugin/skills/memory-wire/SKILL.md:3` and `:8`** — "a single static Rust
+  binary" in the front-matter description, and "One binary, no daemon, no
+  runtime" in the body. Both outside every phase's write scope to date, and
+  outside this one. The second is defensible on its own terms ("one binary" is
+  true; "no runtime" means no language runtime); the first is not.
+- **The published `v0.3.0` release body** — "Upgrades are a single static binary —
+  no runtime, no daemon, no database to install." It is published, so no edit
+  reaches it. It is also the sentence the retired banner in this file's header
+  was written against, which is worth knowing before anyone reads the retirement
+  as agreement with the release page.
+
+## 17.2 The embed build is now reachable from the front door
+
+§16 is the record — the `libstdc++.a` link mechanism, the four-entry
+`DT_NEEDED`, 65,007,536 B against 8,874,128 B, the `bwrap` minimal root, the two
+rejected alternatives. What §16 could not do is put any of it where a reader
+starts. Three pointers added, no numbers moved:
+
+- `README.md`'s `embed` paragraph now carries the cost of the feature in the same
+  breath as its existence: 65,007,536 B vs 8,874,128 B, the `build.rs` static
+  `libstdc++.a` trick, no `libstdc++.so.6` recorded at all, and the minimal-root
+  test running real ONNX inference rather than `--version`.
+- The footprint table's new **Shared libraries** row carries the 3-vs-4 split.
+- `docs/VERSIONS.md` §0 now says the pins do not cover the `embed` feature,
+  `build.rs` or `src/vector.rs`, because all three are post-`v0.3.0`.
+
+`§16.4` and `§16.2` are the "do not re-propose this" half and are unchanged; the
+point of the pointers is that a reader arriving at the README now hits the
+rejected alternatives on the way out rather than re-deriving them.
+
+## 17.3 The consultation count, reconstructed
+
+`§15.5` found that `docs/EVALUATION_HYGIENE.md` §3.3 states a counting *rule* and
+no document states a *number*, and left the number unwritten because opening a
+tally needs a log to count. Here is the log, reconstructed from the record, with
+the arithmetic `§15.5` did by hand checked against the artifacts.
+
+**The rule, as `§3.3` words it:** *every selection made on the test set* is
+logged with date, parameter, search-space size and delta. The budget is the count
+of those occasions.
+
+### The three occasions the test set was consulted
+
+| # | date | phase | harness | search space | what was decided | resulting delta | where the record is |
+|---|---|---|---|---|---|---|---|
+| 1 | 2026-09-28 | **E1** | `examples/sweep_fusion.rs` | **27 configurations**, 500 LongMemEval-S questions, seed 42, one index per question | `overlap` → **0.25 shipped** (axis A, 9 values 0.00→2.00); `k` → 60 retained (axis B + corner E); `agreement` → 0.0 retained (axis C, 4 values) | `overlap`: R@5 93.0 → **97.2** (+4.2pp), NDCG@10 83.5 → **88.2** (+4.8pp), R@20 flat at 99.6%. `k`: 0.0 — no corner beats 0.25/k=60. `agreement`: 0 of 500 questions moved at any magnitude | `eval/SWEEP_FUSION.md` at `b3ca603`; provenance: loadavg 20.03, index build 160.6s for all 27 |
+| 2 | 2026-09-28 | **E3 + E4** | same harness, same 500 questions | **46 configurations** — occasion 1's 27 re-measured plus **19 new**: axis F `idf` (9 weights) and axis G `coverage` (10 rows) | `idf` overlap → **rejected**; `coverage` stream → **rejected** | `idf` at the shipped 0.25: **−0.4pp R@5** (97.2→96.8) for +1.7pp NDCG@10. `coverage=0.05`: **−0.2pp R@5** (97.0 vs 97.2) | `eval/SWEEP_FUSION.md` at `993134d`; provenance: loadavg 60.42, index build 398.8s for all 46 |
+| 3 | 2026-09-28 | **E2** (Porter stemming) | `longmemeval` | **2 configurations** (E1-only vs E1+stemming), 500 questions, seed 42, all 2,500 per-question values diffed; plus a 2-point sub-comparison at equal weight | `tokenize='porter unicode61'` → **rejected and reverted** | R@5 **+0.00** (4 up / 4 down / 492 same), NDCG@10 +0.65; at equal weight R@5 93.0 → 94.2, but E1 had already taken that headroom | `docs/NEXT_ITERATION.md` §E2 — **prose only, not in a committed artifact** |
+
+### The count, three ways, because "consultation" and "selection" differ
+
+- **Occasions the test set was consulted: 3.** All 2026-09-28, all
+  `examples/sweep_fusion.rs` or `longmemeval`, all 500 questions, seed 42.
+- **Parameters whose shipped value was *chosen* by looking at those numbers: 1.**
+  `overlap: 0.25`. This is the one `docs/EVALUATION_HYGIENE.md` §2.1 audits, the
+  one that carries the historical `provisional:` marker, and the one `§14.1`
+  discharged on independent data. **`§15.5`'s hand count of 1 is confirmed.**
+- **Levers *rejected* on test-set evidence: 2, plus 1 that was algebra.** `idf`
+  and Porter stemming were turned down because a test-set number said so. The
+  `coverage` stream is not one of them: `docs/EVALUATION_HYGIENE.md` §1 exempts it
+  because the decisive argument was algebraic (`coverage: w ≡ overlap: 0.25 + w`,
+  RRF being linear in the weights), and axis G merely agrees. Listing it as a
+  consultation would overstate the budget; omitting axis G would understate the
+  evidence.
+
+**The two retentions are not selections, and saying so is the point.** `k = 60`
+was inherited from Hindsight and nothing changed; the corner sweep only confirms
+it. `agreement` moved 0 of 500 questions at every magnitude, which is a null
+(`AGENTS.md` §6) rather than a choice. Neither burns budget. That is also the
+narrow sense in which `docs/EVALUATION_HYGIENE.md` §2.6's "borrowed, not fitted —
+and therefore also unvalidated here" still stands: §2.6 is about the *origin* of
+`k = 60`, and after occasion 1 the value has been measured here without having
+been chosen here. A reader should not take §2.6 to mean the constant has never
+been swept — it has, in axis B and corner E, and that sweep is what this table
+counts.
+
+**One adjacent measurement, recorded because the rule covers it and it is easy to
+mis-file.** E1's decision also weighed the *synthetic* recall curve
+(`bench_recall_curve`, 32 fixed queries, overlap 0.50/0.75/1.00, R@5
+96.9/90.6/96.9/96.9 at four sizes). That is not the test set, so it is not a
+consultation under §3.3, but `AGENTS.md` §1 says the synthetic set is not to be
+tuned against either, and `docs/EVALUATION_HYGIENE.md` §2.3 is where the
+resulting trade-off is framed. It is listed here so nobody has to rediscover it.
+
+**The live risk is the `k` axis of the dev-set grid, and it has not fired.**
+`eval/SELECTION.md` scores six `k` values on LoCoMo, and
+`docs/EVALUATION_HYGIENE.md` §2.6 records `k = 60` as borrowed. Both artifacts are
+grids with no recommended configuration — `SELECTION_VECTOR_AXIS_FIXED.md` says so
+in its own text — so nothing has been selected off them and the count is still 3/1.
+**The moment a `k` is chosen from either table, the selection count is 2 and the
+occasion count is 4**, and the choice must be made on the dev set and never
+checked against LongMemEval.
+
+### What the record does not settle
+
+1. **Occasion 1 and occasion 2 are two runs, or one run reported twice.** The
+   committed artifact says 27 configurations at `b3ca603` and 46 at `993134d`, an
+   hour apart, with two different provenance lines and two different index-build
+   times (160.6s vs 398.8s) at two different loads. That is two runs. But
+   `docs/NEXT_ITERATION.md` §E3 describes "**the same 46 configurations** took
+   398.8s of index build here against 160.6s in the E1 run", which cannot be
+   literally true of a 27-configuration E1 run. **Both readings are left standing,
+   per `AGENTS.md` §6** — the artifact headers and the two commits are the stronger
+   evidence, and the prose sentence is the weaker one. The count does not turn on
+   it: 3 occasions and 1 selection hold either way, because both readings contain
+   the same single shipped selection.
+2. **Everything before `v0.2.0`.** This repository's history is **29 commits** and
+   begins at `50614e4` ("memory-wire 0.2.0", 2026-09-27). §1–§5 of this file
+   describe a `0.1.0`-era sweep whose commits are not in this repository's log, so
+   no pre-`0.2.0` selection can be reconstructed from the record — and no
+   pre-`0.2.0` parameter is named as selected anywhere in §1–§5 either. The honest
+   statement is that the count above is complete **for the history this repository
+   holds**, and that the `0.1.0` era is out of reach rather than clean.
+3. **Whether E2's numbers ever reached an artifact.** They did not, as far as this
+   tree goes: `eval/BENCH_RECALL_CURVE.md` records the E1-only recall curve, and
+   E2's stemming run is described as byte-identical to it, so nothing was written
+   for it. `AGENTS.md` §2 requires prose figures to say so; §E2 does not say so.
+   That is a live inconsistency in `docs/NEXT_ITERATION.md`, and that file was not
+   in this pass's write scope.
+
+## 17.4 `eval/SELECTION*.md` are stale, not hazardous
+
+`§15.4` reached the same verdict and left the edit to the file's owner. It is now
+made, in `eval/README.md`, and the supporting axis comparison is a table there:
+`SELECTION.md`'s pass-2 table declares six axes, the generator's constants are
+seven, the six match value-for-value, and the seventh is `vector`. A re-run
+therefore **adds** rows — the opposite of the `SWEEP_FUSION.md` /
+`CODING_LIFE.md` hazard, where a re-run deletes evidence. Neither artifact is on
+the do-not-regenerate list, and the reason is stated there rather than implied.
+
+One thing found while making that comparison, and reported rather than fixed:
+`SELECTION_VECTOR_AXIS_FIXED.md`'s §5 renders the walk's range bounds as
+`f64::MAX` where the measured set is empty. It is a formatting bug in
+`examples/select_fusion.rs`, which `AGENTS.md` §2 says to fix in the generator, and
+`examples/` was not in this pass's write scope. It is not a measurement.
+
+## 17.5 The tree *is* ahead of the published release, and the tag is `v0.3.0`
+
+`§15.2` restored the pointer. What the docs did not do is act on it, and one brief
+instructing this pass asserted that "`v0.2.0` is the published tag". **That is
+wrong, and by name: `v0.3.0` is the published release.** Checked against the
+GitHub API, not inferred from the docs — `releases/latest` for
+`ishan-parihar/memory-wire` returns `tag_name: v0.3.0`, `draft: false`,
+`prerelease: false`, `published_at: 2026-09-28T08:21:33Z`, one asset,
+`memory-wire-linux-x86_64.tar.gz`. `v0.2.0` is 28 commits back.
+
+So the accurate position, which is a *different* statement from the one that was
+retired at `c56b1f1`:
+
+- `v0.3.0` is published. The installer's `latest` resolves to it. That part of
+  the retirement was right and stays right.
+- `HEAD` (`edd5acb`) is **19 commits past the `v0.3.0` tag**, on top of an
+  uncommitted wave (`§15.3`: 9 modified tracked files, 8 untracked paths).
+- `Cargo.toml` still says `0.3.0`, so **the version string describes the release
+  and not the tree** — which is exactly the gap the retirement claimed did not
+  exist. The embedding of the `embed` feature, `build.rs` and `src/vector.rs` in
+  the shipped artifact is a consequence: `v0.3.0` is the lexical arm only.
+- The header of this file still carries the retired banner, because this file is
+  append-only and that line is history. **This section is the correction**; the
+  banner at `:22-30` should be read as superseded on this one point.
+
+Fixed where it could be: `docs/VERSIONS.md` §0, which is not append-only, now
+states the position instead of the retirement; and `README.md`'s install section
+now says plainly that `curl … | sh` gives you `v0.3.0` while the rest of the file
+describes later work.
+
+## 17.6 §16.9 item 5: both claims resolved, one by an addendum
+
+- **`docs/CONSISTENCY.md:289`** ("the `fastembed` removal is real, but it is more
+  than offset by the MCP SDK landing") — false, and inside an append-only file, so
+  it stays. `§15.1` is the correction and `§17.1`'s shared-library row is the
+  consequence; this line is the third pointer. It is the one line in this file a
+  reader could still take at face value, and it will keep being takeable — that is
+  the cost of the append-only rule, paid knowingly.
+- **`docs/RERANKING_PLAN.md:67` and `:91`** ("ONNX Runtime, whose static library is
+  **108 MB** uncompressed") — a dated audit record, kept as written, with an
+  addendum under §3.2 giving the measured figure (a 65,007,536 B binary with 4
+  `NEEDED` entries) and stating that the disqualifier is the ~600–800 ms, which
+  packaging does not touch. The §3.2 conclusion's "breaks the single-binary claim
+  by 3–11×" was rewritten to point at the addendum rather than restate a ratio
+  that no longer has a measured denominator.
+
+## 17.7 What was not fixed, and why
+
+1. **`plugin/skills/memory-wire/SKILL.md:3`** — "a single static Rust binary".
+   Outside the write scope of this pass and of every prior one. One line, one
+   front-matter string.
+2. **The published `v0.3.0` release body** — "a single static binary". Published;
+   unreachable by an edit. Fixable only by a later release's notes.
+3. **`eval/SELECTION_VECTOR_AXIS_FIXED.md`'s `f64::MAX` bounds** — generator bug,
+   `examples/` not in scope. §17.4.
+4. **`docs/NEXT_ITERATION.md` §E2's prose-only figures** — no committed artifact
+   behind them, which `AGENTS.md` §2 requires the prose to say. §17.3 item 3.
+5. **`docs/PERFORMANCE_AUDIT.md` has no dependency, offline or install claim at
+   all**, so nothing there needed correcting — but that is why `EXCEED_PLAN.md`'s
+   citation was false, and it means the file cannot serve as the citation for any
+   such property. §17.1.

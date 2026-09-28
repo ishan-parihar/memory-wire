@@ -213,9 +213,16 @@ Only if A and B both come back null on LoCoMo. The honest cost statement:
 - **No ANN index is needed at our scale.** agentmemory ships exact brute-force
   cosine over a `Map` and gets 95.2%. With ~50 documents per bank a linear scan
   is microseconds.
-- What it costs: a **model download on first use**, which breaks
-  `docs/PERFORMANCE_AUDIT.md`'s "one static binary, offline" property. That is a
-  real product trade and the user's call, not mine.
+- What it costs: a **model download on first use**, which breaks the offline,
+  one-file property the product is built around — one file to copy, three shared
+  libraries (`libgcc_s.so.1`, `libm.so.6`, `libc.so.6`), no daemon, no database
+  server, nothing to install. It is not a *static* binary; `readelf -d` lists
+  exactly those three `NEEDED` entries and nothing else
+  (`docs/CONSISTENCY.md` §16.6). **The citation to
+  `docs/PERFORMANCE_AUDIT.md` that earlier revisions of this line carried was
+  wrong — that file never states the property**, so nothing is being broken that
+  document promised. It is still a real product trade and the user's call, not
+  mine.
 
 Gate: must beat the best of A/B/C on LoCoMo by more than the run-to-run spread,
 or it does not ship.

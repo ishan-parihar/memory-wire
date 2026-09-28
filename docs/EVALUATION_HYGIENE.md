@@ -38,12 +38,26 @@ Done honestly, including where the answer is uncomfortable.
 
 `eval/SWEEP_FUSION.md` records 46 configurations, all scored on LongMemEval-S's
 500 questions. `0.25` was kept because it won on aggregate R@5. One parameter,
-swept on the test set, selected on the test set. **The shipped value is
+swept on test set, selected on the test set. **The shipped value was
 provisional.**
 
-The magnitude is bounded: the unfitted equal-weight configuration measured
-R@5 93.0 / NDCG@10 83.5, and the fitted one measures 97.2 / 88.2. So the true
-generalisation gain is somewhere in **[0, +4.2pp]** and is currently unknown.
+> **Resolved 2026-09-28 — the marker is discharged.** The independent
+> confirmation §3.2 asked for was built (`examples/locomo.rs` →
+> `eval/LOCOMO.md`) and it confirms the direction: over 1,531 LoCoMo queries
+> that never chose the value, `0.25` beats equal weight by **+1.4pp R@5 and
+> +2.9pp NDCG@10**. Per the rule in `AGENTS.md` §1 — a fitted value is marked
+> provisional *until an independent set confirms it* — the weight is no longer
+> provisional. `docs/CONSISTENCY.md` §14.1 records the decision and its limits.
+
+**What promotion does and does not buy.** It retires the *marker*; it does not
+convert the +4.2pp into an earned number. The magnitude is now bounded from both
+ends rather than left unknown: the unfitted equal-weight configuration measured
+R@5 93.0 / NDCG@10 83.5, the fitted one measures 97.2 / 88.2, and the
+*independently measured* value of the delta is **+1.4pp R@5 / +2.9pp NDCG@10**.
+So the true generalisation gain is in **[0, +4.2pp]** with a measured out-of-sample
+point of **+1.4pp**, and the best out-of-sample estimate of the shipped
+configuration is **≈94.4% R@5**, not 97.2%. Quote the marker as discharged; do
+not quote +4.2pp without that sentence attached.
 
 ### 2.2 The consequence for our parity claim
 
@@ -57,12 +71,14 @@ This is the part that has to be said out loud. We have been reporting
 | **memory-wire, unfitted** | **93.0%** | clean |
 | **memory-wire, fitted `overlap: 0.25`** | **97.2%** | **not a generalisation estimate** |
 
-The **only clean number we have is 93.0%**, which is +6.8pp over agentmemory's
-BM25-only arm and −2.2pp behind their hybrid. The "+2.0pp lead" quoted in the
-README is measured against a fitted configuration. That does not make it false —
-one parameter over 46 configurations is a small search space and the effect may
-well be real — but it is not the clean comparison it was presented as, and it
-needs independent confirmation before it belongs in a headline.
+The **only clean LongMemEval number we have is 93.0%**, which is +6.8pp over
+agentmemory's BM25-only arm and −2.2pp behind their hybrid. The "+2.0pp lead"
+quoted in the README is measured against a fitted configuration. That does not
+make it false, and the independent confirmation this section asked for has since
+arrived (§2.1) — but it confirms the *direction* and prices the *delta* at
++1.4pp, not +4.2pp. The honest out-of-sample figure is **≈94.4% R@5: behind
+agentmemory's 95.2% hybrid by ≈0.8pp, not ahead of it by 2.0pp.** That is the
+number that belongs in a headline, and the README now carries it.
 
 Note also that both parents develop against a public dataset. Whether agentmemory
 tuned on these exact 500 questions is not recorded in their repo. A head-to-head
@@ -121,10 +137,17 @@ is the same shape as LongMemEval and it is retrieval-only — `gold_answers` is
 answer prose we do not need. It is from an entirely different source, so it is
 genuinely independent.
 
-Building a harness for it is the first piece of work, and it retroactively
-settles §2.1: **does `overlap: 0.25` beat equal weight on independent data?** If
-yes, the effect replicated and 0.25 was a real discovery. If no, it was an
-artifact of 500 questions and we revert to the unfitted 1.00.
+Building a harness for it was the first piece of work, and it retroactively
+settles §2.1: **does `overlap: 0.25` beat equal weight on independent data?** **It
+does — it has been built and run** (`examples/locomo.rs` → `eval/LOCOMO.md`:
+1,531 queries, +1.4pp R@5, +2.9pp NDCG@10; `docs/CONSISTENCY.md` §14.1), so the
+effect replicated and `0.25` is no longer a provisional value.
+
+**It does not re-open the weight for tuning.** The LoCoMo table is a measurement,
+not a shortlist: §14.2 records that `overlap: 0.00` ties it on R@1 and NDCG@10
+while churning 69 queries up and 41 down — a tie, recorded as a null result and
+deliberately not acted on. Picking a new value off either table is a selection
+that must be counted under §3.3 and must never be checked against LongMemEval.
 
 ### 3.3 Counting rule
 

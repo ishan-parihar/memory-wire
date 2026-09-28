@@ -122,12 +122,18 @@ See `docs/CONSISTENCY.md` §12.1 for the method.
 
 ### Still not built — and formally declined, not in flight
 
-- **Vector retrieval was DECLINED.** The `embed` feature and its `fastembed` /
-  ONNX dependency were removed from the tree, not deferred; `Cargo.lock` has no
-  `fastembed`, `ort` or `tokenizers` entry. `src/embed.rs` survives as a
-  dependency-free cosine/rank kernel with no embedder and no producer behind it.
-  PLAN.md §2/§4 still list `fastembed` because those sections describe the goal
-  architecture, not this build.
+- **Vector retrieval was DECLINED — and the arm has since been rebuilt, vendored
+  and is still inert.** The decision stands: nothing in it is reachable from a
+  request. What no longer holds is the evidence the decline was recorded with.
+  `fastembed`, `ort`, `ort-sys` and `tokenizers` are all back in `Cargo.lock`,
+  and `Cargo.toml` carries `embed = ["dep:fastembed"]`, **off by default**
+  (`default = []`). Behind the feature sit `src/vector.rs` (a retain-time dense
+  arm with an embedder, a `memory_vectors` column and a third query-path stream)
+  and ~23 MB of vendored int8 MiniLM weights in `models/`. `src/embed.rs`
+  survives as the dependency-free cosine/rank kernel. `FusionWeights::vector`
+  ships at `0.0` in every build, so a default build compiles none of this and the
+  8,836,032 B figure is unaffected. PLAN.md §2/§4 still list `fastembed` because
+  those sections describe the goal architecture, not this build.
 - 4-tier consolidation ladder (deleted: no scheduler, no caller) · `DELETE` for a
   whole bank · `tags` in the lifecycle responses · `document_id` in any response ·
   a `backup` subcommand (the `sqlite3 .backup` recipe is the interface) ·

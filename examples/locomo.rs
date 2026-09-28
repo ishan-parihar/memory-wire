@@ -51,22 +51,23 @@
 //! able to silently replace a reviewed artifact; that has already destroyed real
 //! content in this project twice.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::fs;
 
-use memory_wire::api::MemoryService;
-use memory_wire::memory::{Bank, Memory};
 use memory_wire::recall::FusionWeights;
-use memory_wire::store::{SqliteStore, Store};
-use serde::Deserialize;
 
 // The `--out-md` policy (a bare run must not be able to overwrite a committed
 // `eval/` artifact) and the build-profile name the provenance line needs.
 mod bench_common;
 
-/// Upstream commit `eval/download.sh` pins its sha256s to, quoted in the artifact
-/// so a reader can find the exact bytes these numbers came from.
-const UPSTREAM_REF: &str = "decbb07f4f9899deac28a76293564cf263872652";
+// The dev-set core, shared with `examples/select_fusion.rs`: the data shapes, the
+// ingestion, the metric definitions and the aggregation. It lives outside `examples/`
+// so there is exactly one copy — a second one is how a weight grid and a replication
+// check end up describing two different corpora under one name. See its module docs.
+#[path = "../eval/locomo_dev.rs"]
+mod dev;
+
+use dev::{git_head, loadavg, Agg, Corpus, Row, UPSTREAM_REF};
 
 /// The grid: the weight on the token-overlap stream, with BM25 pinned at 1.0, the
 /// agreement bonus at 0.0 and RRF `k` at 60, so `overlap` is the only axis that
@@ -77,219 +78,6 @@ const UPSTREAM_REF: &str = "decbb07f4f9899deac28a76293564cf263872652";
 /// moved with the default would stop being a baseline. `0.25` is the fitted value
 /// under test. `0.00` is a diagnostic bound (BM25 alone), not a candidate.
 const GRID: &[f64] = &[1.00, 0.75, 0.50, 0.25, 0.00];
-
-/// A LoCoMo document. `content` is a JSON **string** holding a list of dialogue
-/// turns, so it is parsed a second time in [`Document::text`].
-#[derive(Deserialize)]
-struct Document {
-    id: String,
-    content: String,
-    user_id: String,
-}
-
-/// One turn of a LoCoMo document. Every turn has `speaker` and `text`; the
-/// optional field is the image-caption side-channel of the conversations that
-/// included photos.
-#[derive(Deserialize)]
-struct Turn {
-    speaker: String,
-    #[serde(default)]
-    text: String,
-    #[serde(default)]
-    blip_caption: Option<String>,
-}
-
-/// A LoCoMo query. `meta` and `gold_ids` are **already-decoded** JSON values in
-/// this distribution — only `content` is double-encoded — and `gold_answers` is an
-/// array whose elements are not uniformly strings (6 of 1,540 carry a bare JSON
-/// number, a year or a count), so it is held as `Value` and only ever read for
-/// shape. See the artifact's "Data shape" section, which records all of that
-/// against the plan's assumption that the fields were uniform.
-#[derive(Deserialize)]
-struct Query {
-    id: String,
-    query: String,
-    gold_answers: Vec<serde_json::Value>,
-    gold_ids: Vec<String>,
-    user_id: String,
-    meta: Meta,
-}
-
-#[derive(Deserialize)]
-struct Meta {
-    category: String,
-}
-
-impl Document {
-    /// The document as one memory body: one line per turn, caption text folded in
-    /// where there is any. The same shape `longmemeval` builds from a session, so
-    /// the two suites put the same kind of string in front of the same index.
-    fn text(&self) -> anyhow::Result<String> {
-        let turns: Vec<Turn> = serde_json::from_str(&self.content).map_err(|e| {
-            anyhow::anyhow!("locomo: document {} has un-decodable content: {e}", self.id)
-        })?;
-        Ok(turns
-            .iter()
-            .map(|t| {
-                let mut line = format!("{}: {}", t.speaker, t.text);
-                // A photo turn can carry no text, in which case its caption is the
-                // only content in the bank a question about it could match.
-                match t.blip_caption.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
-                    Some(caption) => line.push_str(&format!(" [image: {caption}]")),
-                    None if t.text.trim().is_empty() => line.push_str(" [image: no caption]"),
-                    None => {}
-                }
-                line
-            })
-            .collect::<Vec<_>>()
-            .join("\n"))
-    }
-}
-
-/// A hit means **any** id in `gold_ids` inside the top `k` — the same
-/// `recall_any` definition `longmemeval` and `sweep_fusion` use, so the R@5/R@10
-/// columns are on one scale with `eval/RESULTS.md`.
-fn recall_any(retrieved: &[String], gold: &[String], k: usize) -> f64 {
-    let top: HashSet<&str> = retrieved.iter().take(k).map(String::as_str).collect();
-    f64::from(gold.iter().any(|g| top.contains(g.as_str())))
-}
-
-fn dcg(rels: &[bool], k: usize) -> f64 {
-    rels.iter()
-        .take(k)
-        .enumerate()
-        .map(|(i, r)| if *r { 1.0 / ((i + 2) as f64).log2() } else { 0.0 })
-        .sum()
-}
-
-fn ndcg(retrieved: &[String], gold: &HashSet<String>, k: usize) -> f64 {
-    let rels: Vec<bool> = retrieved.iter().take(k).map(|id| gold.contains(id)).collect();
-    let ideal = dcg(&vec![true; gold.len().min(k)], k);
-    if ideal == 0.0 {
-        return 0.0;
-    }
-    dcg(&rels, k) / ideal
-}
-
-fn mrr(retrieved: &[String], gold: &HashSet<String>) -> f64 {
-    for (i, id) in retrieved.iter().enumerate() {
-        if gold.contains(id) {
-            return 1.0 / (i + 1) as f64;
-        }
-    }
-    0.0
-}
-
-/// Per-question values, kept so a diff between rows is a real diff and any
-/// aggregate in the artifact can be re-derived from the JSON.
-#[derive(Clone)]
-struct Row {
-    query_id: String,
-    category: String,
-    r1: f64,
-    r5: f64,
-    r10: f64,
-    r20: f64,
-    ndcg10: f64,
-    mrr: f64,
-    /// Did the gold document survive the candidate pool at all? Measured over
-    /// the *whole* returned list, not a top-k, so it answers "is retrieval or
-    /// coverage the binding constraint" — the question R@20 cannot answer here,
-    /// because 20 is below the size of a bank.
-    pool: f64,
-}
-
-#[derive(Default)]
-struct Agg {
-    count: usize,
-    r1: f64,
-    r5: f64,
-    r10: f64,
-    r20: f64,
-    ndcg10: f64,
-    mrr: f64,
-    pool: f64,
-}
-
-impl Agg {
-    fn add(&mut self, r: &Row) {
-        self.count += 1;
-        self.r1 += r.r1;
-        self.r5 += r.r5;
-        self.r10 += r.r10;
-        self.r20 += r.r20;
-        self.ndcg10 += r.ndcg10;
-        self.mrr += r.mrr;
-        self.pool += r.pool;
-    }
-    fn pct(&self, v: f64) -> f64 {
-        if self.count == 0 {
-            0.0
-        } else {
-            v / self.count as f64 * 100.0
-        }
-    }
-    fn r1(&self) -> f64 {
-        self.pct(self.r1)
-    }
-    fn r5(&self) -> f64 {
-        self.pct(self.r5)
-    }
-    fn r10(&self) -> f64 {
-        self.pct(self.r10)
-    }
-    fn r20(&self) -> f64 {
-        self.pct(self.r20)
-    }
-    fn ndcg10(&self) -> f64 {
-        self.pct(self.ndcg10)
-    }
-    fn mrr(&self) -> f64 {
-        self.pct(self.mrr)
-    }
-    fn pool(&self) -> f64 {
-        self.pct(self.pool)
-    }
-}
-
-fn loadavg() -> String {
-    fs::read_to_string("/proc/loadavg")
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "unavailable".to_string())
-}
-
-/// The commit this artifact describes, read out of the working tree rather than
-/// passed in. `docs/EVALUATION_HYGIENE.md` §1 is about numbers that look like
-/// generalisation estimates; a benchmark artifact that cannot name the build it
-/// measured is the same failure in a different place, and it has already bitten
-/// this project once. Prints a warning instead of failing: a source tree with no
-/// `.git` still produces a usable artifact, as long as it says so.
-fn git_head() -> String {
-    let found = std::env::current_dir().ok().and_then(|start| {
-        let mut up = Some(start.as_path());
-        while let Some(cur) = up {
-            let g = cur.join(".git");
-            if g.is_dir() || g.is_file() {
-                return Some(g);
-            }
-            up = cur.parent();
-        }
-        None
-    });
-    let read = found.and_then(|git| {
-        let head = fs::read_to_string(git.join("HEAD")).ok()?.trim().to_string();
-        // A detached HEAD is the commit; a branch is a ref file to read.
-        match head.strip_prefix("ref: ") {
-            Some(r) => fs::read_to_string(git.join(r.trim())).ok().map(|s| s.trim().to_string()),
-            None => Some(head),
-        }
-    });
-    match read {
-        Some(sha) if sha.len() == 40 => sha,
-        Some(other) => format!("(unresolved: {other})"),
-        None => "(unavailable: no .git found above the working directory)".to_string(),
-    }
-}
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -318,75 +106,14 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let documents: Vec<Document> =
-        serde_json::from_str(&fs::read_to_string(&docs_path)?).map_err(|e| {
-            anyhow::anyhow!("locomo: {docs_path} is not a JSON array of documents: {e}")
-        })?;
-    let all_queries: Vec<Query> =
-        serde_json::from_str(&fs::read_to_string(&queries_path)?).map_err(|e| {
-            anyhow::anyhow!("locomo: {queries_path} is not a JSON array of queries: {e}")
-        })?;
-    anyhow::ensure!(
-        !documents.is_empty() && !all_queries.is_empty(),
-        "locomo: {docs_path} / {queries_path} is empty — run eval/download.sh"
-    );
-
-    // ---- one bank per user_id, built once ----------------------------------------
-    // Ten conversations, 272 documents. Each bank holds 19–32 documents, under both
-    // recall's 200-row candidate pool window and BM25's `LIMIT 50`, so the *store*
-    // pool is the whole bank — but the *fused* list is the union of the two streams,
-    // and both drop a document that matches no query token (`fts_match_query` ORs the
-    // query tokens; `rank_candidates` retains `score > 0.0`). So a gold document sharing
-    // no token with its question is unreachable at any K, and the artifact measures that
-    // as `R@pool` rather than claiming a ceiling it does not have.
-    let mut stores: HashMap<String, SqliteStore> = HashMap::new();
-    let mut bank_sizes: HashMap<String, usize> = HashMap::new();
-    let mut total_chars = 0usize;
-    for doc in &documents {
-        let text = doc.text()?;
-        total_chars += text.len();
-        let store = stores.entry(doc.user_id.clone()).or_insert_with(|| {
-            let s = SqliteStore::open_in_memory().expect("an in-memory store cannot fail to open");
-            s.put_bank(&Bank {
-                id: doc.user_id.clone(),
-                name: doc.user_id.clone(),
-            })
-            .expect("put_bank on a fresh in-memory store only inserts the bank row");
-            s
-        });
-        store.put(&Memory {
-            id: doc.id.clone(),
-            bank_id: doc.user_id.clone(),
-            content: text,
-            context: None,
-            created_at: None,
-        })?;
-        *bank_sizes.entry(doc.user_id.clone()).or_default() += 1;
-    }
-    let banks: HashMap<String, MemoryService<SqliteStore>> = stores
-        .into_iter()
-        .map(|(id, s)| (id, MemoryService::new(s)))
-        .collect();
-    let bank_min = bank_sizes.values().copied().min().unwrap_or(0);
-    let bank_max = bank_sizes.values().copied().max().unwrap_or(0);
-    // The recall budget is a hard token cap and a bank is a subset of the corpus, so
-    // half the corpus in characters is twice the tightest possible bank. Derived from
-    // the corpus rather than pinned, so a differently-sized dataset cannot make the
-    // budget trim a document the candidate pool would otherwise have returned.
-    let budget_tokens = total_chars / 2;
-
-    let missing_bank: Vec<&str> = all_queries
-        .iter()
-        .map(|q| q.user_id.as_str())
-        .filter(|u| !banks.contains_key(*u))
-        .collect();
-    anyhow::ensure!(
-        missing_bank.is_empty(),
-        "locomo: {} queries name a user_id with no documents (first: {}) — bank isolation would \
-         score them as misses rather than as a broken corpus",
-        missing_bank.len(),
-        missing_bank.first().copied().unwrap_or("?")
-    );
+    // One bank per `user_id`, built once, one memory per document: the shared
+    // ingestion, so this harness and `select_fusion` cannot be describing two
+    // different corpora. See `eval/locomo_dev.rs`.
+    let corpus = Corpus::load(&docs_path, &queries_path)?;
+    let all_queries = &corpus.queries;
+    let documents = &corpus.documents;
+    let banks = &corpus.banks;
+    let (bank_min, bank_max) = corpus.bank_range();
 
     // Shuffled for the progress log only. A query's index is fixed by its `user_id`
     // and every configuration is scored on that one index, so the metrics are
@@ -395,38 +122,34 @@ fn main() -> anyhow::Result<()> {
     if n > 0 && n < order.len() {
         order.truncate(n);
     }
+    let planned = dev::plan(all_queries, order);
     eprintln!(
         "locomo: {} documents in {} banks, {} queries, {} weights (overlap {:?}), seed {seed}; \
          loadavg at start {load_start}",
         documents.len(),
         banks.len(),
-        order.len(),
+        planned.len(),
         GRID.len(),
         GRID
     );
 
     // ---- the pass ----------------------------------------------------------------
     let mut per_config: Vec<Vec<Row>> =
-        GRID.iter().map(|_| Vec::with_capacity(order.len())).collect();
+        GRID.iter().map(|_| Vec::with_capacity(planned.len())).collect();
     let mut per_cat: Vec<BTreeMap<String, Agg>> = GRID.iter().map(|_| BTreeMap::new()).collect();
-    let mut skipped_no_gold = 0usize;
+    // The count of unanswerable queries is a property of the corpus, not of this
+    // pass: `plan` dropped them, and the artifact reports how many.
+    let skipped_no_gold = corpus.skipped_no_gold;
     let mut blank_answer = 0usize;
     let mut non_string_answer = 0usize;
     // How many documents the fused ranking actually returns per query. Reported,
     // because it is what makes R@20 a mid-list cut rather than a ceiling.
     let (mut pool_len_sum, mut pool_len_max) = (0usize, 0usize);
+    let budget_tokens = corpus.budget_tokens;
     let start = std::time::Instant::now();
 
-    for (qi, &qi_idx) in order.iter().enumerate() {
-        let q = &all_queries[qi_idx];
-        // A query with no `gold_ids` has no document-level answer, so every
-        // `recall_any` is 0 by construction: counting it would charge the harness for a
-        // question it cannot answer. Dropped from the denominator and counted in the
-        // artifact, never silently kept.
-        if q.gold_ids.is_empty() {
-            skipped_no_gold += 1;
-            continue;
-        }
+    for (qi, planned_q) in planned.iter().enumerate() {
+        let q = planned_q.query;
         // Shape bookkeeping only. `gold_answers` is never scored — this harness does
         // retrieval, not answer generation — so these two counters exist so the
         // artifact can report what the field actually held instead of asserting it.
@@ -441,22 +164,11 @@ fn main() -> anyhow::Result<()> {
             non_string_answer += 1;
         }
         let svc = &banks[&q.user_id];
-        let gold: HashSet<String> = q.gold_ids.iter().cloned().collect();
         for (ci, weight) in GRID.iter().enumerate() {
             let weights = FusionWeights { overlap: *weight, ..FusionWeights::SHIPPED };
             let hits = svc.recall_with_weights(&q.user_id, &q.query, budget_tokens, &weights)?;
             let retrieved: Vec<String> = hits.into_iter().map(|h| h.memory.id).collect();
-            let row = Row {
-                query_id: q.id.clone(),
-                category: q.meta.category.clone(),
-                r1: recall_any(&retrieved, &q.gold_ids, 1),
-                r5: recall_any(&retrieved, &q.gold_ids, 5),
-                r10: recall_any(&retrieved, &q.gold_ids, 10),
-                r20: recall_any(&retrieved, &q.gold_ids, 20),
-                ndcg10: ndcg(&retrieved, &gold, 10),
-                mrr: mrr(&retrieved, &gold),
-                pool: recall_any(&retrieved, &q.gold_ids, usize::MAX),
-            };
+            let row = Row::new(q, &retrieved, &planned_q.gold);
             // The fused *membership* is weight-independent — the weights reorder the
             // list, they do not change which documents enter it — so this is counted
             // once per query rather than once per weight.
@@ -468,7 +180,7 @@ fn main() -> anyhow::Result<()> {
             per_config[ci].push(row);
         }
         if (qi + 1) % 250 == 0 {
-            eprintln!("  {}/{} ...", qi + 1, order.len());
+            eprintln!("  {}/{} ...", qi + 1, planned.len());
         }
     }
     let elapsed = start.elapsed().as_secs_f64();
@@ -522,11 +234,7 @@ fn main() -> anyhow::Result<()> {
         .map(|c| format!("`{c}`"))
         .collect::<Vec<_>>()
         .join(", ");
-    let n_turns: usize = documents
-        .iter()
-        .filter_map(|d| serde_json::from_str::<Vec<Turn>>(&d.content).ok())
-        .map(|t| t.len())
-        .sum();
+    let n_turns: usize = corpus.turns;
     let multi_gold = all_queries.iter().filter(|q| q.gold_ids.len() > 1).count();
     let single_gold = all_queries.iter().filter(|q| q.gold_ids.len() == 1).count();
     // The coverage ceiling, read off the equal-weight row's aggregate: R@pool is
