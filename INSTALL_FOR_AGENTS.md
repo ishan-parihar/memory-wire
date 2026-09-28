@@ -85,9 +85,14 @@ curl -sS -X POST "$MW/banks/demo/recall" \
 query against `/banks/other/recall` returns `[]` until that bank has content.
 Retrieval is SQLite FTS5 BM25 fused with token-overlap rank via RRF (k=60, BM25
 weight 1.0, overlap weight 0.25 — both compile-time constants, not per-request
-options). IDF weighting of the overlap stream and a third distinct-term-coverage
-stream both exist in the tree and both ship disabled (weights `false` and `0.0`);
-see `docs/NEXT_ITERATION.md` Phases E3–E4 for why neither is on.
+options). That pair is the whole of it: `FusionWeights` carries `bm25`, `overlap`,
+`agreement` and `k`, and there is no `overlap_idf` or `coverage` field to set.
+Both of those levers *were* built, measured and rejected, then removed from the
+tree — IDF weighting of the overlap stream (Phase E3) and a third
+distinct-term-coverage stream (Phase E4). If you are following an older revision
+of this runbook and looking for configuration that is not there, that is why.
+Findings: `docs/NEXT_ITERATION.md` Phases E3–E4; the sweep that produced them,
+`eval/SWEEP_FUSION.md` sections F and G.
 
 ### 4. Budget and result caps
 
