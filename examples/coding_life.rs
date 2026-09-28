@@ -155,14 +155,6 @@ fn main() -> anyhow::Result<()> {
         ("raw overlap=0.50".into(), Some(FusionWeights { overlap: 0.50, ..FusionWeights::SHIPPED })),
         ("raw overlap=0.75".into(), Some(FusionWeights { overlap: 0.75, ..FusionWeights::SHIPPED })),
         ("raw overlap=1.00".into(), Some(FusionWeights { overlap: 1.00, ..FusionWeights::SHIPPED })),
-        ("idf overlap=0.25".into(), Some(FusionWeights { overlap_idf: true, ..FusionWeights::SHIPPED })),
-        ("idf overlap=0.50".into(), Some(FusionWeights { overlap: 0.50, overlap_idf: true, ..FusionWeights::SHIPPED })),
-        ("idf overlap=0.75".into(), Some(FusionWeights { overlap: 0.75, overlap_idf: true, ..FusionWeights::SHIPPED })),
-        ("idf overlap=1.00".into(), Some(FusionWeights { overlap: 1.00, overlap_idf: true, ..FusionWeights::SHIPPED })),
-        ("idf overlap=1.25".into(), Some(FusionWeights { overlap: 1.25, overlap_idf: true, ..FusionWeights::SHIPPED })),
-        ("shipped + coverage=0.10".into(), Some(FusionWeights { coverage: 0.10, ..FusionWeights::SHIPPED })),
-        ("shipped + coverage=0.25".into(), Some(FusionWeights { coverage: 0.25, ..FusionWeights::SHIPPED })),
-        ("shipped + coverage=1.00".into(), Some(FusionWeights { coverage: 1.00, ..FusionWeights::SHIPPED })),
     ];
     #[derive(Default)]
     struct SweepRow {
@@ -224,18 +216,16 @@ fn main() -> anyhow::Result<()> {
          configurations inner, so a load spike lands on every row in the same pass. **P@{k}/R@{k}/hit \
          rate are deterministic; the latency column is not** — same caveat as above, and at 15 \
          samples it is a median of 15.\n\n\
-         | configuration | BM25 | overlap | coverage | idf | P@{k} | R@{k} | Hit rate | p50 latency | n |\n\
-         |---|---|---|---|---|---|---|---|---|---|\n",
+         | configuration | BM25 | overlap | P@{k} | R@{k} | Hit rate | p50 latency | n |\n\
+         |---|---|---|---|---|---|---|---|\n",
     ));
     for (label, w, row) in &swept {
         let mut lat = row.agg.lat.clone();
         lat.sort();
         md.push_str(&format!(
-            "| {label} | {:.2} | {:.2} | {:.2} | {} | {:.1}% | {:.1}% | {:.1}% | {} µs | {} |\n",
+            "| {label} | {:.2} | {:.2} | {:.1}% | {:.1}% | {:.1}% | {} µs | {} |\n",
             w.bm25,
             w.overlap,
-            w.coverage,
-            if w.overlap_idf { "yes" } else { "no" },
             row.agg.p / row.agg.n as f64 * 100.0,
             row.agg.r / row.agg.n as f64 * 100.0,
             row.agg.hit as f64 / row.agg.n as f64 * 100.0,

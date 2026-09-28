@@ -448,42 +448,14 @@ impl<S: Store> MemoryService<S> {
             .map(|(i, (id, _))| RankedHit { id: id.clone(), rank: i + 1 })
             .collect();
         // Stream B: token-overlap rank, capped so a large bank cannot flood fusion.
-        let ranked = rank_candidates(
-            query,
-            all.iter().map(|m| m.content.as_str()),
-            weights.overlap_idf,
-        );
+        let ranked = rank_candidates(query, all.iter().map(|m| m.content.as_str()));
         let overlap_stream: Vec<RankedHit> = ranked
             .iter()
             .take(OVERLAP_LIMIT)
             .enumerate()
             .map(|(i, (idx, _))| RankedHit { id: all[*idx].id.clone(), rank: i + 1 })
             .collect();
-        // Stream C (E4): the same candidates, ordered by how much of the query's
-        // distinct-token set each one covers. Re-sorted from `ranked` rather than
-        // re-scored, because `rank_candidates` already read the count out of its
-        // own pass — a second pass over the pool to recompute it would be a
-        // second full tokenization for a number the first pass had. Built only
-        // when the weight is non-zero, and `rrf_fuse` drops the stream entirely
-        // at weight 0, so the unmeasured case costs nothing at all.
-        let coverage_stream: Vec<RankedHit> = if weights.coverage == 0.0 {
-            Vec::new()
-        } else {
-            let mut by_coverage: Vec<(usize, f64)> =
-                ranked.iter().map(|(i, h)| (*i, h.coverage)).collect();
-            by_coverage.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| a.0.cmp(&b.0))
-            });
-            by_coverage
-                .into_iter()
-                .take(OVERLAP_LIMIT)
-                .enumerate()
-                .map(|(i, (idx, _))| RankedHit { id: all[idx].id.clone(), rank: i + 1 })
-                .collect()
-        };
-        let fused = rrf_fuse(&[fts_stream, overlap_stream, coverage_stream], weights);
+        let fused = rrf_fuse(&[fts_stream, overlap_stream], weights);
 
         // One index over the single store read, plus the score the ranking used.
         // Fused ids are bounded by the two stream caps, so the content lookup
@@ -1024,65 +996,6 @@ mod tests {
         }
     }
 
-    /// **E3, end to end through `recall_with_weights`** — the same shape the
-    /// `bench_recall_curve` needle test is built from, in miniature and
-    /// deterministic: a bank of rows that all repeat two common topic terms,
-    /// plus one row carrying a single rare nonce.
-    ///
-    /// The claim is the one E3 exists to make, checked on the *ranked output*
-    /// rather than on the scorer: under a raw count the filler row wins, and
-    /// under `overlap_idf` the nonce row wins.
-    ///
-    /// The 240 background rows are load-bearing, not padding. In a bank this
-    /// small every filler term is *universal*, and FTS5's `bm25()` keeps a
-    /// negative IDF for a term in every document rather than clamping it at
-    /// zero — so a filler matching three universal terms out-scores a needle
-    /// matching one rare term, and BM25 owns the outcome and the test measures
-    /// nothing. The background rows make the filler terms merely *common*, so
-    /// BM25 ranks the needle first in both configurations and the overlap stream
-    /// is the only thing that moves.
-    #[test]
-    fn idf_weighting_should_lift_the_rare_nonce_row_over_a_common_term_heavy_row() {
-        let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
-        let svc = MemoryService::new(s);
-        for i in 0..240 {
-            svc.retain("b", &format!("background note {i} about parking and menus"), None)
-                .expect("background");
-        }
-        for i in 0..60 {
-            svc.retain("b", &format!("auth deploys rollout note {i}"), None)
-                .expect("filler");
-        }
-        let needle = svc.retain("b", "quixotic", None).expect("needle");
-        let query = "auth deploys quixotic";
-
-        // The needle's position in the fused output: 60 fillers match two query
-        // terms to its one, so a raw count buries it; only rarity lifts it.
-        let rank = |w: &FusionWeights| -> usize {
-            let hits = svc.recall_with_weights("b", query, 100_000, w).expect("recall");
-            hits.iter().position(|h| h.memory.id == needle).expect("needle returned")
-        };
-
-        let raw = FusionWeights { overlap: 1.0, ..FusionWeights::SHIPPED };
-        let idf = FusionWeights { overlap: 1.0, overlap_idf: true, ..FusionWeights::SHIPPED };
-        let bm25_only = FusionWeights { overlap: 0.0, ..FusionWeights::SHIPPED };
-        assert_eq!(rank(&bm25_only), 0, "BM25 must find the nonce; the streams are the variable");
-        assert!(rank(&raw) > 0, "a raw count must bury the one-term row below the two-term ones");
-        assert_eq!(rank(&idf), 0, "IDF must put the rare-nonce row first");
-        // And the shipped weights must still be the raw ones — the guard on E3
-        // being switched on in a default nobody measured. Compared against the
-        // *same* weights with only the flag flipped, so the assertion is about
-        // the flag and not about the weight.
-        let shipped_idf = FusionWeights { overlap_idf: true, ..FusionWeights::SHIPPED };
-        assert!(
-            rank(&FusionWeights::SHIPPED) > rank(&shipped_idf),
-            "the shipped default must not already be IDF-weighted: shipped {} vs shipped+idf {}",
-            rank(&FusionWeights::SHIPPED),
-            rank(&shipped_idf)
-        );
-    }
 
     /// The one job BM25 cannot do: **more than 50 candidates.** BM25 is `LIMIT
     /// FTS_LIMIT` = 50 in SQL, so a query matching more than 50 rows truncates
@@ -1146,8 +1059,6 @@ mod tests {
                 bm25: 1.0,
                 overlap: 0.25,
                 agreement: 0.0,
-                coverage: 0.0,
-                overlap_idf: false,
                 k: 60.0,
             },
             "the shipped default moved off the configuration E1 measured"

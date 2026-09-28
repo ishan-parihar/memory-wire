@@ -507,6 +507,8 @@ change rather than a weighting change, and all of them are unmeasured.
 
 Kept in the tree, default off, same treatment as E3 and `agreement`.
 
+**Update, after both phases were measured and rejected.** `overlap_idf` and `coverage` were then removed from the tree — the fields, the IDF scorer, the third stream, the F and G grid rows in `examples/sweep_fusion.rs`, and their tests — which is the same treatment E2's stemming code got, and the findings above are the reason it was safe: a lever that can never be turned on is not configuration. `eval/SWEEP_FUSION.md` is deliberately **not** regenerated and its F/G rows stay exactly as written; that artifact is the committed evidence for this removal. No retrieval number moved: the raw single-pass scorer the E1 grid measures was left byte for byte, and the shipped row still reads 97.2 / 98.6 / 99.6 / 88.2 / 89.2 with the control still 93.0. `agreement` is left in place, unlike E3/E4 — it is a swept axis of the live E1 harness, not extra code.
+
 ## Phase E5 — LoCoMo (blocked; low priority)
 
 Defer. LoCoMo is not on disk in either parent, and Hindsight's own runner fetches
@@ -539,8 +541,9 @@ can state the measured retrieval delta rather than "no change".
 
 ## Where E1–E4 left the retrieval weights
 
-`overlap: 0.25`, `overlap_idf: false`, `coverage: 0.0`, `k: 60` — unchanged from
-E1, and now justified against three consecutive rejected attempts to move it
+`overlap: 0.25`, `k: 60` — unchanged from E1 (and now the *only* weights the struct
+carries: `overlap_idf` and `coverage` have since been removed, see the E4 update
+above), and justified against three consecutive rejected attempts to move it
 rather than against one benchmark. The shape of the argument:
 
 | | what wants a higher `overlap` | what the higher weight costs |

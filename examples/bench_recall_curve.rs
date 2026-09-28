@@ -112,50 +112,6 @@ fn grid(spec: &str) -> Vec<(String, Option<FusionWeights>)> {
             ("raw overlap=0.75".to_string(), Some(FusionWeights { overlap: 0.75, ..FusionWeights::SHIPPED })),
             ("raw overlap=1.00".to_string(), Some(FusionWeights { overlap: 1.0, ..FusionWeights::SHIPPED })),
             ("raw overlap=2.00".to_string(), Some(FusionWeights { overlap: 2.0, ..FusionWeights::SHIPPED })),
-            (
-                "idf overlap=0.25".to_string(),
-                Some(FusionWeights { overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=0.50".to_string(),
-                Some(FusionWeights { overlap: 0.5, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=0.75".to_string(),
-                Some(FusionWeights { overlap: 0.75, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=1.00".to_string(),
-                Some(FusionWeights { overlap: 1.0, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=1.25".to_string(),
-                Some(FusionWeights { overlap: 1.25, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=1.50".to_string(),
-                Some(FusionWeights { overlap: 1.5, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "shipped + coverage=0.10".to_string(),
-                Some(FusionWeights { coverage: 0.10, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "shipped + coverage=0.25".to_string(),
-                Some(FusionWeights { coverage: 0.25, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "shipped + coverage=1.00".to_string(),
-                Some(FusionWeights { coverage: 1.0, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=1.00 + coverage=0.25".to_string(),
-                Some(FusionWeights { coverage: 0.25, overlap: 1.0, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
-            (
-                "idf overlap=1.00 + coverage=1.00".to_string(),
-                Some(FusionWeights { coverage: 1.0, overlap: 1.0, overlap_idf: true, ..FusionWeights::SHIPPED }),
-            ),
         ],
         _ => spec
             .split(';')
@@ -316,20 +272,18 @@ fn main() -> Result<()> {
         }
         md.push_str(&format!(
             "**{size} memories** ({} gold rows, {:.3}% signal share, build {:.1}s)\n\n\
-             | configuration | BM25 | overlap | coverage | idf | R@1 | R@5 | p50 us | p95 us |\n\
-             |---|---|---|---|---|---|---|---|---|\n",
+             | configuration | BM25 | overlap | R@1 | R@5 | p50 us | p95 us |\n\
+             |---|---|---|---|---|---|---|\n",
             at_size[0].queries,
             100.0 * at_size[0].queries as f64 / size as f64,
             at_size[0].build_s,
         ));
         for r in &at_size {
             md.push_str(&format!(
-                "| {} | {:.2} | {:.2} | {:.2} | {} | {:.1}% | {:.1}% | {} | {} |\n",
+                "| {} | {:.2} | {:.2} | {:.1}% | {:.1}% | {} | {} |\n",
                 r.config,
                 r.weights.bm25,
                 r.weights.overlap,
-                r.weights.coverage,
-                if r.weights.overlap_idf { "yes" } else { "no" },
                 r.r1,
                 r.r5,
                 r.p50,
@@ -411,9 +365,7 @@ fn main() -> Result<()> {
                 serde_json::json!({
                     "memories": r.size,
                     "configuration": r.config,
-                    "overlap": r.weights.overlap,
-                    "coverage": r.weights.coverage,
-                    "overlap_idf": r.weights.overlap_idf,
+            "overlap": r.weights.overlap,
                     "in_window": r.win, "in_bm25": r.bm25, "in_pool": r.pool,
                     "questions": r.ranks.iter().enumerate().map(|(k, rank)| serde_json::json!({
                         "signal": k,

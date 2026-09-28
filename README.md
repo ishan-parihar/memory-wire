@@ -35,19 +35,25 @@ regressing. The cost is stated in full below rather than buried.
 
 **Two later attempts to make that weight unnecessary both failed, and one of them
 failed for an instructive reason** (`docs/NEXT_ITERATION.md` Phases E3–E4).
-Weighting the overlap stream by IDF (`overlap_idf`, ships off) does exactly what
-E1's diagnosis predicted — at equal weight it scores 96.4 / 88.6 where the raw
-stream scores 93.0 / 83.5 — but at the shipped 0.25 it costs 0.4pp R@5 for
-+1.7pp NDCG@10, so it is not shipped. A third distinct-term-coverage stream
-(`coverage`, ships 0.0) is *algebraically identical* to raising the overlap weight:
-for any query with no repeated token the two rank identically, and RRF is linear
-in the weights, so `coverage: w` ≡ `overlap: 0.25 + w`. Both levers are kept in the
-tree, default off, so the sweep rows that produced these numbers can be re-run.
+Weighting the overlap stream by IDF did exactly what E1's diagnosis predicted —
+at equal weight it scores 96.4 / 88.6 where the raw stream scores 93.0 / 83.5 —
+but at the shipped 0.25 it costs 0.4pp R@5 for +1.7pp NDCG@10, so it is not
+shiped. A third distinct-term-coverage stream is *algebraically identical* to
+raising the overlap weight: for any query with no repeated token the two rank
+identically, and RRF is linear in the weights, so `coverage: w` ≡
+`overlap: 0.25 + w`. Both levers were measured, rejected, and then **removed from
+the tree** — they were dormant config nobody would ever turn on. The findings live
+in `docs/NEXT_ITERATION.md`; the sweep artifact that produced them is
+`eval/SWEEP_FUSION.md`.
 
-Competitor rows: their `benchmark/LONGMEMEVAL.md` (same metric, verified in-audit).
-Hindsight publishes QA-accuracy leaderboard scores (needs an LLM reader), not
-retrieval recall — not comparable here; their retrieval stack is 4-stream TEMPR +
-cross-encoder rerank behind a 0.8–1.0 GB idle RSS (see below).
+Competitor rows: agentmemory's `benchmark/LONGMEMEVAL.md` (same metric, same 500
+questions, verified in-audit). Hindsight has **no comparable retrieval number**:
+its one published LoCoMo result, 92.0%, is LLM-judged *answer* accuracy from a
+`rag` run with two Gemini calls in the loop, and `git grep -iE "ndcg|recall@|
+pool_size"` finds nothing in the benchmark repo — so the per-pool-size recall
+table in their reranker blog is not reproducible from either repo. Their retrieval
+stack is 4-stream TEMPR + cross-encoder rerank behind a 0.8–1.0 GB idle RSS
+(see below).
 
 | Suite | memory-wire | Competitors |
 |---|---|---|
@@ -197,9 +203,8 @@ a token count — so it is a fraction, and only comparable against other scores 
 the same recall. Those two weights are the swept default
 (`docs/NEXT_ITERATION.md`, Phase E1); they are compile-time constants, not
 per-request options. A third coverage stream and an IDF-weighted overlap scorer
-exist in the same struct and both ship at weight `0` / `false`, so the formula above
-is the whole of the shipped score — see Phases E3–E4 for the measurements that
-left them off.
+were both built, measured, rejected and removed (Phases E3–E4), so the formula
+above is the whole of the shipped score.
 `reflect` returns the top hit prefixed with its id — there is no
 LLM in the loop yet.
 
