@@ -4,12 +4,14 @@ Synthesis date: 2026-09-27. All numbers below are the exact inputs the current
 Rust code was transmuted from. To update: `git -C _audit/<repo> pull`, re-run
 the audit deltas, record the new SHAs here, then port behavior per §3.
 
-> **The working tree is substantially ahead of published `v0.2.0`.** Everything
-> below is unchanged and still correct for `0.2.0`; the tree on `main` carries the
-> SQLite/recall work, the TTL sweep, `detail=none` and the five benchmark
-> harnesses that are **not** in the `v0.2.0` tag or release. The `0.2.0` version
-> string in `Cargo.toml` is therefore *not* the version of the tree. Cutting the
-> next release is a separate decision and nothing in this commit cuts one.
+> **These pins describe the tree as published in `v0.3.0`.** The earlier
+> "the tree is ahead of the published release" banner is retired: the SQLite /
+> recall work, the TTL sweep, `detail=none` and the five benchmark harnesses are
+> all in the `v0.3.0` tag and release. §1's competitor SHAs are the synthesis
+> baseline the current code was transmuted from and were deliberately not
+> re-pulled for this cut; §2 is the toolchain that built it; §3 is its locked
+> direct dependency set. The per-build evidence for `v0.2.0` and earlier stays
+> where it was measured, in `docs/BENCHMARK.md` and `docs/CONSISTENCY.md`.
 
 ## 1. Competitor snapshots (`_audit/`, git, branch `main` both)
 
@@ -30,8 +32,8 @@ Upstream package versions observed at those SHAs: `hindsight-api-slim` 0.10.1
 
 - `rustc 1.98.0 (88d9e12ae 2026-08-18)`, `cargo 1.98.0 (797e8a9bc 2026-08-05)`
   — re-verified 2026-09-28, unchanged.
-- `memory-wire` 0.3.0, edition 2021, `MIT OR Apache-2.0` — unchanged. See the
-  banner: the tree is ahead of the `0.2.0` tag.
+- `memory-wire` 0.3.0, edition 2021, `MIT OR Apache-2.0` — the version this
+  file describes.
 
 ## 3. Locked direct dependencies (`cargo tree --depth 1`)
 

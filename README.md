@@ -506,7 +506,7 @@ curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/inst
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
 defaults, which resolve to this repo and its latest published release
-(`v0.2.0`, asset `memory-wire-linux-x86_64.tar.gz`).
+(`v0.3.0`, asset `memory-wire-linux-x86_64.tar.gz`).
 Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 
 ## Roadmap
