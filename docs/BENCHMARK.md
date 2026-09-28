@@ -15,9 +15,10 @@
 > **The current state is §5**, plus the live artifacts: `eval/RESULTS.md`,
 > `eval/CODING_LIFE.md`, `eval/SCALE_SWEEP.md`, the README footprint table, and
 > `docs/CONSISTENCY.md` §6–§12. Last re-measured 2026-09-28 on the tree ahead of
-> the published `v0.2.0` tag: **229** tests green, release binary **8,836,032 B**,
-> R@5 93.0. §5 carries the current matrix; §6–§12 of `docs/CONSISTENCY.md` carry
-> everything that moved since the `0.2.0` cut.
+> the published `v0.2.0` tag: **236** tests green, release binary **8,836,032 B**,
+> R@5 97.2 (Phase E1 reweighted the fusion; see `docs/NEXT_ITERATION.md` and
+> `eval/SWEEP_FUSION.md`). §5 carries the current matrix; §6–§12 of
+> `docs/CONSISTENCY.md` carry everything that moved since the `0.2.0` cut.
 >
 > **CI runs no benchmarks** (deliberate — Actions quota; see
 > `.github/workflows/ci.yml`), so nothing re-checks any number in this file
@@ -92,7 +93,7 @@ release.
 
 | Tool / surface | Status at 0.2.0 | Evidence |
 |---|---|---|
-| Retrieval stack | **FTS5 BM25 (LIMIT 50) + token-overlap (cap 200), fused by RRF k=60** over a candidate pool of the newest 200 rows ∪ the BM25 hits | `eval/RESULTS.md`: R@5 93.0 / R@10 97.4 / R@20 99.6 / NDCG@10 83.5 / MRR 83.9 on official LongMemEval-S, 500 questions |
+| Retrieval stack | **FTS5 BM25 (LIMIT 50) + token-overlap (cap 200), fused by weighted RRF at k=60 with the overlap weight swept to 0.25** (equal weight measured 4.2pp worse on R@5) over a candidate pool of the newest 200 rows ∪ the BM25 hits | `eval/RESULTS.md`: R@5 97.2 / R@10 98.6 / R@20 99.6 / NDCG@10 88.2 / MRR 89.2 on official LongMemEval-S, 500 questions; `eval/SWEEP_FUSION.md` for the grid |
 | Official LongMemEval-S harness | **built and run** (gap 4 closed) | `examples/longmemeval.rs`, `eval/RESULTS.md`; all 500 per-question `recall_any_at_5/10/20`, `mrr`, `ndcg_at_10` values verified identical to the pre-change artifact on 2026-09-28 |
 | `GET`/`PUT /banks/:id/config` | shipped; PUT requires an existing bank | `docs/CONSISTENCY.md` §2, unknown-bank rule |
 | Lifecycle routes | shipped: `GET .../memories` (50/500, offset), `GET`/`DELETE .../memories/:mid`, `GET .../stats` | README "Lifecycle ops are routes now" |

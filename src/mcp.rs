@@ -650,9 +650,13 @@ mod tests {
         assert_eq!(full.len(), 1, "{full:?}");
         assert_eq!(full[0]["id"], json!(id), "{full:?}");
         assert_eq!(full[0]["content"].as_str(), Some("auth uses jose middleware"));
-        // Same fused RRF value the HTTP surface serves: rank 1 in both streams at
-        // k=60. One rule, two adapters — the score is not re-derived per surface.
-        let expected = 1.0 / (60.0 + 1.0) + 1.0 / (60.0 + 1.0);
+        // Same fused RRF value the HTTP surface serves: rank 1 in both streams,
+        // each contributing its stream's weight. One rule, two adapters — the
+        // score is not re-derived per surface. Built from the shipped weights so
+        // the assertion tracks the fusion rather than a literal that went stale
+        // when Phase E1 moved the overlap weight.
+        let w = memory_wire::recall::FusionWeights::SHIPPED;
+        let expected = w.bm25 / (w.k + 1.0) + w.overlap / (w.k + 1.0);
         assert_eq!(full[0]["score"].as_f64(), Some(expected), "{full:?}");
     }
 

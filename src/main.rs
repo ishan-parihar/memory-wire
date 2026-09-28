@@ -983,8 +983,12 @@ mod tests {
         assert_eq!(full[0]["id"], json!(id), "{full:?}");
         assert_eq!(full[0]["content"].as_str(), Some("auth uses jose middleware"));
         // The score served is the fused RRF one, not a token count: the single
-        // hit ranks 1st in both streams, so 1/(k+1) + 1/(k+1) at k=60.
-        let expected = 1.0 / (60.0 + 1.0) + 1.0 / (60.0 + 1.0);
+        // hit ranks 1st in both streams, so it carries each stream's weight over
+        // (k + 1). Built from the shipped weights rather than written out, so
+        // this keeps testing that the served value is the fused one even after
+        // Phase E1 moved the overlap weight off 1.0.
+        let w = memory_wire::recall::FusionWeights::SHIPPED;
+        let expected = w.bm25 / (w.k + 1.0) + w.overlap / (w.k + 1.0);
         assert_eq!(
             full[0]["score"].as_f64(),
             Some(expected),

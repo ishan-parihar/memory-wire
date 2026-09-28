@@ -2076,35 +2076,67 @@ mod tests {
         assert!(!s.rebuilt_fts_on_open(), "a clean legacy index needs no repair");
         drop(s);
         // Every later open must be a no-op. `rebuilt_fts_on_open` is the flag the
-        // rebuild sets, and the index size is a witness that the `detail=none`
-        // table was not dropped and rebuilt a second time.
-        let size_after_migration = fts_bytes(&path);
-        for _ in 0..3 {
+        // rebuild sets, and the index *content* is the independent witness that
+        // the `detail=none` table was not dropped and rebuilt a second time.
+        //
+        // Content, not page count. A page count is the tempting witness and the
+        // wrong one: dropping and rebuilding the same corpus can land on the same
+        // number of pages, and then "the size did not change" reads as "nothing
+        // happened" while the index was in fact rebuilt. `memories_fts_data`
+        // holds the actual doclist blocks, so hashing them hashes the index
+        // itself, and a rebuild that changed anything at all cannot hide behind an
+        // equal total. (This was learned the hard way in Phase E2, where a
+        // tokenizer change was measured; the fingerprinting idea outlived the
+        // change.)
+        let after_migration = fts_content_hash(&path);
+        for i in 0..3 {
             let s = SqliteStore::open(&path).expect("reopen");
             assert!(
                 !s.rebuilt_fts_on_open(),
-                "a re-opened, already-converted database must not rebuild"
+                "reopen {i}: a re-opened, already-converted database must not rebuild"
             );
             drop(s);
+            assert_eq!(
+                fts_content_hash(&path),
+                after_migration,
+                "reopen {i} changed the index content, so it was rebuilt"
+            );
         }
-        assert_eq!(
-            fts_bytes(&path),
-            size_after_migration,
-            "the FTS index changed size across no-op opens, so it was rebuilt"
-        );
         rm_db(&path);
     }
 
-    /// Bytes occupied by every `memories_fts*` page. Structural, so it is a
-    /// meaningful thing to assert on even while the box is busy.
-    fn fts_bytes(path: &Path) -> i64 {
+    /// A content fingerprint of the FTS index, for proving that a later open left
+    /// it *alone*.
+    ///
+    /// `memories_fts_data` is the doclist table — one row per segment, keyed by
+    /// `id`, with the encoded term postings in `block`. It is the index's own
+    /// bytes, so this hashes what the index *says*, not how much room it takes.
+    /// The `id` and the block length are folded in ahead of each block so a
+    /// reordering of segments changes the hash and a block cannot be moved across
+    /// an `id` boundary without changing it.
+    ///
+    /// Hex, not `from_utf8_lossy`. The doclist blocks are **binary** — varint
+    /// deltas, not text — and lossy UTF-8 decoding maps every invalid byte to the
+    /// same replacement character, so two different blocks would routinely hash
+    /// the same. Hex is injective, so distinct index content cannot collide.
+    fn fts_content_hash(path: &Path) -> [u8; 32] {
         let conn = Connection::open(path).expect("raw open");
-        conn.query_row(
-            "SELECT sum(pgsize) FROM dbstat WHERE name LIKE 'memories_fts%'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("dbstat must be compiled in")
+        let mut stmt = conn
+            .prepare("SELECT id, block FROM memories_fts_data ORDER BY id")
+            .expect("prepare");
+        let rows: Vec<(i64, Vec<u8>)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("rows");
+        let mut flat: Vec<u8> = Vec::new();
+        for (id, block) in rows {
+            flat.extend_from_slice(&id.to_be_bytes());
+            flat.extend_from_slice(&(block.len() as u64).to_be_bytes());
+            flat.extend_from_slice(&block);
+        }
+        let hex: String = flat.iter().map(|b| format!("{b:02x}")).collect();
+        hash_content(&hex)
     }
 
     #[test]

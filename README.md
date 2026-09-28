@@ -5,7 +5,7 @@ Rust binary: retain/recall/reflect with bank isolation, FTS5 BM25 + RRF fusion, 
 redaction on write — over HTTP, or as an MCP stdio server. No runtime, no daemon, no
 database to install.
 
-- **93.0% R@5** LongMemEval-S · **10.7 MiB** idle RSS · **8.4 MiB** binary · 100% hit-rate coding-life
+- **97.2% R@5** LongMemEval-S · **10.7 MiB** idle RSS · **8.4 MiB** binary · 100% hit-rate coding-life
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook)
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `docs/BENCHMARK.md`
 
@@ -19,9 +19,19 @@ query. Regenerate: `cargo run --example longmemeval` → `eval/RESULTS.md`.
 
 | System | R@5 | R@10 | R@20 | NDCG@10 | MRR |
 |---|---|---|---|---|---|
-| **memory-wire (FTS5 BM25 + overlap RRF)** | **93.0%** | **97.4%** | **99.6%** | **83.5%** | **83.9%** |
+| **memory-wire (FTS5 BM25 + overlap RRF, overlap weight 0.25)** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** |
 | agentmemory BM25-only | 86.2% | 94.6% | 98.6% | 73.0% | 71.5% |
 | agentmemory BM25+Vector | 95.2% | 98.6% | 99.4% | 87.9% | 88.2% |
+
+**The two streams are not equally weighted, and that is a measured result.** At
+equal weight the fusion scored 93.0 / 97.4 / 99.6 / 83.5 / 83.9 — behind
+agentmemory's hybrid on R@5 and 4.4pp behind on NDCG@10. A 500-question sweep of
+the weights (`eval/SWEEP_FUSION.md`, `docs/NEXT_ITERATION.md` Phase E1) found the
+token-overlap stream was a *net negative* as a co-equal voter, and moved its
+weight to 0.25: **+4.2pp R@5, +4.8pp NDCG@10, R@20 unchanged.** The gain is
+concentrated exactly where the deficit was — `single-session-preference` R@5
+56.7% → 86.7% and `single-session-assistant` 87.5% → 100.0%, with no category
+regressing. The cost is stated in full below rather than buried.
 
 Competitor rows: their `benchmark/LONGMEMEVAL.md` (same metric, verified in-audit).
 Hindsight publishes QA-accuracy leaderboard scores (needs an LLM reader), not
@@ -30,7 +40,7 @@ cross-encoder rerank behind a 0.8–1.0 GB idle RSS (see below).
 
 | Suite | memory-wire | Competitors |
 |---|---|---|
-| coding-life, 15 labeled queries (`eval/CODING_LIFE.md`) | hit-rate **100%**, R@5 100%, p50 **260–620 µs** across release runs of this binary | grep baseline 96.7% (same harness); agentmemory publishes no score |
+| coding-life, 15 labeled queries (`eval/CODING_LIFE.md`) | hit-rate **100%**, R@5 96.7%, p50 **260–620 µs** across release runs of this binary | grep baseline 96.7% (same harness); agentmemory publishes no score |
 | Scale sweep 240→10k (`eval/SCALE_SWEEP.md`) | search p50 0.99→6.03 ms, token savings ≥95.7% | agentmemory: 0.1→22.8ms BM25, heap 6→316MB, savings to 100% |
 
 Both latency ranges move 2–3x with the machine's load. `eval/CODING_LIFE.md` and
@@ -121,13 +131,31 @@ figures are in `eval/`: **849 µs** p50 under the 16-client soak, **1.0–1.1 ms
 at a 1k-memory bank and **5.9–6.5 ms** at 10k, **3.1 ms** at a 2k bank with 1
 client, **8 ms** on LongMemEval-S sessions.
 
-The 1k and 10k figures are the only ones measured on a quiet machine — three
-`bench_recall_curve` rounds at load 8.4–8.6, where the 100k p50 settled to
+The 1k and 10k latency figures are the only ones measured on a quiet machine —
+three `bench_recall_curve` rounds at load 8.4–8.6, where the 100k p50 settled to
 **70.5–73.8 ms** against 80–172 ms on a loaded box. Everything else above is
-wall-clock and load-confounded, and is quoted as a range for that reason. R@5 is
-100% at every size up to 100k in all nine runs, with all 32 gold rows reaching
-BM25's top-50 — the 200-row fusion pool is not the binding constraint at any size
-measured.
+wall-clock and load-confounded, and is quoted as a range for that reason. The
+latency figures in the current `eval/BENCH_RECALL_CURVE.md` were taken at
+loadavg 17–24 on 24 cores and are **not** comparable to that quiet-machine band;
+the retrieval columns from the same runs are.
+
+**The recall-curve R@5 is no longer 100%, and that is E1's cost, not a bug.**
+Reweighting the fusion (below) took R@5 on that suite from 100% at every size to
+**96.9 / 84.4 / 90.6 / 90.6%** at 1k / 10k / 50k / 100k, and coding-life R@5 from
+100% to 96.7% (its hit rate is still 100%, and it now ties the grep baseline
+instead of beating it). All 32 gold rows still reach BM25's top-50 at every size,
+so the 200-row fusion pool is still not the binding constraint — what changed is
+how the *ordering* of near-tied candidates is decided. Both suites measure finding
+a needle whose distinguishing token is one rare word among many common ones, which
+is exactly the case a raw token-count voter is good at and exactly what cutting
+that voter's weight to 0.25 gives up. LongMemEval-S measures the opposite case —
+multi-facet questions where BM25's own term-rarity ordering is better and a raw
+count double-counts common words — and gains 4.2pp there. The measured trade-off,
+including the weight that holds both (`overlap: 0.75`, which keeps these two
+suites at 100% and still gains 1.0pp on LongMemEval), is in
+`docs/NEXT_ITERATION.md` Phase E1. The 0.25 default is the one the project's
+designated decision instrument picks; the alternative is named so the choice is
+revisitable rather than buried.
 
 ## Quick start
 
@@ -153,8 +181,11 @@ Banks are isolated namespaces; any bank id is created implicitly by its first
 `retain`, and a `default` bank is seeded at boot. Recall returns a bare JSON array
 of content strings by default; `{"format":"full"}` returns `{id, score, content}`
 objects instead, where `score` is the fused RRF value the ranking actually used
-(`Σ 1/(60 + rank)`, higher is better) rather than a token count — so it is a
-fraction, and only comparable against other scores from the same recall.
+(`1·1/(60 + rank_bm25) + 0.25·1/(60 + rank_overlap)`, higher is better) rather than
+a token count — so it is a fraction, and only comparable against other scores from
+the same recall. Those two weights are the swept default
+(`docs/NEXT_ITERATION.md`, Phase E1); they are compile-time constants, not
+per-request options.
 `reflect` returns the top hit prefixed with its id — there is no
 LLM in the loop yet.
 
@@ -343,7 +374,8 @@ retain       → ensure bank exists → redact_pii(content, context) → put
                document_id set → supersede that document's prior row in the same tx
 recall       → candidate pool: newest 200 rows ∪ the BM25 hits (bounded, so a
                recall never reads the whole bank) → FTS5 BM25 (LIMIT 50 in SQL)
-               + overlap rank (cap 200) → RRF k=60
+               + overlap rank (cap 200) → weighted RRF k=60 (bm25 1.0,
+                 overlap 0.25 — swept, `eval/SWEEP_FUSION.md`)
                → token-budget trim (truncate, never drop) → take 100
                budget precedence: request > bank recallMaxTokens > 2000
                format=full → {id, score, content} instead of bare strings,

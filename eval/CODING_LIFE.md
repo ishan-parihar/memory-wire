@@ -8,5 +8,5 @@ The corpus is 15 sessions, so the 200-row recall candidate pool cannot bind here
 
 | Adapter | P@5 | R@5 | Hit rate | p50 latency | n |
 |---|---|---|---|---|---|
-| memory-wire | 24.0% | 100.0% | 100.0% | 384 µs | 15 |
+| memory-wire | 22.7% | 96.7% | 100.0% | 422 µs | 15 |
 | grep | 22.7% | 96.7% | 100.0% | 5 µs | 15 |

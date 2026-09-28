@@ -33,19 +33,136 @@ pub struct RankedHit {
     pub rank: usize,
 }
 
-/// Fuse ranked streams with Reciprocal Rank Fusion: score = Σ 1/(k + rank).
+/// Per-stream weights for the fusion, plus an optional cross-stream agreement
+/// bonus.
+///
+/// The default is [`FusionWeights::SHIPPED`]. Before the E1 sweep the shipped
+/// value was both streams at 1.0; the sweep moved `overlap` to 0.25, and that
+/// measured move is the whole reason the struct exists. Weights are here to be
+/// *swept* (`examples/sweep_fusion.rs`), and nothing in the shipped binary
+/// changes one per request — see `docs/NEXT_ITERATION.md` for the grid.
+///
+/// `bm25` and `overlap` scale stream 0 and stream 1. A weight of 0.0 drops its
+/// stream's contribution entirely, which is what makes a one-stream arm a row
+/// in the sweep rather than a different code path. Any third stream keeps 1.0:
+/// there is no third stream, and guessing a weight for one would be a silent
+/// no-op dressed up as configuration.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FusionWeights {
+    /// Weight on the FTS5 BM25 stream (stream 0).
+    pub bm25: f64,
+    /// Weight on the token-overlap stream (stream 1).
+    pub overlap: f64,
+    /// Additive bonus for an id **both** streams returned, in units of
+    /// `1/(k + 1)`.
+    ///
+    /// Expressed as a fraction of one rank-1 unit rather than as a flat number
+    /// because the fused score it is added to is a sum of `1/(k + rank)`: at
+    /// k=60 a rank-1 hit in both streams is worth ~0.0328, so a flat `0.05`
+    /// would be worth three such hits and "a small boost" would be neither.
+    /// `0.05` here is a ~2.5% lift on a doubly-found rank-1 hit.
+    pub agreement: f64,
+    /// The RRF `k` constant: score = Σ wᵢ/(k + rank).
+    ///
+    /// Carried here rather than passed beside the weights so the fusion is one
+    /// value a caller can hold, compare and sweep, and so `k` and the agreement
+    /// bonus — which is denominated in `1/(k+1)` — can never be set from two
+    /// places that disagree.
+    pub k: f64,
+}
+
+impl FusionWeights {
+    /// What ships. **Not equal weights** — see `docs/NEXT_ITERATION.md`,
+    /// Phase E1, for the 500-question sweep behind `overlap: 0.25`.
+    ///
+    /// At equal weights the token-overlap stream is a *net negative*: it was
+    /// costing 4.0pp of R@5 and 4.8pp of NDCG@10 on LongMemEval-S, and the loss
+    /// was concentrated exactly where the deficit was — `single-session-preference`
+    /// 56.7% → 86.7% and `single-session-assistant` 87.5% → 100.0% on R@5, with
+    /// no category regressing. The cause is structural rather than incidental:
+    /// `fts_match_query` ORs every query token, so BM25's own ordering already
+    /// accounts for term matching, and a raw token-count voter at equal weight
+    /// promotes documents that merely repeat the query's words over documents
+    /// BM25 ranked on term rarity.
+    ///
+    /// `0.25` and not `0.0`, though `0.0` scores 1.7pp higher on NDCG@10 and
+    /// 2.2pp on MRR (and loses on R@5 by exactly one question of 500). A zero
+    /// weight drops the stream's candidates entirely, and BM25 is `LIMIT 50` in
+    /// SQL — so on any query matching more than 50 rows the candidate set is
+    /// truncated to 50. LongMemEval-S cannot see that: 38–62 sessions per bank,
+    /// with BM25 truncating at 50, means the suite contains no such query.
+    /// `a_query_matching_more_rows_than_bm25_returns_must_still_surface_the_overflow`
+    /// pins the difference (120 matching rows → 120 hits here, exactly 50 at
+    /// weight 0.0), and `bench_recall_curve` is the harness that prices it.
+    ///
+    /// The agreement bonus stays 0.0: swept at 0.05/0.10/0.25/0.50 it moved
+    /// **zero** of 500 questions at every magnitude, so it is not a knob this
+    /// build turns — it is measured-and-rejected, kept in the struct only
+    /// because the field is what made that measurement expressible.
+    pub const SHIPPED: FusionWeights = FusionWeights {
+        bm25: 1.0,
+        overlap: 0.25,
+        agreement: 0.0,
+        k: RRF_K,
+    };
+
+    /// The weight of stream `i`, which is positional because the fusion is.
+    fn of(&self, i: usize) -> f64 {
+        match i {
+            0 => self.bm25,
+            1 => self.overlap,
+            _ => 1.0,
+        }
+    }
+}
+
+impl Default for FusionWeights {
+    fn default() -> Self {
+        Self::SHIPPED
+    }
+}
+
+/// Fuse ranked streams with Reciprocal Rank Fusion: score = Σ wᵢ/(k + rank).
 ///
 /// Returns `(id, score)` sorted by descending score, then id for stability.
-pub fn rrf_fuse(streams: &[Vec<RankedHit>], k: f64) -> Vec<(String, f64)> {
+/// With [`FusionWeights::SHIPPED`] this is the plain `Σ 1/(k + rank)` it always
+/// was, at the same k.
+pub fn rrf_fuse(streams: &[Vec<RankedHit>], weights: &FusionWeights) -> Vec<(String, f64)> {
     // k <= 0 (or NaN) makes 1/(k + rank) explode or flip sign, which silently
-    // reorders the fused list. Clamp to a safe floor; RRF_K is 60, so this only
-    // bites a hand-tuned or corrupt caller.
-    let k = k.max(1.0);
+    // reorders the fused list. Clamp to a safe floor; the default k is RRF_K, so
+    // this only bites a hand-tuned or corrupt caller.
+    let k = weights.k.max(1.0);
     let mut scores: HashMap<&str, f64> = HashMap::new();
-    for stream in streams {
+    // Ids each stream contributed to, so the agreement bonus can be added once
+    // per doubly-found id after the weighted pass rather than inside it.
+    let mut found_in: HashMap<&str, u8> = HashMap::new();
+    for (i, stream) in streams.iter().enumerate() {
+        let w = weights.of(i);
+        // A zero weight means the stream is not a stream: it must contribute
+        // neither a score nor an entry. Inserting its hits anyway would leave
+        // them in the output at score 0.0 — sorted in by id, past everything a
+        // real stream ranked — so a one-stream sweep arm would silently return
+        // the dropped stream's tail as unranked filler, and the agreement bonus
+        // would credit ids the fused list no longer has.
+        if w == 0.0 {
+            continue;
+        }
         for hit in stream {
             let rank = hit.rank.max(1) as f64;
-            *scores.entry(hit.id.as_str()).or_default() += 1.0 / (k + rank);
+            let entry = scores.entry(hit.id.as_str()).or_default();
+            *entry += w / (k + rank);
+            let seen = found_in.entry(hit.id.as_str()).or_default();
+            *seen |= 1 << (i.min(7) as u32);
+        }
+    }
+    if weights.agreement != 0.0 {
+        let unit = weights.agreement / (k + 1.0);
+        for (id, streams) in found_in.iter() {
+            if streams.count_ones() > 1 {
+                if let Some(s) = scores.get_mut(id) {
+                    *s += unit;
+                }
+            }
         }
     }
     let mut out: Vec<(String, f64)> = scores
@@ -259,19 +376,92 @@ mod tests {
             RankedHit { id: "m2".to_string(), rank: 2 },
         ];
         let b = vec![RankedHit { id: "m2".to_string(), rank: 1 }];
-        let fused = rrf_fuse(&[a, b], RRF_K);
+        let fused = rrf_fuse(&[a, b], &FusionWeights::SHIPPED);
         assert_eq!(fused[0].0, "m2");
     }
 
     #[test]
     fn rrf_should_clamp_non_positive_k() {
         let stream = vec![vec![RankedHit { id: "m1".to_string(), rank: 1 }]];
-        let safe = rrf_fuse(&stream, 1.0);
+        let at = |k: f64| FusionWeights { k, ..FusionWeights::SHIPPED };
+        let safe = rrf_fuse(&stream, &at(1.0));
         for bad_k in [0.0, -5.0, f64::NAN] {
-            let got = rrf_fuse(&stream, bad_k);
+            let got = rrf_fuse(&stream, &at(bad_k));
             assert_eq!(got[0].1, safe[0].1, "k={bad_k} must clamp to the floor");
             assert!(got[0].1.is_finite() && got[0].1 > 0.0);
         }
+    }
+
+    /// The identity the kernel must preserve: with both streams at 1.0 and no
+    /// bonus, the fused score is a plain `Σ 1/(k + rank)`. Pinned against a
+    /// literal computation rather than against whatever the code does, so a
+    /// weight that leaked into the arithmetic is caught here rather than turning
+    /// up later as a moved benchmark.
+    ///
+    /// This is deliberately *not* the shipped default — E1 moved `overlap` off
+    /// 1.0 — which is exactly why it needs a test of its own: it is the claim
+    /// that a weight is a multiplier and not a rewrite of the formula.
+    #[test]
+    fn unit_weights_should_reproduce_plain_rrf() {
+        let a = vec![
+            RankedHit { id: "m1".to_string(), rank: 1 },
+            RankedHit { id: "m2".to_string(), rank: 2 },
+            RankedHit { id: "m3".to_string(), rank: 7 },
+        ];
+        let b = vec![
+            RankedHit { id: "m2".to_string(), rank: 1 },
+            RankedHit { id: "m4".to_string(), rank: 4 },
+        ];
+        let unit = FusionWeights { overlap: 1.0, ..FusionWeights::SHIPPED };
+        let fused = rrf_fuse(&[a, b], &unit);
+        let got: HashMap<&str, f64> =
+            fused.iter().map(|(id, s)| (id.as_str(), *s)).collect();
+        let rrf = |ranks: &[f64]| ranks.iter().map(|r| 1.0 / (60.0 + r)).sum::<f64>();
+        assert!((got["m1"] - rrf(&[1.0])).abs() < 1e-12);
+        assert!((got["m2"] - rrf(&[2.0, 1.0])).abs() < 1e-12);
+        assert!((got["m3"] - rrf(&[7.0])).abs() < 1e-12);
+        assert!((got["m4"] - rrf(&[4.0])).abs() < 1e-12);
+        assert!(FusionWeights::default() == FusionWeights::SHIPPED);
+    }
+
+    /// A zero weight must *drop* its stream, not merely shrink it — that is what
+    /// makes a one-stream arm a row in the sweep rather than a separate path.
+    #[test]
+    fn a_zero_weight_should_remove_its_stream() {
+        let bm25_only = vec![
+            RankedHit { id: "m1".to_string(), rank: 1 },
+            RankedHit { id: "m2".to_string(), rank: 2 },
+        ];
+        let overlap_only = vec![RankedHit { id: "m3".to_string(), rank: 1 }];
+        let w = FusionWeights { overlap: 0.0, ..FusionWeights::SHIPPED };
+        let fused = rrf_fuse(&[bm25_only, overlap_only], &w);
+        let ids: Vec<&str> = fused.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, ["m1", "m2"], "the dropped stream must contribute nothing");
+    }
+
+    /// The agreement bonus lifts a doubly-found hit above a hit one stream rates
+    /// higher, and leaves a singly-found hit exactly where it was.
+    #[test]
+    fn the_agreement_bonus_should_lift_only_doubly_found_hits() {
+        let bm25 = vec![
+            RankedHit { id: "shared".to_string(), rank: 6 },
+            RankedHit { id: "solo".to_string(), rank: 1 },
+        ];
+        let overlap = vec![RankedHit { id: "shared".to_string(), rank: 1 }];
+        let base = rrf_fuse(&[bm25.clone(), overlap.clone()], &FusionWeights::SHIPPED);
+        let w = FusionWeights { agreement: 0.05, ..FusionWeights::SHIPPED };
+        let boosted = rrf_fuse(&[bm25, overlap], &w);
+        let score = |rows: &Vec<(String, f64)>, id: &str| {
+            rows.iter().find(|(i, _)| i == id).map(|(_, s)| *s).expect("id present")
+        };
+        assert!(score(&boosted, "shared") > score(&base, "shared"));
+        assert!((score(&boosted, "shared") - score(&base, "shared") - 0.05 / 61.0).abs() < 1e-12);
+        assert_eq!(
+            score(&boosted, "solo"),
+            score(&base, "solo"),
+            "a one-stream hit must not be touched by the bonus"
+        );
+        assert_eq!(boosted[0].0, "shared", "the bonus must actually reorder");
     }
 
     #[test]

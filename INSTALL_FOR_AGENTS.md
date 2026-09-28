@@ -259,7 +259,8 @@ deletes the prior revision and inserts the new one in a single transaction.
 Observed for `spec`: `[{"content": "spec v2", "created_at": "2026-09-27T11:23:31.265Z", "id": "272de770-…"}]`,
 one row, `spec v2`. `format:"full"` returns `{"content":…,"id":…,"score":…}`
 objects — observed `[{"content":"spec v2","id":"272de770-…","score":0.032786885245901638}]`;
-`score` is the fused RRF value the ranking used (`Σ 1/(60 + rank)`), not a token
+`score` is the fused RRF value the ranking used
+(`1·1/(60 + rank_bm25) + 0.25·1/(60 + rank_overlap)`), not a token
 count, so it is a small positive float and only comparable against other scores
 from the same recall. The
 default (no `format`, or any value other than `full`) stays a bare array of

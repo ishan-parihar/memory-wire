@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::capture::redact_pii;
 use crate::memory::{Bank, Memory};
-use crate::recall::{rank_candidates, rrf_fuse, trim_to_budget, RankedHit, RRF_K};
+use crate::recall::{rank_candidates, rrf_fuse, trim_to_budget, FusionWeights, RankedHit};
 pub use crate::store::BankStats;
 use crate::store::{Store, StoreError, UpdateMode};
 
@@ -381,7 +381,7 @@ impl<S: Store> MemoryService<S> {
                 .recall_max_tokens
                 .unwrap_or(DEFAULT_RECALL_BUDGET),
         };
-        self.recall_with(bank_id, query, budget, tags)
+        self.recall_with(bank_id, query, budget, tags, &FusionWeights::SHIPPED)
     }
 
     /// Recall top memories for `query` within `budget_tokens`.
@@ -392,7 +392,26 @@ impl<S: Store> MemoryService<S> {
         budget_tokens: usize,
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         Self::require_bank(bank_id)?;
-        self.recall_with(bank_id, query, budget_tokens, &[])
+        self.recall_with(bank_id, query, budget_tokens, &[], &FusionWeights::SHIPPED)
+    }
+
+    /// Recall with explicit fusion weights instead of [`FusionWeights::SHIPPED`].
+    ///
+    /// Exists for `examples/sweep_fusion.rs` and nothing else: the shipped HTTP
+    /// and MCP surfaces both go through [`Self::recall`], so no request can pick
+    /// its own weights and the measured default cannot drift under a caller.
+    /// Everything upstream of the fusion — the candidate pool, both streams, the
+    /// budget trim, the result cap — is the same code either way, so a swept row
+    /// and the shipped row differ *only* in the arithmetic this selects.
+    pub fn recall_with_weights(
+        &self,
+        bank_id: &str,
+        query: &str,
+        budget_tokens: usize,
+        weights: &FusionWeights,
+    ) -> Result<Vec<ScoredMemory>, ApiError> {
+        Self::require_bank(bank_id)?;
+        self.recall_with(bank_id, query, budget_tokens, &[], weights)
     }
 
     /// Recall top memories for `query`, restricted to memories carrying any of
@@ -409,6 +428,7 @@ impl<S: Store> MemoryService<S> {
         query: &str,
         budget_tokens: usize,
         tags: &[String],
+        weights: &FusionWeights,
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         let normalized = normalize_tags(tags);
         if !tags.is_empty() && normalized.is_empty() {
@@ -435,7 +455,7 @@ impl<S: Store> MemoryService<S> {
             .enumerate()
             .map(|(i, (idx, _))| RankedHit { id: all[*idx].id.clone(), rank: i + 1 })
             .collect();
-        let fused = rrf_fuse(&[fts_stream, overlap_stream], RRF_K);
+        let fused = rrf_fuse(&[fts_stream, overlap_stream], weights);
 
         // One index over the single store read, plus the score the ranking used.
         // Fused ids are bounded by the two stream caps, so the content lookup
@@ -615,8 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn recall_should_isolate_banks() {
-        let s = SqliteStore::open_in_memory().expect("open");
+    fn recall_should_isolate_banks() {        let s = SqliteStore::open_in_memory().expect("open");
         for b in ["a", "b"] {
             s.put_bank(&Bank { id: b.to_string(), name: b.to_string() })
                 .expect("bank");
@@ -858,8 +877,13 @@ mod tests {
         let hits = svc.recall("b", "jose", 2000).expect("recall");
         assert_eq!(hits.len(), 1, "only the memory mentioning jose is a candidate");
         // Rank 1 in the BM25 stream and rank 1 in the overlap stream: the fused
-        // score is the sum of both contributions, not either count.
-        let expected = 1.0 / (RRF_K + 1.0) + 1.0 / (RRF_K + 1.0);
+        // score is the *weighted* sum of both contributions, not either count.
+        // Built from the shipped weights rather than written out, so changing
+        // the default (as Phase E1 did) cannot leave a stale constant here —
+        // this assertion is about the shape of the sum, and it keeps testing that
+        // shape rather than a number that used to be true.
+        let w = FusionWeights::SHIPPED;
+        let expected = w.bm25 / (w.k + 1.0) + w.overlap / (w.k + 1.0);
         assert_eq!(hits[0].score, expected);
         // An overlap count would have been 1 here, and the fused value is not
         // that — the assertion above is the point, this one pins the scale.
@@ -949,6 +973,120 @@ mod tests {
         svc.retain("b", "auth uses jose second", None).expect("plain retain");
         assert_eq!(svc.recall_filtered("b", "jose", None, &tags(&["bank"])).expect("bank").len(), 2);
         assert!(svc.recall_filtered("b", "jose", None, &tags(&["req"])).expect("req").len() == 1);
+    }
+
+    /// The overlap stream is **not** a "no query terms match" fallback: it drops
+    /// every zero-overlap document, so a query nothing matches leaves both
+    /// streams empty and the recall empty. Pinned because the obvious reason to
+    /// keep a non-zero overlap weight is exactly that fallback, and it does not
+    /// exist — a weight change must not be justified by it.
+    #[test]
+    fn a_query_nothing_matches_should_return_nothing() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
+            .expect("bank");
+        let svc = MemoryService::new(s);
+        svc.retain("b", "auth uses jose", None).expect("retain");
+        svc.retain("b", "deploy the redis cache", None).expect("retain");
+        for w in [FusionWeights::SHIPPED, FusionWeights { overlap: 0.25, ..FusionWeights::SHIPPED }] {
+            let hits = svc
+                .recall_with_weights("b", "kubernetes helm rollout", 2000, &w)
+                .expect("recall");
+            assert!(hits.is_empty(), "nothing matches {hits:?} at {w:?}");
+        }
+    }
+
+    /// The one job BM25 cannot do: **more than 50 candidates.** BM25 is `LIMIT
+    /// FTS_LIMIT` = 50 in SQL, so a query matching more than 50 rows truncates
+    /// there. The overlap stream is capped at 200, so it is the only thing that
+    /// can put rows 51–200 in front of the caller.
+    ///
+    /// This is the structural cost of an `overlap` weight of exactly 0.0, and it
+    /// is one the LongMemEval suite **cannot** see: 38–62 sessions per bank with
+    /// BM25 truncating at 50 means the suite has no query that matches more than
+    /// 50 rows, which is why its highest-scoring row is the one that drops the
+    /// stream. `eval/BENCH_RECALL_CURVE.md` (1k–100k banks) is the harness that
+    /// does exercise it.
+    #[test]
+    fn a_query_matching_more_rows_than_bm25_returns_must_still_surface_the_overflow() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
+            .expect("bank");
+        let svc = MemoryService::new(s);
+        // 120 rows, all matching `shard`; the needle is the last one written, so
+        // it is outside BM25's 50 by construction.
+        for i in 0..120 {
+            svc.retain("b", &format!("shard replica {i} rollout note"), None)
+                .expect("retain");
+        }
+        let needle = svc.retain("b", "shard replica 120 rollout note", None).expect("retain");
+        let ids = |rows: Vec<ScoredMemory>| {
+            rows.into_iter().map(|r| r.memory.id).collect::<Vec<_>>()
+        };
+        let shipped = ids(svc.recall("b", "shard", 100_000).expect("recall"));
+        assert!(
+            shipped.len() > 50,
+            "BM25 truncates at 50, so a non-zero overlap weight is what carries the overflow; got {}",
+            shipped.len()
+        );
+        assert!(!shipped.contains(&needle), "the needle is not a gold row here, only an overflow witness");
+        // And the contrast that makes it a real test rather than a comment.
+        let bm25_only = FusionWeights { overlap: 0.0, ..FusionWeights::SHIPPED };
+        let dropped = ids(
+            svc.recall_with_weights("b", "shard", 100_000, &bm25_only)
+                .expect("recall"),
+        );
+        assert_eq!(
+            dropped.len(),
+            50,
+            "a zero overlap weight must truncate the candidate set at BM25's LIMIT 50"
+        );
+    }
+
+    /// The shipped default must be a non-zero overlap weight, and every other
+    /// field must still be the plain value the sweep left alone.
+    ///
+    /// This is the one place the E1 decision is pinned in code, so a later
+    /// "let's just round this to 1.0" edit fails here instead of quietly shipping
+    /// the 4.0pp R@5 regression the sweep measured against. The *value* lives in
+    /// [`FusionWeights::SHIPPED`]; this asserts the shape that value must keep.
+    #[test]
+    fn the_shipped_fusion_weights_should_keep_the_swept_overlap_weight() {
+        assert_eq!(
+            FusionWeights::SHIPPED,
+            FusionWeights { bm25: 1.0, overlap: 0.25, agreement: 0.0, k: 60.0 },
+            "the shipped default moved off the configuration E1 measured"
+        );
+        assert_ne!(
+            FusionWeights::SHIPPED.overlap, 1.0,
+            "equal weighting was measured 4.0pp worse on R@5; see docs/NEXT_ITERATION.md"
+        );
+    }
+
+    /// The shipped default must be the equal-weight-shaped fusion through the
+    /// public path, so a future edit that reweights recall *without* touching
+    /// `rrf_fuse` is caught too.
+    #[test]
+    fn the_shipped_recall_should_be_the_default_fusion() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
+            .expect("bank");
+        let svc = MemoryService::new(s);
+        for c in [
+            "auth uses jose for the session cookie",
+            "deploy the redis cache at the edge",
+            "latency index shard replica",
+        ] {
+            svc.retain("b", c, None).expect("retain");
+        }
+        let shipped = svc.recall("b", "session cookie latency", 2000).expect("recall");
+        let explicit = svc
+            .recall_with_weights("b", "session cookie latency", 2000, &FusionWeights::SHIPPED)
+            .expect("recall");
+        assert_eq!(
+            shipped.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            explicit.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>()
+        );
     }
 
     #[test]
