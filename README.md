@@ -1,12 +1,15 @@
 # memory-wire
 
-**Agent memory that out-retrieves both incumbents on 10.7 MiB of RSS** — ~1% of
-Hindsight's documented idle floor, and 3.4% of agentmemory's heap at their 50k
-observation figure. One static Rust binary: retain/recall/reflect with bank
-isolation, FTS5 BM25 + RRF fusion, PII redaction on write — over HTTP, or as an
-MCP stdio server. No runtime, no daemon, no database to install.
+**Agent memory in one 8.4 MB static binary, 10.7 MiB of RSS, and zero daemons** —
+roughly 1% of Hindsight's documented idle floor. No runtime, no database, no
+install step: retain/recall/reflect with bank isolation, FTS5 BM25 + RRF fusion and
+PII redaction on write, over HTTP or as an MCP stdio server.
 
-- **97.2% R@5** LongMemEval-S · **10.7 MiB** idle RSS · **8.4 MiB** binary · 100% hit-rate coding-life
+- **10.7 MiB** idle RSS · **8.4 MiB** binary · **0** background processes
+- **97.2% R@5** / **83.8% R@1** LongMemEval-S · 100% hit-rate coding-life
+- On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
+  the fitted weight is accounted for. Both numbers are in
+  [Benchmarks](#benchmarks); the reason is one sweep on one dataset.
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook)
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `docs/BENCHMARK.md`
 
@@ -20,9 +23,24 @@ query. Regenerate: `cargo run --example longmemeval` → `eval/RESULTS.md`.
 
 | System | R@1 | R@5 | R@10 | R@20 | NDCG@10 | MRR |
 |---|---|---|---|---|---|---|
-| **memory-wire (FTS5 BM25 + overlap RRF, overlap weight 0.25)** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** |
+| **memory-wire — shipped config** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** |
+| memory-wire — unfitted (equal weight) | not measured | 93.0% | 97.4% | 99.6% | 83.5% | 83.9% |
 | agentmemory BM25-only | not reported | 86.2% | 94.6% | 98.6% | 73.0% | 71.5% |
 | agentmemory BM25+Vector | not reported | 95.2% | 98.6% | 99.4% | 87.9% | 88.2% |
+
+**The first row is measured at a weight that was fitted to this set; the second is
+the one to trust.** `overlap: 0.25` was chosen by sweeping 46 configurations
+against these same 500 questions. Re-measured on 1,531 LoCoMo queries that never
+chose it, the weight is worth **+1.4pp R@5, not +4.2pp**
+([`eval/LOCOMO.md`](eval/LOCOMO.md)) — the direction replicated, the magnitude did
+not, which is what the maximum of 46 noisy draws looks like. Adding that measured
+delta to the clean baseline puts the honest out-of-sample estimate at **≈94.4%
+R@5: behind agentmemory's 95.2% hybrid, not 2.0pp ahead of it.**
+
+So the honest position is **decisively ahead on footprint, roughly level to
+slightly behind on retrieval.** Both rows ship because publishing only the first
+would mean publishing only the fitted number. `eval/LOCOMO.md` and
+`docs/CONSISTENCY.md` §14 have the working.
 
 **R@1 is the column that decides whether the answer is right, so it is the one to
 read first.** An agent that reads the first memory it gets back is correct 83.8%
@@ -34,10 +52,17 @@ the shipped ranking's own first-hit rate, and the 100.0% quoted beside it in tha
 artifact is an *oracle* — a perfect reranker over the pool this build already
 assembles, computed with the gold labels. That oracle is 500/500, so the entire
 +16.2pp at R@1 is ordering, not matching, and it is the largest single number in
-the system. `eval/RESULTS.md` publishes R@5/R@10/R@20/NDCG@10/MRR only; R@1
-belongs in that table and needs a harness change to get there (tracked as P0 in
-`docs/PERFORMANCE_PLAN.md`). Neither competitor publishes an R@1, so the column
-carries one number rather than a comparison — that is the honest shape of it.
+the system. Neither competitor publishes an R@1, so the column carries one number
+rather than a comparison — that is the honest shape of it.
+
+**R@1 is also the clearest statement of where the remaining work is.** Overall
+83.8%, but `single-session-preference` ranks the right session first **43.3%** of
+the time while its R@20 is **100.0%** — an ordering collapse, invisible in every
+K≥5 column. Four mechanisms aimed at it (a BM25-magnitude tie-breaker the fusion
+was discarding, a recency stream, sentence-level overlap, and a temporal-query
+classifier) are built, unit-tested and **deliberately inert**: every weight sits at
+a default that leaves the shipped ranking byte-identical. They are not a feature
+until a weight is chosen on the dev set — see `docs/PERFORMANCE_PLAN.md`.
 
 **The two streams are not equally weighted, and that is a measured result.** At
 equal weight the fusion scored 93.0 / 97.4 / 99.6 / 83.5 / 83.9 — behind
@@ -47,7 +72,10 @@ token-overlap stream was a *net negative* as a co-equal voter, and moved its
 weight to 0.25: **+4.2pp R@5, +4.8pp NDCG@10, R@20 unchanged.** The gain is
 concentrated exactly where the deficit was — `single-session-preference` R@5
 56.7% → 86.7% and `single-session-assistant` 87.5% → 100.0%, with no category
-regressing. The cost is stated in full below rather than buried.
+regressing. The cost is stated in full below rather than buried. **The +4.2pp is a
+fitted number and did not hold its size off this dataset** — on LoCoMo it is
++1.4pp. The table above reports both the clean and the fitted configuration
+rather than only the flattering one.
 
 **Two later attempts to make that weight unnecessary both failed, and one of them
 failed for an instructive reason** (`docs/NEXT_ITERATION.md` Phases E3–E4).
