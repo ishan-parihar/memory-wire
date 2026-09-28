@@ -30,7 +30,7 @@ Upstream package versions observed at those SHAs: `hindsight-api-slim` 0.10.1
 
 - `rustc 1.98.0 (88d9e12ae 2026-08-18)`, `cargo 1.98.0 (797e8a9bc 2026-08-05)`
   — re-verified 2026-09-28, unchanged.
-- `memory-wire` 0.2.0, edition 2021, `MIT OR Apache-2.0` — unchanged. See the
+- `memory-wire` 0.3.0, edition 2021, `MIT OR Apache-2.0` — unchanged. See the
   banner: the tree is ahead of the `0.2.0` tag.
 
 ## 3. Locked direct dependencies (`cargo tree --depth 1`)

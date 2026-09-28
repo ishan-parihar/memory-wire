@@ -63,7 +63,7 @@ if [ "$MW_VERSION" = latest ] && [ -z "${MW_LOCAL_ASSET:-}" ]; then
   MW_VERSION=$(curl -fsSL "https://api.github.com/repos/$MW_REPO/releases/latest" 2>/dev/null \
     | sed -n 's/.*"tag_name" *: *"\([^"]*\)".*/\1/p' | head -1) || MW_VERSION=''
   [ -n "$MW_VERSION" ] || die "no published release for $MW_REPO.
-  Static fallback: pin a tag, e.g.  MW_VERSION=v0.2.0  sh get-memory-wire.sh"
+  Static fallback: pin a tag, e.g.  MW_VERSION=v0.3.0  sh get-memory-wire.sh"
 fi
 
 ASSET="$BIN-$TARGET.tar.gz"

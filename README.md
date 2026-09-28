@@ -420,7 +420,7 @@ single-use per document id; if you are accumulating revisions, `replace` is the
 mode that works today. Neither field appears in any response — a document id is a
 write-side handle only, so keep it yourself.
 
-Library in `0.2.0`: `src/{api,store,recall,capture,embed,lib,memory}.rs` —
+Library in `0.3.0`: `src/{api,store,recall,capture,embed,lib,memory}.rs` —
 `capture.rs` supplies the redaction filter. Binary-side modules (`connect`,
 `doctor`, `guidelines`, `hooks`, `http`, `mcp`, `paths`, `sweep`) live in
 `src/main.rs`; the HTTP surface is eight route groups (`/health`, and
