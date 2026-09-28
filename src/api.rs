@@ -15,7 +15,10 @@ use uuid::Uuid;
 
 use crate::capture::redact_pii;
 use crate::memory::{Bank, Memory};
-use crate::recall::{rank_candidates, rrf_fuse, trim_to_budget, FusionWeights, RankedHit};
+use crate::recall::{
+    rank_candidates_scoped, recency_rank, rrf_fuse_with_magnitudes, trim_to_budget, FusionWeights,
+    RankedHit,
+};
 pub use crate::store::BankStats;
 use crate::store::{Store, StoreError, UpdateMode};
 
@@ -447,15 +450,49 @@ impl<S: Store> MemoryService<S> {
             .enumerate()
             .map(|(i, (id, _))| RankedHit { id: id.clone(), rank: i + 1 })
             .collect();
+        // The BM25 magnitudes, keyed by id. `store::KeywordHits` already carries
+        // them as the `f64` of each pair — FTS5's `bm25()`, more negative better —
+        // and they were dropped here at the `_` above. Built into a lookup only
+        // when `bm25_magnitude` is non-zero, so the shipped path allocates
+        // nothing and the fusion kernel skips the term entirely (an exact `+ 0.0`
+        // is bit-identity, but not adding it at all is cheaper and provable).
+        let magnitudes: HashMap<String, f64> = if weights.bm25_magnitude == 0.0 {
+            HashMap::new()
+        } else {
+            keyword_hits.iter().map(|(id, rank)| (id.clone(), *rank)).collect()
+        };
         // Stream B: token-overlap rank, capped so a large bank cannot flood fusion.
-        let ranked = rank_candidates(query, all.iter().map(|m| m.content.as_str()));
+        // `overlap_scope` defaults to the whole-document scorer, which is the same
+        // function this line has always called.
+        let ranked =
+            rank_candidates_scoped(query, all.iter().map(|m| m.content.as_str()), weights.overlap_scope);
         let overlap_stream: Vec<RankedHit> = ranked
             .iter()
             .take(OVERLAP_LIMIT)
             .enumerate()
             .map(|(i, (idx, _))| RankedHit { id: all[*idx].id.clone(), rank: i + 1 })
             .collect();
-        let fused = rrf_fuse(&[fts_stream, overlap_stream], weights);
+        // Stream C: recency, off unless the resolved weight is non-zero. Resolved
+        // through `recency_weight_for` rather than read off the struct so the
+        // decision to *build* the stream and the weight it is fused under are the
+        // same value — and so a zero here never reads the clock, which is what
+        // keeps the shipped recall deterministic.
+        let mut streams = vec![fts_stream, overlap_stream];
+        let recency_weight = weights.recency_weight_for(query);
+        if recency_weight != 0.0 {
+            let recency_stream = recency_rank(
+                &all,
+                chrono::Utc::now(),
+                weights.recency_half_life_days,
+            );
+            if !recency_stream.is_empty() {
+                streams.push(recency_stream);
+            }
+        }
+        // `of()` names stream 2 as `recency`, so the third slot is only ever the
+        // recency stream — and a stream that was not built leaves a 2-element
+        // `of()` lookup untouched.
+        let fused = rrf_fuse_with_magnitudes(&streams, &magnitudes, weights);
 
         // One index over the single store read, plus the score the ranking used.
         // Fused ids are bounded by the two stream caps, so the content lookup
@@ -620,6 +657,9 @@ async fn put_bank_config<S: Store + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recall::{
+        is_temporal_query, rank_candidates, recency_rank, OverlapScope, RecencyPolicy,
+    };
     use crate::memory::Bank;
     use crate::store::{SqliteStore, UpdateMode};
 
@@ -1051,6 +1091,13 @@ mod tests {
     /// "let's just round this to 1.0" edit fails here instead of quietly shipping
     /// the 4.0pp R@5 regression the sweep measured against. The *value* lives in
     /// [`FusionWeights::SHIPPED`]; this asserts the shape that value must keep.
+    ///
+    /// The four fields below the RRF ones are the inert defaults of the
+    /// mechanisms in `recall.rs` — BM25 magnitude, the recency stream, the recency
+    /// policy, and the overlap scope. They are spelled out here rather than
+    /// defaulted so that *turning one on* has to delete a line in this test
+    /// instead of happening silently, which is the whole point of shipping them
+    /// off while `AGENTS.md` §1 forbids choosing their values.
     #[test]
     fn the_shipped_fusion_weights_should_keep_the_swept_overlap_weight() {
         assert_eq!(
@@ -1060,6 +1107,11 @@ mod tests {
                 overlap: 0.25,
                 agreement: 0.0,
                 k: 60.0,
+                bm25_magnitude: 0.0,
+                recency: 0.0,
+                recency_half_life_days: crate::recall::RECENCY_HALF_LIFE_PLACEHOLDER_DAYS,
+                recency_policy: RecencyPolicy::Always,
+                overlap_scope: OverlapScope::Document,
             },
             "the shipped default moved off the configuration E1 measured"
         );
@@ -1067,6 +1119,12 @@ mod tests {
             FusionWeights::SHIPPED.overlap, 1.0,
             "equal weighting was measured 4.0pp worse on R@5; see docs/NEXT_ITERATION.md"
         );
+        // The mechanisms exist, so their off switches are the only thing keeping
+        // them inert, and those are asserted here at the default as well as by
+        // equality above.
+        assert_eq!(FusionWeights::SHIPPED.bm25_magnitude, 0.0);
+        assert_eq!(FusionWeights::SHIPPED.recency, 0.0);
+        assert_eq!(FusionWeights::default(), FusionWeights::SHIPPED);
     }
 
     /// The shipped default must be the equal-weight-shaped fusion through the
@@ -1482,5 +1540,294 @@ mod tests {
             assert_eq!(msg, "storage error", "a client must learn nothing: {msg}");
             assert!(!msg.contains("lock") && !msg.contains("task"), "got {msg}");
         }
+    }
+
+    // ---- the four new mechanisms, end to end -------------------------------
+
+    /// A bank whose rows deliberately disagree with the clock: several share one
+    /// query token, one holds a rare one, and the timestamps are spread over
+    /// months. It is the shape every one of the four mechanisms needs in order
+    /// to be observable at all, and using one bank for all four keeps the
+    /// fixtures from drifting apart.
+    fn mechanism_bank() -> MemoryService<SqliteStore> {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
+            .expect("bank");
+        let svc = MemoryService::new(s);
+        for content in [
+            "rate limiting is a token bucket",
+            "rate limiting uses a token bucket with a burst allowance",
+            "the deployment pipeline runs on token bucket credentials",
+            "release notes mention the token bucket migration",
+        ] {
+            svc.retain("b", content, None).expect("retain");
+        }
+        svc
+    }
+
+    /// The inertness claim at the level the brief states it: with the shipped
+    /// weights, `recall` returns exactly what it returned before these
+    /// mechanisms existed — same ids, same order, and the same `score` bit
+    /// pattern, not merely a close one.
+    ///
+    /// The reference is written out longhand rather than delegated to
+    /// `rank_candidates`/`rrf_fuse` alone, because those two are the very
+    /// functions under test; the point is that the *wiring* in `recall_with`
+    /// (the magnitude map, the third stream, the scoped ranker) contributes
+    /// nothing at the defaults. It re-derives the pre-change pipeline from
+    /// `Store::recall_inputs` — BM25 ranks, whole-document overlap, plain
+    /// `1/(k+1)/(k+rank)` over the two — and compares.
+    #[test]
+    fn the_shipped_recall_should_be_the_pre_change_fusion() {
+        let svc = mechanism_bank();
+        let query = "token bucket rate limiting";
+        let (all, hits) = svc.store.recall_inputs("b", query, &[], FTS_LIMIT).expect("inputs");
+
+        // The pre-change pipeline, written out.
+        let mut reference: Vec<(String, f64)> = Vec::new();
+        for (i, (id, _)) in hits.iter().enumerate() {
+            let s = 1.0 / (60.0 + (i + 1) as f64);
+            match reference.iter_mut().find(|(r, _)| r == id) {
+                Some((_, acc)) => *acc += s,
+                None => reference.push((id.clone(), s)),
+            }
+        }
+        let ranked = rank_candidates(query, all.iter().map(|m| m.content.as_str()));
+        for (i, (idx, _)) in ranked.iter().take(OVERLAP_LIMIT).enumerate() {
+            let id = &all[*idx].id;
+            let s = 0.25 / (60.0 + (i + 1) as f64);
+            match reference.iter_mut().find(|(r, _)| r == id) {
+                Some((_, acc)) => *acc += s,
+                None => reference.push((id.clone(), s)),
+            }
+        }
+        reference.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+
+        let got = svc.recall("b", query, 100_000).expect("recall");
+        let got_ids: Vec<&str> = got.iter().map(|h| h.memory.id.as_str()).collect();
+        let want_ids: Vec<&str> = reference.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(got_ids, want_ids, "the shipped order moved");
+
+        for ((id, want), hit) in reference.iter().zip(&got) {
+            assert_eq!(hit.memory.id, *id);
+            assert_eq!(
+                hit.score.to_bits(),
+                want.to_bits(),
+                "score for {id} is not the same f64: {:?} vs {:?}",
+                hit.score,
+                want
+            );
+        }
+    }
+
+    /// A knob that reached `recall_with` and did nothing would pass every unit
+    /// test above and still be dead code here. This is the end-to-end proof
+    /// that the BM25 magnitude travels from the store's `KeywordHits` all the
+    /// way to the fused score, on a real store with real `bm25()` values.
+    #[test]
+    fn a_non_zero_bm25_magnitude_should_reach_the_fused_score() {
+        let svc = mechanism_bank();
+        let query = "token bucket";
+        let off = svc.recall_with_weights("b", query, 100_000, &FusionWeights::SHIPPED)
+            .expect("recall");
+        // A large enough knob that a row the rank-only RRF put lower has to
+        // overtake the leader; the exact value is not a claim about quality, it
+        // is large enough for the mechanism to be observable at all.
+        let on = svc.recall_with_weights(
+            "b",
+            query,
+            100_000,
+            &FusionWeights { bm25_magnitude: 4.0, ..FusionWeights::SHIPPED },
+        )
+        .expect("recall");
+        assert_eq!(off.len(), on.len(), "the candidate set must not change");
+        assert_ne!(
+            off.iter().map(|h| h.score).collect::<Vec<_>>(),
+            on.iter().map(|h| h.score).collect::<Vec<_>>(),
+            "a non-zero magnitude must change the scores, not just the order"
+        );
+        // And the lift is bounded: no row may gain more than `w` of a rank-1 hit.
+        let cap = 4.0 / 61.0;
+        for (before, after) in off.iter().zip(&on) {
+            let lift = after.score - before.score;
+            assert!(
+                (lift..=cap + 1e-12).contains(&lift),
+                "{} gained {lift}, over the {cap} bound",
+                after.memory.id
+            );
+        }
+    }
+
+    /// The same end-to-end requirement for the third stream, and specifically
+    /// that the shipped path never reads a clock: a bank whose rows are
+    /// deliberately out of insertion order still returns the same ranking with
+    /// the default, and a non-zero recency weight brings the newest row up.
+    #[test]
+    fn a_non_zero_recency_weight_should_add_a_third_stream() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
+            .expect("bank");
+        let svc = MemoryService::new(s);
+        // Written oldest-first, so insertion order and recency disagree, and the
+        // store is asked directly because `retain_doc` has no created_at arm —
+        // the column is a store-level fact, stamped on insert unless a caller
+        // supplies one.
+        for (n, (content, created)) in [
+            ("the token bucket capacity table", "2025-09-20T00:00:00Z"),
+            ("the token bucket audit log", "2026-06-20T00:00:00Z"),
+            ("the token bucket refill interval", "2026-09-20T00:00:00Z"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            svc.store
+                .put(&Memory {
+                    id: format!("m{n}"),
+                    bank_id: "b".to_string(),
+                    content: (*content).to_string(),
+                    context: None,
+                    created_at: Some((*created).to_string()),
+                })
+                .expect("put");
+        }
+        let query = "token bucket";
+        let ids = |w: f64| {
+            svc.recall_with_weights(
+                "b",
+                query,
+                100_000,
+                &FusionWeights { recency: w, ..FusionWeights::SHIPPED },
+            )
+            .expect("recall")
+            .iter()
+            .map(|h| h.memory.id.clone())
+            .collect::<Vec<_>>()
+        };
+        // Every row ties under both existing streams — same text shape, same
+        // length, every query term present in all three — so the store's own
+        // order is the whole of the baseline ranking.
+        assert_eq!(ids(0.0), ["m0", "m1", "m2"], "the shipped order is the store's");
+
+        // **A third stream at weight 1.0 cannot reverse the other two.** RRF's
+        // discount is the same `1/(k+rank)` shape in all three streams, so if the
+        // new stream is the exact reverse of the existing ranking its `+1/(k+1)`
+        // to the tail is smaller than the `1/(k+1) - 1/(k+3)` the leader keeps,
+        // and the sum comes out unchanged. This is a property of the algebra, not
+        // of this implementation, and it is recorded on
+        // `FusionWeights::recency` because whoever selects that value has to know
+        // it: the interesting weights here are the ones far from 1.0.
+        assert_eq!(
+            ids(1.0),
+            ["m0", "m1", "m2"],
+            "at unit weight the reversed stream is exactly a wash"
+        );
+        assert_eq!(ids(4.0), ["m2", "m1", "m0"], "a weight past unit reverses it");
+        let top = svc
+            .recall_with_weights(
+                "b",
+                query,
+                100_000,
+                &FusionWeights { recency: 4.0, ..FusionWeights::SHIPPED },
+            )
+            .expect("recall");
+        assert_eq!(top[0].memory.created_at.as_deref(), Some("2026-09-20T00:00:00Z"));
+    }
+
+    /// The scope knob reaches the ranker: a long memory that names each query
+    /// token once in separate sentences loses to a short memory that is densely
+    /// about the same tokens, but only under [`OverlapScope::BestSentence`].
+    /// The scope knob reaches the ranker *and* can change the fused order — but
+    /// only in a pool crowded enough for the overlap stream's rank gap to exceed
+    /// BM25's. Both halves of that are asserted, because the second is the part
+    /// that is easy to assume and hard to get: with one or two documents the
+    /// scope moves the overlap rank by one and BM25's 1.0-weighted rank outranks
+    /// a 0.25-weighted one every time, so the fused order is unchanged and the
+    /// mechanism looks broken when it is merely outgunned.
+    #[test]
+    fn the_overlap_scope_should_change_which_document_outranks_which() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
+            .expect("bank");
+        let svc = MemoryService::new(s);
+        // Eight query terms, one per sentence: the only document that has all
+        // eight, and no single segment with more than one.
+        let scattered = svc
+            .retain("b", "rate. limiting. token. bucket. burst. refill. allowance. capacity.", None)
+            .expect("retain");
+        // Six documents that each hold two of the eight in one unbroken run, so
+        // the sentence stream scores every one of them 2 and the scattered
+        // document 1 — which pushes it to the bottom of that stream.
+        for pair in [
+            "the rate limiting window is configurable",
+            "a token bucket refills at a fixed rate",
+            "the burst allowance is per client",
+            "refill capacity is bounded by the window",
+            "the allowance decays with the bucket",
+            "capacity planning sets the burst limit",
+        ] {
+            svc.retain("b", pair, None).expect("retain");
+        }
+        let query = "rate limiting token bucket burst refill allowance capacity";
+        let top = |scope| {
+            svc.recall_with_weights(
+                "b",
+                query,
+                100_000,
+                &FusionWeights { overlap_scope: scope, ..FusionWeights::SHIPPED },
+            )
+            .expect("recall")
+            .into_iter()
+            .next()
+            .expect("a crowded pool always matches")
+            .memory
+            .id
+        };
+        assert_eq!(
+            top(OverlapScope::Document),
+            scattered,
+            "whole-document overlap gives the scattered memory all eight terms"
+        );
+        assert_ne!(
+            top(OverlapScope::BestSentence),
+            scattered,
+            "no single segment of it holds more than one, so six denser \
+             documents must outrank it"
+        );
+    }
+
+    /// The classifier is wired to the *weight*, not merely present: with
+    /// [`RecencyPolicy::TemporalQueriesOnly`] a non-temporal query gets a 0.0
+    /// weight, so `recall_with` never builds the third stream for it, and a
+    /// temporal one gets the configured weight and does.
+    #[test]
+    fn the_recency_policy_should_gate_the_third_stream_on_the_classifier() {
+        let svc = mechanism_bank();
+        let gated = FusionWeights {
+            recency: 1.0,
+            recency_policy: RecencyPolicy::TemporalQueriesOnly,
+            ..FusionWeights::SHIPPED
+        };
+        for q in ["token bucket rate limiting", "what did I do last time"] {
+            let rows = svc
+                .recall_with_weights("b", q, 100_000, &gated)
+                .expect("recall");
+            assert!(!rows.is_empty());
+            assert_eq!(
+                gated.recency_weight_for(q) != 0.0,
+                is_temporal_query(q),
+                "{q:?}: the policy and the classifier disagree"
+            );
+        }
+        // `recency_rank` is exported and usable on its own, so the classifier is
+        // not the only way to reach it.
+        let (all, _) = svc
+            .store
+            .recall_inputs("b", "token bucket", &[], FTS_LIMIT)
+            .expect("inputs");
+        assert_eq!(recency_rank(&all, chrono::Utc::now(), 30.0).len(), all.len());
     }
 }

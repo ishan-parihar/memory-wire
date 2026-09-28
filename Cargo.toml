@@ -37,6 +37,19 @@ rmcp = { version = "1.8", default-features = false, features = ["server", "trans
 default = []
 
 [dev-dependencies]
+# The only HTTP client in the tree, and it is used by exactly one target:
+# `examples/answer_quality.rs`, which needs to reach an OpenAI-compatible
+# chat-completions endpoint to run the answer-then-judge protocol. A dev-dependency
+# is not linked into the shipped `[[bin]]`, so the 8.4 MB single-binary promise and
+# the idle-RSS figures are untouched by it. `rustls-tls` rather than the default
+# `native-tls` so the harness builds with no system OpenSSL; `default-features =
+# false` with an explicit `blocking` + `json` pair so no proxy/gzip/cookie
+# machinery is dragged in for two POSTs.
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "json",
+    "rustls-tls",
+] }
 
 # Lint groups are deny-by-default in CI (`-D warnings`). `pedantic` and `nursery`
 # are deliberately OFF: they emit ~263 findings on this crate (mostly stylistic

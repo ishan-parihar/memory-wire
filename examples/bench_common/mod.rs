@@ -29,6 +29,8 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use memory_wire::recall::FusionWeights;
+
 /// The value of `--name`, or `default` when the flag is absent.
 pub fn arg(args: &[String], name: &str, default: &str) -> String {
     flag(args, name).unwrap_or_else(|| default.to_string())
@@ -38,9 +40,7 @@ pub fn arg(args: &[String], name: &str, default: &str) -> String {
 /// parsed with a crate: the existing harnesses take `--flag value` positionally
 /// and adding a parser would be the only argument library in the tree.
 pub fn flag(args: &[String], name: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == name)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
 
 /// Nearest-rank percentile of an already-sorted slice, `soak.rs`'s exact
@@ -117,14 +117,12 @@ pub fn host() -> String {
     let cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(0);
-    let model = fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find(|l| l.starts_with("model name"))
-                .and_then(|l| l.split(':').nth(1))
-                .map(|v| v.trim().to_string())
-        });
+    let model = fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| {
+        s.lines()
+            .find(|l| l.starts_with("model name"))
+            .and_then(|l| l.split(':').nth(1))
+            .map(|v| v.trim().to_string())
+    });
     match model {
         Some(m) => format!("{m}, {cpus} logical CPUs"),
         None => format!("{} ({cpus} logical CPUs)", std::env::consts::OS),
@@ -153,7 +151,9 @@ pub fn shuffle(len: usize, seed: u64) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..len).collect();
     let mut s = seed.wrapping_add(0x9E3779B97F4A7C15);
     for i in (1..len).rev() {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         idx.swap(i, (s >> 33) as usize % (i + 1));
     }
     idx
@@ -200,7 +200,12 @@ pub fn free_port() -> u16 {
 /// line, never a parsed body, so there is no chunked decoding, no redirect
 /// handling and no keep-alive. `Connection: close` makes the server close after
 /// one response, which is what lets a plain `read_to_string` terminate.
-pub fn http(addr: &str, method: &str, path: &str, body: Option<&str>) -> std::io::Result<(u16, String)> {
+pub fn http(
+    addr: &str,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> std::io::Result<(u16, String)> {
     let mut sock = TcpStream::connect(addr)?;
     let head = match body {
         Some(b) => format!(
@@ -220,7 +225,9 @@ pub fn http(addr: &str, method: &str, path: &str, body: Option<&str>) -> std::io
         .nth(1)
         .and_then(|c| c.parse().ok())
         .ok_or_else(|| std::io::Error::other(format!("no status line in {raw:?}")))?;
-    let body = raw.split_once("\r\n\r\n").map_or(String::new(), |(_, b)| b.to_string());
+    let body = raw
+        .split_once("\r\n\r\n")
+        .map_or(String::new(), |(_, b)| b.to_string());
     Ok((status, body))
 }
 
@@ -240,4 +247,49 @@ pub fn wait_healthy(addr: &str, timeout: Duration) -> Option<Duration> {
         std::thread::sleep(Duration::from_millis(2));
     }
     None
+}
+
+/// The `overlap` weight that `docs/EVALUATION_HYGIENE.md` §2.1 records as
+/// **fitted**: the winner of 46 configurations scored on LongMemEval-S's own 500
+/// questions, so it was selected on the test set (`AGENTS.md` §1).
+///
+/// Named once, here, because a marker is worth nothing when it is emitted from
+/// anything other than the weight the build actually used: a second hard-coded
+/// `0.25` in a harness is how the marker and the weight drift apart, which is
+/// the same failure five copies of [`out_md`] would be.
+pub const FITTED_OVERLAP: f64 = 0.25;
+
+/// The `provisional:` paragraph a generated artifact carries when it reports
+/// retrieval accuracy measured at [`FITTED_OVERLAP`], and `None` for every other
+/// weight.
+///
+/// `AGENTS.md` §1 requires a fitted value to be marked provisional in the code
+/// and in the docs, and `AGENTS.md` §2 requires a number in prose to exist in a
+/// committed artifact. A generated artifact quoting a fitted number is
+/// therefore exactly where a reader is most likely to take it for a
+/// generalisation estimate, which is why the marker belongs to the generator
+/// rather than to the file: one typed into the artifact by hand is deleted by
+/// the next regeneration, and a marker that silently disappeared is worse than
+/// no marker at all.
+///
+/// `None` rather than a generic caveat for an unfitted weight, so a harness
+/// re-based onto a value that was never chosen by looking at the test set drops
+/// the paragraph by itself and nobody has to remember to delete it.
+pub fn fitted_weight_note(weights: &FusionWeights) -> Option<String> {
+    if (weights.overlap - FITTED_OVERLAP).abs() > 1e-9 {
+        return None;
+    }
+    Some(format!(
+        "> **provisional:** every retrieval number in this artifact was measured at \
+         `overlap: {overlap:.2}` with `k: {k:.0}`, and that weight is **fitted, not \
+         earned** — it won 46 configurations scored on the test set \
+         (`AGENTS.md` §1), so it was chosen by looking at the same questions this \
+         table reports. Read every column as a measurement at a fitted value, not as \
+         a generalisation estimate, and do not quote the difference from an unfitted \
+         configuration as earned. See `docs/EVALUATION_HYGIENE.md` §2.1 for the \
+         audit, §3 for the three-set protocol that replaces it, and \
+         `eval/SWEEP_FUSION.md` for the grid that chose it.",
+        overlap = weights.overlap,
+        k = weights.k,
+    ))
 }
