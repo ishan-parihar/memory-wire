@@ -95,7 +95,7 @@ and `eval/ORACLE_RERANK.md`, and neither is a row below. See `docs/VERSIONS.md`.
 
 | Tool / surface | Status at 0.3.0 | Evidence |
 |---|---|---|
-| Retrieval stack | **FTS5 BM25 (LIMIT 50) + token-overlap (cap 200), fused by weighted RRF at k=60 with the overlap weight swept to 0.25** (equal weight measured 4.2pp worse on R@5) over a candidate pool of the newest 200 rows ∪ the BM25 hits | `eval/RESULTS.md`: R@5 97.2 / R@10 98.6 / R@20 99.6 / NDCG@10 88.2 / MRR 89.2 on official LongMemEval-S, 500 questions; `eval/SWEEP_FUSION.md` for the grid |
+| Retrieval stack | **FTS5 BM25 (LIMIT 50) + token-overlap (cap 200), fused by weighted RRF at k=60 with the overlap weight swept to 0.25** (equal weight measured 4.2pp worse on R@5) over a candidate pool of the newest 200 rows ∪ the BM25 hits | `eval/RESULTS.md`: R@5 97.2 / R@10 98.6 / R@20 99.6 / NDCG@10 88.2 / MRR 89.2 on official LongMemEval-S, 500 questions; R@1 83.8 from `eval/ORACLE_RERANK.md`; `eval/SWEEP_FUSION.md` for the grid |
 | Official LongMemEval-S harness | **built and run** (gap 4 closed) | `examples/longmemeval.rs`, `eval/RESULTS.md`; all 500 per-question `recall_any_at_5/10/20`, `mrr`, `ndcg_at_10` values verified identical to the pre-change artifact on 2026-09-28 |
 | `GET`/`PUT /banks/:id/config` | shipped; PUT requires an existing bank | `docs/CONSISTENCY.md` §2, unknown-bank rule |
 | Lifecycle routes | shipped: `GET .../memories` (50/500, offset), `GET`/`DELETE .../memories/:mid`, `GET .../stats` | README "Lifecycle ops are routes now" |

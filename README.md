@@ -17,11 +17,26 @@ Official LongMemEval-S, retrieval-only (no LLM judge), same methodology as the
 competitors' harnesses — per-question fresh index, session-as-document, question-text
 query. Regenerate: `cargo run --example longmemeval` → `eval/RESULTS.md`.
 
-| System | R@5 | R@10 | R@20 | NDCG@10 | MRR |
-|---|---|---|---|---|---|
-| **memory-wire (FTS5 BM25 + overlap RRF, overlap weight 0.25)** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** |
-| agentmemory BM25-only | 86.2% | 94.6% | 98.6% | 73.0% | 71.5% |
-| agentmemory BM25+Vector | 95.2% | 98.6% | 99.4% | 87.9% | 88.2% |
+| System | R@1 | R@5 | R@10 | R@20 | NDCG@10 | MRR |
+|---|---|---|---|---|---|---|
+| **memory-wire (FTS5 BM25 + overlap RRF, overlap weight 0.25)** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** |
+| agentmemory BM25-only | not reported | 86.2% | 94.6% | 98.6% | 73.0% | 71.5% |
+| agentmemory BM25+Vector | not reported | 95.2% | 98.6% | 99.4% | 87.9% | 88.2% |
+
+**R@1 is the column that decides whether the answer is right, so it is the one to
+read first.** An agent that reads the first memory it gets back is correct 83.8%
+of the time; one that reads five is correct 97.2% of the time. The two figures are
+the same 500 questions, the same build and the same harness method
+(`eval/ORACLE_RERANK.md`, which re-derives the pool `recall` builds and verifies it
+row-for-row against what `recall` serves). R@1 is **not** a coverage claim: it is
+the shipped ranking's own first-hit rate, and the 100.0% quoted beside it in that
+artifact is an *oracle* — a perfect reranker over the pool this build already
+assembles, computed with the gold labels. That oracle is 500/500, so the entire
++16.2pp at R@1 is ordering, not matching, and it is the largest single number in
+the system. `eval/RESULTS.md` publishes R@5/R@10/R@20/NDCG@10/MRR only; R@1
+belongs in that table and needs a harness change to get there (tracked as P0 in
+`docs/PERFORMANCE_PLAN.md`). Neither competitor publishes an R@1, so the column
+carries one number rather than a comparison — that is the honest shape of it.
 
 **The two streams are not equally weighted, and that is a measured result.** At
 equal weight the fusion scored 93.0 / 97.4 / 99.6 / 83.5 / 83.9 — behind
