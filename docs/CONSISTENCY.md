@@ -1002,23 +1002,69 @@ that claim. The `R@1 43.3%` evidence that ordering is broken on
 `single-session-preference` stands on its own; the claim that recency is the fix
 does not, and is no longer cited as if it were.
 
-### 14.5 First end-to-end answer-quality number — partial, and the gate that broke it
+### 14.5 First end-to-end answer-quality number — and the assembly bug it exposed
 
 `examples/answer_quality.rs` exists to measure the thing the whole project has
 optimised a proxy for. LongMemEval's actual metric is LLM-judged answer accuracy;
 every number until this point was `recall_any@K`.
 
-At **n=20** (of a planned 25): retrieval-conditioned **35%**, closed-book control
-**10%**. Retrieval is not at parity with no memory at all.
+The first attempt at **n=20** gave conditioned 35% / closed-book 10%, then hung: the
+process sat blocked with 1.7s of CPU across 28 minutes. Cause identified — the
+endpoint it used (`gemini-web2api` on `:8081`) is not slow, it **times out**, and
+at 180s per request and 4 calls per question a 25-question run will spend two hours
+waiting on nothing. The harness was not at fault; it bounds every request. Re-run
+against `hermes-router/small-stack`, which answers: a second trap there is
+`max_tokens` — at 8 it returns an empty completion with `finish_reason: 'length'`,
+which looks exactly like a broken endpoint.
 
-**This is a partial run and is not a release number.** The process hung at 20/25 —
-the gateway stopped responding, and the process sat blocked with 1.7s of CPU
-across 28 minutes. It also predates the four-mechanism kernel commit, so it is not
-attributable to a recorded SHA. Re-run pending.
+**Clean run, n=25, seed 42, tree `91b5597`, loadavg 57.63 → 48.67, 286.5s over
+100 LLM calls, 346,517 prompt tokens:**
 
-`reqwest` was added as a dev-dependency for it and is provably not linked into the
-release binary: `cargo tree --edges normal` shows zero reqwest edges and `strings`
-finds zero hits.
+| arm | accuracy | correct | scored | unscored |
+|---|---|---|---|---|
+| retrieval-conditioned | **40.0%** | 10 | 25 | 0 |
+| closed-book control | **8.3%** | 2 | 24 | 1 |
+| **delta** | **+31.7pp** | | | |
+
+**The +31.7pp is the load-bearing result of this section: memory is doing real
+work, and the feared "retrieval is at parity with no memory at all" did not
+happen.** The 40.0% is not a memory-system quality score, and must not be quoted as
+one — see below and `eval/ANSWER_QUALITY.md`, which says so at length.
+
+**The 40.0% is floored by the default recall budget, and that is a product finding
+rather than a harness artifact.** The harness uses `DEFAULT_RECALL_BUDGET` = 2,000
+tokens. The median LongMemEval session is **2,543 tokens** (n=2,913 sessions: p10
+814, median 2,561, p90 4,223, max 10,721 at 4 chars/token). **A 2,000-token budget
+does not hold one median session.** The budget trim truncates the top hit to the cap
+and skips every lower hit that does not fit, so the answerer received a partial
+first session and essentially nothing else — while gold at rank 2–5 was
+structurally unreachable.
+
+The run's own disagreement table shows exactly that, and it is the most important
+number in this section:
+
+| on this slice | count | share of n=25 |
+|---|---|---|
+| gold session present in the **served context** | 23 | 92.0% |
+| … answer judged correct | 10 | 40.0% |
+| … answer judged **wrong despite gold being served** | 13 | **52.0%** |
+| gold absent, answer correct anyway | 0 | 0.0% |
+
+Per type: `single-session-assistant` 100% (4/4), `single-session-user` 100% (3/3),
+`knowledge-update` 50% (6/6) — but `multi-session` **0%** (5/5 gold served),
+`temporal-reasoning` **0%** (5/5 gold served), and `single-session-preference` 0/2
+with gold **not in context at all** despite that slice's R@5 being 86.7%.
+
+So the loop loses the answer in three distinguishable places: retrieval sometimes
+misses (4%), the budget then discards what retrieval found, and the answerer fails
+on what survived. **The middle one is ours and is fixable without touching the
+ranking.** The 2,000-token default is tuned for short atomic memories
+("auth uses jose"); against session-scale memories it silently under-serves, and
+no ranking work in `eval/RESULTS.md` can show that, because `recall_any@K` counts
+the gold row before the budget touches it.
+
+A budget sweep (2,000 / 20,000 / 50,000 on the same 25 questions) is the direct
+test and is recorded in §14.9.
 
 ### 14.6 `eval/CODING_LIFE.md` is stale against its generator — do not regenerate
 
@@ -1049,3 +1095,9 @@ No parameter was selected in this section. The four new mechanisms ship with eve
 weight at an inert default and each is proved inert by a mutation check. LoCoMo
 measured; it did not choose. The count of test-set consultations is unchanged from
 `docs/EVALUATION_HYGIENE.md` §2.1.
+
+The `--budget` sweep in §14.9 is the one number in this section that could be
+mistaken for a selection. It is not: it varies one *harness input* to explain an
+observed failure, on 25 questions, and the value it points at is the same for
+every consumer regardless of what the answer loop scores — the median session does
+not fit in 2,000 tokens. Decided on that arithmetic, not on a metric.
