@@ -117,9 +117,17 @@ yet checkpointed is using 2.4x the settled figure.
 **not** re-pinned here, because today's equivalent — 200 sequential `curl`
 requests end to end, each a fresh process — measured **13.8–32.2 ms per
 request**, which is the client and the load, not recall. The store's own recall
-figures are in `eval/`: **849 µs** p50 under the 16-client soak, **2.4 ms** at a
-1k-memory bank, **3.1 ms** at a 2k bank with 1 client, **8 ms** on LongMemEval-S
-sessions, all wall-clock and all load-confounded.
+figures are in `eval/`: **849 µs** p50 under the 16-client soak, **1.0–1.1 ms**
+at a 1k-memory bank and **5.9–6.5 ms** at 10k, **3.1 ms** at a 2k bank with 1
+client, **8 ms** on LongMemEval-S sessions.
+
+The 1k and 10k figures are the only ones measured on a quiet machine — three
+`bench_recall_curve` rounds at load 8.4–8.6, where the 100k p50 settled to
+**70.5–73.8 ms** against 80–172 ms on a loaded box. Everything else above is
+wall-clock and load-confounded, and is quoted as a range for that reason. R@5 is
+100% at every size up to 100k in all nine runs, with all 32 gold rows reaching
+BM25's top-50 — the 200-row fusion pool is not the binding constraint at any size
+measured.
 
 ## Quick start
 

@@ -802,3 +802,43 @@ committed artifact's run, 8 ms today, 14 ms at loadavg 44). The per-question
 *metric* fields are the invariant, and those are what is asserted. Quoting the
 byte-identity of a file that carries a timestamp would be quoting a coincidence
 as a guarantee.
+
+---
+
+## §13 — Idle-box re-measurement of the recall curve (2026-09-28)
+
+Every latency figure in §12 was measured while this box was loaded 26–112 on 24
+cores by unrelated `ultra_granular_001_regional_hpo.py` processes and
+`hindsight-api`, and was published as a range for that reason. The machine later
+rebooted and came back quiet, so the recall curve was re-measured properly.
+
+Three `bench_recall_curve` rounds at load **8.36–8.61**, p50 in µs:
+
+| Memories | r1 | r2 | r3 | idle median | §12 loaded range | inflation |
+|---|---|---|---|---|---|---|
+| 1,000 | 1,015 | 1,010 | 1,132 | **1,015** | 1,137–2,519 | 1.1–2.5× |
+| 10,000 | 6,129 | 5,918 | 6,454 | **6,129** | 6,394–17,197 | 1.0–2.8× |
+| 50,000 | 35,959 | 33,412 | 34,999 | **34,999** | 36,142–87,910 | 1.0–2.5× |
+| 100,000 | 70,489 | 71,331 | 73,839 | **71,331** | 80,169–172,403 | 1.1–2.4× |
+
+**The measurement noise, not just the level, was load.** Within-arm spread at
+100k collapsed from 2.9× (58,444–172,403) to **1.05×** (70,489–73,839). At
+1k–50k the idle spread is ±4–6%. Any §12 comparison that rested on a difference
+smaller than ~2.5× was not resolvable and should be read as "no difference".
+
+Retrieval quality is invariant across all nine runs: R@1 78.1 / 75.0 / 81.2 /
+75.0 and R@5 100.0% at every size, all 32 gold rows in BM25's top-50. Latency
+grows **70× for a 100× larger bank** — sublinear, and consistent with §12's
+shape claim once the load is removed.
+
+`eval/BENCH_RECALL_CURVE.md` was regenerated at load 14.23 and reads
+1,090 / 7,019 / 38,366 / 79,205 µs. It sits inside the idle band and above its
+median, which is the expected direction for a busier box; the table above is the
+one to quote.
+
+**This does not reopen §12's conclusions.** Every §12 finding that was structural
+— FTS index 434,176 → 262,144 B, the pool's soak-RSS effect, the no-pool control
+collapsing at 64 clients, the write-path commit shape — was measured in bytes or
+ops and is unaffected. What the load *did* corrupt was the latency layer, and the
+honest statement is that the latency layer was under-powered and is now better,
+not that any earlier latency conclusion was wrong.
