@@ -12,23 +12,23 @@ PII redaction is not exercised: the haystack is indexed through `Store::put`, as
 
 | field | value |
 |---|---|
-| commit | `45ac189c3bd633e5998d7db0b97d99ca04813a8e` |
-| tree state | clean |
+| commit | `87f726926ac7d8a0fe91b93edf7dfb169350258a` |
+| tree state | dirty - 1 uncommitted path(s): Cargo.toml |
 | date | 2026-09-28 |
-| command | `./target/release/examples/answer_quality --data eval/data/longmemeval_s_cleaned.json --n 25 --seed 42 --out-json eval/results_answer_quality.json --out-md eval/ANSWER_QUALITY.md` |
+| command | `target/release/examples/answer_quality --data eval/data/longmemeval_s_cleaned.json --n 25 --out-md eval/ANSWER_QUALITY.md --out-json eval/results_answer_quality.json` |
 | profile | `--release` |
 | host | AMD Ryzen 9 5900X 12-Core Processor, 24 logical CPUs |
 | dataset | `eval/data/longmemeval_s_cleaned.json` |
 | slice | 25 questions, seed 42 (LCG shuffle, as `examples/longmemeval.rs`) |
-| recall budget | 2000 tokens (`DEFAULT_RECALL_BUDGET` when not passed) |
+| recall budget | 8000 tokens (`DEFAULT_RECALL_BUDGET` when not passed) |
 | answering model | `small-stack` |
 | judge model | `small-stack` |
 | temperature | 0 |
-| answer token cap | 512 |
+| answer token cap | 1024 |
 | api key | set (value not recorded here) |
-| loadavg before | 56.76 / 54.28 / 52.85 |
-| loadavg after | 55.88 / 54.22 / 52.86 |
-| wall clock | 21.1 s over 100 LLM calls |
+| loadavg before | 32.07 / 41.68 / 55.90 |
+| loadavg after | 28.39 / 38.81 / 53.88 |
+| wall clock | 61.3 s over 100 LLM calls |
 
 Load average is recorded because `AGENTS.md` §3 makes any timing number conditional on it. Note also what is *not* being timed: these calls are dominated by provider and network latency, so the retrieval the harness also performs is nowhere near the wall clock below.
 
@@ -36,9 +36,9 @@ Load average is recorded because `AGENTS.md` §3 makes any timing number conditi
 
 | arm | accuracy | correct | scored | unscored | prompt tokens | total tokens |
 |---|---|---|---|---|---|---|
-| retrieval-conditioned | **40.0%** | 10 | 25 | 0 | 196,145 | 199,868 |
+| retrieval-conditioned | **60.0%** | 15 | 25 | 0 | 315,343 | 319,940 |
 | closed-book control | **8.3%** | 2 | 24 | 1 | 150,372 | 153,716 |
-| **delta (conditioned - closed-book)** | **+31.7pp** | | | | | |
+| **delta (conditioned - closed-book)** | **+51.7pp** | | | | | |
 
 Denominators are **scored** questions, not attempted: a question whose LLM call failed has no verdict and is excluded rather than counted wrong, and `unscored` says how many were excluded. **A cell reading `n/a` means nothing was scored at all** — the run produced no number, and no accuracy below may be quoted from it. A non-zero `unscored` on a cell that does have a percentage makes that percentage incomparable to a clean run: treat the whole artifact as provisional.
 
@@ -49,8 +49,8 @@ The failure this harness exists to catch: the gold session is retrieved, so `R@K
 | on this slice | count | share of n=25 |
 |---|---|---|
 | gold session present in the served context | 23 | 92.0% |
-| … and the answer was judged correct (recall rewarded) | 10 | 40.0% |
-| … and the answer was judged **wrong** (recall not rewarded) | 13 | 52.0% |
+| … and the answer was judged correct (recall rewarded) | 15 | 60.0% |
+| … and the answer was judged **wrong** (recall not rewarded) | 8 | 32.0% |
 | gold session absent, answer judged correct anyway | 0 | 0.0% |
 
 The third line is an answerer problem, not a retrieval problem: the evidence was served and the answer did not use it. The fourth is the closed-book floor, and it bounds how much of the first two lines is real memory use at all. A third line far below the second, together with a delta near zero, would say that the ranking work in `eval/RESULTS.md` is not buying a better answer — which is a result to record, not a bug in this harness.
@@ -59,12 +59,12 @@ The third line is an answerer problem, not a retrieval problem: the evidence was
 
 | type | conditioned | closed-book | delta | gold in context | scored |
 |---|---|---|---|---|---|
-| knowledge-update | 50.0% | 16.7% | +33.3pp | 6 | 6 |
-| multi-session | 0.0% | 0.0% | +0.0pp | 5 | 5 |
+| knowledge-update | 83.3% | 16.7% | +66.7pp | 6 | 6 |
+| multi-session | 20.0% | 0.0% | +20.0pp | 5 | 5 |
 | single-session-assistant | 100.0% | 0.0% | +100.0pp | 4 | 4 |
 | single-session-preference | 0.0% | 0.0% | +0.0pp | 0 | 2 |
 | single-session-user | 100.0% | 33.3% | +66.7pp | 3 | 3 |
-| temporal-reasoning | 0.0% | 0.0% | +0.0pp | 5 | 5 |
+| temporal-reasoning | 40.0% | 0.0% | +40.0pp | 5 | 5 |
 
 ## The judge prompt, verbatim
 

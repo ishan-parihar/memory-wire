@@ -1626,10 +1626,30 @@ R@pool | R@5 vs shipped | n |\n\
         .iter()
         .filter(|r| r.phase == "axis-at-shipped" && r.axis == Some("k"))
         .collect();
-    let k_span = k_extremes
-        .iter()
-        .map(|r| r.agg.r5())
-        .fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+    let k_span = lo_hi(k_extremes.iter().map(|r| r.agg.r5()));
+    // This reading is a claim about a set of measurements. An empty set is not a flat
+    // one, so an unrun axis gets the sentence that says so rather than a range built
+    // out of the min/max fold's seed values.
+    let reading_k = match k_span {
+        None => String::from(
+            "**The `k` axis was not run in this pass, so this reading has no result.** A run \
+             that sweeps one axis has nothing to say about the axes it skipped, and a span \
+             printed for one of them would be the fold's own seed value, not a measurement.",
+        ),
+        Some((lo, hi)) => format!(
+            "**`k` is flat on this corpus at the shipped `overlap`.** Across `k ∈ \
+             {{5, 10, 20, 40, 120}}` at `overlap: {ov:.2}`, R@5 spans {lo:.1}%–{hi:.1}%, a \
+             range of {span:.1}pp on {n} queries. `k = 60` was inherited from Hindsight and \
+             never validated here (`docs/EVALUATION_HYGIENE.md` §2.6); this is the first \
+             measurement of it on independent data, and it is a null. A null is a result \
+             (`AGENTS.md` §6) — but it is a null *on this corpus at this overlap weight*, and \
+             `k`'s only measurable effect here, that {span:.1}pp span, disappears entirely once \
+             `overlap` is 0 (§5). Two flat axes is not two independent nulls.",
+            ov = base.weights.overlap,
+            span = hi - lo,
+            n = n_eval,
+        ),
+    };
     // How many *distinct* metric vectors the walk produced at `overlap: 0.00` with the
     // recency stream at its own inert default. One is the informative number: it means
     // `k`, `bm25_magnitude` and `agreement` cannot move anything in that regime. The
@@ -1649,29 +1669,16 @@ R@pool | R@5 vs shipped | n |\n\
         .iter()
         .filter(|r| r.weights.overlap == 0.0 && r.weights.recency == 0.0)
         .collect();
+    // Same guard as `k_span` above: zero configurations means no range to print, not
+    // a `f64::MAX` seed value with a `0.0` cap beside it.
     let zero_overlap_extremes = format!(
-        "`k` from {:.0} to {:.0}, `bm25_magnitude` from {:.2} to {:.2}, `agreement` from {:.2} to {:.2}",
-        zero_overlap_span
-            .iter()
-            .map(|r| r.weights.k)
-            .fold(f64::MAX, f64::min),
-        zero_overlap_span.iter().map(|r| r.weights.k).fold(0.0, f64::max),
-        zero_overlap_span
-            .iter()
-            .map(|r| r.weights.bm25_magnitude)
-            .fold(f64::MAX, f64::min),
-        zero_overlap_span
-            .iter()
-            .map(|r| r.weights.bm25_magnitude)
-            .fold(0.0, f64::max),
-        zero_overlap_span
-            .iter()
-            .map(|r| r.weights.agreement)
-            .fold(f64::MAX, f64::min),
-        zero_overlap_span
-            .iter()
-            .map(|r| r.weights.agreement)
-            .fold(0.0, f64::max),
+        "`k` {}, `bm25_magnitude` {}, `agreement` {}",
+        range_str(zero_overlap_span.iter().map(|r| r.weights.k), 0),
+        range_str(
+            zero_overlap_span.iter().map(|r| r.weights.bm25_magnitude),
+            2
+        ),
+        range_str(zero_overlap_span.iter().map(|r| r.weights.agreement), 2),
     );
     let _ = axis_row;
 
@@ -1694,13 +1701,7 @@ BM25 stream and denominated in `1/(k+1)`, so it is bounded by construction and c
 rank-1 hit on its own. This is a bounded-term null, not a general licence to use large weights — \
 the unbounded `w · magnitude` form the rustdoc rejected is a different mechanism and was not \
 measured here.\n\
-         3. **`k` is flat on this corpus at the shipped `overlap`.** Across `k ∈ \
-{{5, 10, 20, 40, 120}}` at `overlap: {base_ov:.2}`, R@5 spans {k_lo:.1}%–{k_hi:.1}%, a range of \
-{k_span:.1}pp on {n_eval} queries. `k = 60` was inherited from Hindsight and never validated \
-here (`docs/EVALUATION_HYGIENE.md` §2.6); this is the first measurement of it on independent \
-data, and it is a null. A null is a result (`AGENTS.md` §6) — but it is a null *on this corpus \
-at this overlap weight*, and `k`'s only measurable effect here, that {k_span:.1}pp span, \
-disappears entirely once `overlap` is 0 (§5). Two flat axes is not two independent nulls.\n\
+         3. {reading_k}\n\
          4. **`recency` is destructive on this corpus and the numbers are about the harness, \
 not about recency.** At `recency: {rec_w:.2}`, R@1 falls to {rec_r1:.1}% from {base_r1:.1}% and \
 R@5 to {rec_r5:.1}% from {base_r5:.1}% (n={n_eval}); the walk never moved it. Read the recency \
@@ -1746,10 +1747,6 @@ improved, {}/{} regressed — and the full metric vector is identical to the con
         base_r1 = base.agg.r1(),
         base_r5 = base.agg.r5(),
         base_r20 = base.agg.r20(),
-        base_ov = base.weights.overlap,
-        k_lo = k_span.0,
-        k_hi = k_span.1,
-        k_span = k_span.1 - k_span.0,
         rec_w = rec_big.map_or(0.0, |r| r.weights.recency),
         rec_r1 = rec_big.map_or(0.0, |r| r.agg.r1()),
         rec_r5 = rec_big.map_or(0.0, |r| r.agg.r5()),
@@ -2321,6 +2318,29 @@ fn fmt_list(values: &[f64]) -> String {
         .map(|v| format!("{v:.2}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// `(min, max)` over `vals`, or `None` when `vals` is empty. Folding min/max over an
+/// empty iterator returns the fold's own seed — `f64::MAX` and `f64::MIN` — which
+/// prints as a 309-digit number, so a range over a set nothing was measured from
+/// reads as a measurement instead of admitting there is none.
+fn lo_hi(vals: impl Iterator<Item = f64>) -> Option<(f64, f64)> {
+    let mut it = vals.fuse();
+    let first = it.next()?;
+    let (mut lo, mut hi) = (first, first);
+    for v in it {
+        lo = lo.min(v);
+        hi = hi.max(v);
+    }
+    Some((lo, hi))
+}
+
+/// `from {lo} to {hi}` at `prec` decimals, or `n/a` when the set is empty.
+fn range_str(vals: impl Iterator<Item = f64>, prec: usize) -> String {
+    lo_hi(vals).map_or_else(
+        || String::from("n/a"),
+        |(lo, hi)| format!("from {lo:.prec$} to {hi:.prec$}"),
+    )
 }
 
 /// Why an axis did not move: the value the walk is at makes every candidate on it

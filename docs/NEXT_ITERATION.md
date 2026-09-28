@@ -228,6 +228,16 @@ all 2,500 per-question values diffed):**
 | E1 + stemming | 97.20% | 98.80% | 99.60% | 88.89% | 89.54% |
 | Δ | **+0.00** | +0.20 | +0.00 | +0.65 | +0.34 |
 
+> **The stemming figures in this section are prose-only: no committed artifact under `eval/`
+> backs them.** `AGENTS.md` §2 requires a number in prose to exist in a committed artifact, or
+> the prose to say where it came from and that it is not in one. These come from one stemming
+> run over the same 500 LongMemEval-S questions at the E1-accepted default (seed 42), taken
+> while the Porter tokenizer was in the tree and reverted afterwards; nothing was written under
+> `eval/` for it, and it cannot be written now, because the change that produced it is gone.
+> The recall-curve figures below are the exception — `eval/BENCH_RECALL_CURVE.md` carries them,
+> for the E1-only run they are compared against. Recorded as a live gap in
+> `docs/CONSISTENCY.md` §17.3 item 3.
+
 Per question: R@5 **4 improved, 4 regressed, 492 unchanged**; R@10 3/2; R@20 1/1;
 NDCG@10 66/58. Per category:
 

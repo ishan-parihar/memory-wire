@@ -6,8 +6,9 @@ runtime, no database server, no install step: retain/recall/reflect with bank
 isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as an
 MCP stdio server.
 
-- **10.7 MiB** idle RSS · **8.4 MiB** binary · **0** background processes
-- **97.2% R@5** / **83.8% R@1** LongMemEval-S · 100% hit-rate coding-life
+- **10.7 MiB** idle RSS · **8.5 MiB** binary · **3.4 MiB** download · **0** background processes
+- **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
+  **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
   the fitted weight is accounted for. Both numbers are in
   [Benchmarks](#benchmarks); the reason is one sweep on one dataset.
@@ -78,6 +79,20 @@ fitted number and did not hold its size off this dataset** — on LoCoMo it is
 +1.4pp. The table above reports both the clean and the fitted configuration
 rather than only the flattering one.
 
+**The weight has not been shown to earn its place, and the comparison that matters
+was not run until now.** `eval/SWEEP_FUSION.md` section D measures each stream
+alone: **BM25 on its own scores 97.0 / 99.0 / 99.6 / 89.9 / 91.4** at
+R@5 / R@10 / R@20 / NDCG@10 / MRR. Against the shipped fusion that is
+**R@10 +0.4, NDCG@10 +1.7, MRR +2.2, and R@5 −0.2** — three metrics better and
+one worse. So the token-overlap stream buys 0.2pp of R@5 and costs NDCG@10 and
+MRR against deleting it, and the independent LoCoMo set separately found
+`overlap: 0.00` ties `0.25` on R@1 and NDCG@10. Two datasets point the same way.
+The counter-argument is real and is why the stream is still here: LoCoMo banks
+hold 19–32 documents against LongMemEval's ~48 and `tests/scale.rs`'s 5,000, so
+the dev set under-measures the pool size at which a second lexical voter pays
+(`docs/CONSISTENCY.md` 14.2). **This is a live, unmade decision, not a settled
+result** — and the honest reading is that the burden of proof has moved.
+
 **Two later attempts to make that weight unnecessary both failed, and one of them
 failed for an instructive reason** (`docs/NEXT_ITERATION.md` Phases E3–E4).
 Weighting the overlap stream by IDF did exactly what E1's diagnosis predicted —
@@ -90,6 +105,52 @@ identically, and RRF is linear in the weights, so `coverage: w` ≡
 the tree** — they were dormant config nobody would ever turn on. The findings live
 in `docs/NEXT_ITERATION.md`; the sweep artifact that produced them is
 `eval/SWEEP_FUSION.md`.
+
+## What an answer actually costs to get right
+
+`recall_any@K` is a proxy. The number a user feels is whether the agent answers
+correctly, so that is measured directly (`eval/ANSWER_QUALITY.md`): the same 25
+LongMemEval questions, answered by an LLM from the retrieved context and graded
+by an LLM, against a **closed-book control** that gets the question and no memory
+at all.
+
+| arm | accuracy | scored | prompt tokens |
+|---|---|---|---|
+| retrieval-conditioned | **60.0%** | 25 | 315,343 |
+| closed-book control | **8.3%** | 24 | 150,372 |
+| **delta** | **+51.7pp** | | |
+
+Memory is doing real work, and the control is what makes that claim falsifiable —
+if the conditioned arm were at parity with the closed-book one, every ranking
+number above would be measuring nothing.
+
+**The single largest win in this project was a budget, not a ranking change.**
+`DEFAULT_RECALL_BUDGET` was 2,000 tokens against a **2,626-token median
+LongMemEval session** — so the budget could not return a median memory. The trim
+truncates the top hit and skips everything below it. Raising it to 8,000
+(3× the median, so three sessions fit whole) moved answer accuracy
+**40.0% → 60.0%**.
+
+The mechanism is visible in the artifact, and it is the reason this is a
+mechanism and not a coincidence:
+
+| on this slice | before (2,000) | after (8,000) |
+|---|---|---|
+| gold session present in the served context | 92.0% | **92.0%** — unchanged |
+| … answer judged **wrong** despite gold served | **52.0%** | **32.0%** |
+| … answer judged correct | 40.0% | 60.0% |
+
+Retrieval did not improve; the answerer stopped being starved. Note that
+`eval/RESULTS.md` **cannot see this defect at all** — its harness passes an
+explicit 100,000-token budget, so the default is structurally invisible to it.
+That is why weeks of retrieval work left a 2× gap between what recall found and
+what the consumer received. `tests/recall_budget.rs` now asserts a gold row
+survives the trim.
+
+Caveats, stated rather than buried: n=25 with 2 row errors, so the closed-book
+cell is provisional under the harness's own rule; the judge is a local free-tier
+model, not LongMemEval's official grader; and this is a 25-question sample, not
+a benchmark. It sizes an effect. It does not establish a rate.
 
 Competitor rows: agentmemory's `benchmark/LONGMEMEVAL.md` (same metric, same 500
 questions, verified in-audit). Hindsight has **no comparable retrieval number**:
@@ -114,7 +175,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.4 MiB** binary — 8,836,032 B (LTO, incl. the MCP SDK) | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **8.5 MiB** binary — 8,872,000 B (LTO, incl. the MCP SDK); **3.4 MiB** gzipped, which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
@@ -158,14 +219,14 @@ are exact.
 
 The deltas are interesting, and three of them moved in opposite directions.
 **The binary grew, not shrank**: 8,836,032 B against the 8,593,368 B measured at
-`0.1.0`, **+242,664 B (+2.8%)**. `fastembed` and its ONNX runtime were removed at
+`0.1.0`, **+278,864 B (+3.2%)**. `fastembed` and its ONNX runtime were removed at
 `0.3.0` and are **back in the tree now** as an optional, default-off `embed`
 feature, so `fastembed`, `ort`, `ort-sys` and `tokenizers` *are* in `Cargo.lock`
 again. Every footprint number in this section is still the **default** build and
 is unaffected: `default = []`, so `src/vector.rs` and the weights compile only
 under `--features embed`. The growth itself is the MCP SDK — `rmcp` + `schemars`
 landed between those two measurements and cost more than `fastembed` ever did. The
-binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.4 MiB and not
+binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.5 MiB and not
 smaller, and it is code, not a resident dependency, so idle RSS does not move
 with it.
 
@@ -507,6 +568,35 @@ dense branch in the query path, over ~23 MB of vendored int8 MiniLM weights in
 in every build, so none of it is compiled unless you ask for it. Every footprint
 and latency figure in this README is a default-build figure and is unaffected.
 `src/embed.rs` remains the dependency-free cosine/rank kernel.
+
+**Why it ships off, which is a measurement and not a preference.** A coordinate
+descent over the vector weight on the 1,531-query LoCoMo dev set
+(`eval/SELECTION_VECTOR_AXIS_FIXED.md`) swept `vector` across 0.00 → 1.50:
+
+| `vector` | R@1 | R@5 | R@20 | NDCG@10 | up/down |
+|---|---|---|---|---|---|
+| 0.00 | 60.4% | 86.0% | 98.0% | 73.6% | — |
+| 0.10 | **60.8%** | 86.7% | 98.0% | **74.2%** | 18/6 |
+| 0.25 | 57.2% | **87.4%** | 98.3% | 73.0% | 34/12 |
+| 0.50 | 53.4% | 87.1% | 98.5% | 71.1% | 58/40 |
+| 1.50 | 45.4% | 78.2% | **99.2%** | 64.2% | **97/216** |
+
+The arm is **reordering-only**: `R@20` rises monotonically while `R@1` falls,
+which is the signature of ranking, not retrieval — and the dense arm alone
+reaches *less* than the lexical fusion (R@pool 100%, R@5 62.4%). Its best
+honest contribution is **+1.4pp R@5 at 0.25, with NDCG@10 and MRR moving
+backward**; at 1.50 the up/down ratio inverts as deep results survive and
+shallow ones die. That does not justify +53.8 MB, a fourth shared library and
+a cold start, so the weight stays at `0.0`.
+
+There is a real second reading, and it is not the one that flatters the table:
+**NDCG@10 and MRR both peak at 0.10**, where R@1, NDCG@10 and MRR improve
+*together* (60.8 / 74.2 / 72.3) for 18 up and 6 down. If a caller reads the top
+two results — which is roughly what a token budget allows — 0.10 beats 0.25 on
+every rank metric. Whether to enable it is a product decision about how many
+results a caller reads, and it is left unmade rather than made here.
+`0.00` and `0.25` help *disjoint* question sets (Jaccard 0.43), so this is a
+genuine choice, not a stronger-vs-weaker version of one setting.
 
 **What the `embed` build costs, measured rather than estimated.** Building it
 (`cargo build --release --features embed`) produces a **65,007,536 B** binary

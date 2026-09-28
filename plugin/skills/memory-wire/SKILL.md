@@ -1,11 +1,12 @@
 ---
 name: memory-wire
-description: Persist and retrieve agent memory across sessions with memory-wire, a single static Rust binary exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a running `memory-wire serve`, or over MCP stdio with `memory-wire mcp`.
+description: Persist and retrieve agent memory across sessions with memory-wire — one 8.5 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a running `memory-wire serve`, or over MCP stdio with `memory-wire mcp`.
 ---
 
 # memory-wire
 
-Agent memory over HTTP or MCP stdio. One binary, no daemon, no runtime. **retain** stores a
+Agent memory over HTTP or MCP stdio. One 8.4 MiB binary, three shared libraries, no language
+runtime, no daemon. **retain** stores a
 fact/decision (redacted before it touches disk), **recall** is ranked bank-isolated retrieval under a
 token budget, **reflect** is top-hit citation prefixed with the memory id (not LLM synthesis). Banks are
 isolated namespaces — `demo` and `other` cannot see each other — so use one bank per project or client

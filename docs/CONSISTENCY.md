@@ -1975,3 +1975,212 @@ describes later work.
    all**, so nothing there needed correcting — but that is why `EXCEED_PLAN.md`'s
    citation was false, and it means the file cannot serve as the citation for any
    such property. §17.1.
+
+---
+
+## 18. The answer loop, the arm we did not ship, and the v0.4.0 cut
+
+Appended 2026-09-28, ahead of the `v0.4.0` tag. Appending to an append-only file.
+
+### 18.1 The largest single win in this project was a default value, not a ranking change
+
+`DEFAULT_RECALL_BUDGET` was **2,000 tokens** against a **2,626-token median
+LongMemEval session**, measured over 23,867 haystack sessions. A recall budget
+below the size of a stored memory cannot return a median memory: `trim_to_budget`
+truncates the top hit to the cap and skips every memory that does not fit. So
+rank 1 arrived as a fragment and ranks 2+ did not arrive at all.
+
+Raised to **8,000** — 3× the median, so three sessions fit whole. Decided on that
+mechanism, then observed. It was **not** searched against a metric.
+
+| end-to-end answer accuracy, n=25 | budget 2,000 | budget 8,000 |
+|---|---|---|
+| retrieval-conditioned | 40.0% | **60.0%** |
+| closed-book control | 8.3% | 8.3% |
+| **delta** | **+31.7pp** | **+51.7pp** |
+| prompt tokens, conditioned arm | 196,145 | 315,343 |
+| gold session present in served context | 92.0% | **92.0%** |
+| … answered **wrong** despite gold being served | **52.0%** | **32.0%** |
+| … answered correct | 40.0% | 60.0% |
+
+The last three rows are the mechanism. Gold-in-served is **identical** at 92.0%
+in both arms, so retrieval did not improve by a single question. What changed is
+that the answerer stopped being starved of evidence it was already being handed.
+
+**`eval/RESULTS.md` is structurally incapable of seeing this defect.**
+`examples/longmemeval.rs:235` passes an explicit 100,000-token budget, so the
+harness never touches `DEFAULT_RECALL_BUDGET` at all. Its retrieval numbers are
+bit-identical before and after this change, and that is invariance by
+construction, not a null effect. `tests/recall_budget.rs` (3 tests) now asserts a
+gold row survives the trim, which is the artifact that was missing.
+
+Caveats, stated: n=25, 2 row errors, so the closed-book cell is provisional under
+the harness's own rule; the answerer and judge are the same local free-tier
+model, not LongMemEval's official grader. It **sizes an effect. It does not
+establish a rate.** The committed artifact is `eval/ANSWER_QUALITY.md`.
+
+### 18.2 A second dead configuration path, same shape as the first
+
+`recallSynonyms` was configured, documented, and unreachable. `src/api.rs:548`
+discarded the synonym set whenever an explicit budget was supplied:
+
+```rust
+let (budget, synonyms) = match budget {
+    Some(b) => (b, &*EMPTY_SYNONYMS),   // an explicit budget discards synonyms
+```
+
+Both the HTTP and MCP recall handlers always pass an explicit budget, so no bank
+could ever have used it. Now threaded through. This is the second time in this
+release that a knob existed, was documented, and did nothing — the first being
+`FusionWeights::vector` at 0.0. A configuration surface that does not reach the
+request path is worse than no surface, because it reads as a feature.
+
+### 18.3 The dense arm: built, measured, held at 0.0, and why that is a decision
+
+`--features embed` vendors a 23 MB int8 all-MiniLM-L6-v2 and adds a third fusion
+stream. A coordinate descent over its weight on the 1,531-query LoCoMo dev set
+(`eval/SELECTION_VECTOR_AXIS_FIXED.md`) swept `vector` across 0.00 → 1.50.
+
+| `vector` | R@1 | R@5 | R@20 | NDCG@10 | up/down |
+|---|---|---|---|---|---|
+| 0.00 | 60.4% | 86.0% | 98.0% | 73.6% | — |
+| 0.10 | **60.8%** | 86.7% | 98.0% | **74.2%** | 18/6 |
+| 0.25 | 57.2% | **87.4%** | 98.3% | 73.0% | 34/12 |
+| 0.50 | 53.4% | 87.1% | 98.5% | 71.1% | 58/40 |
+| 1.50 | 45.4% | 78.2% | **99.2%** | 64.2% | **97/216** |
+
+**R@20 rises monotonically while R@1 falls** — reordering, not retrieval. The
+dense arm alone reaches *less* than the lexical fusion (R@pool 100.0%, R@5
+62.4%). Its honest contribution is **+1.4pp R@5 at 0.25 with NDCG@10 and MRR
+moving backward**, against +53.8 MB of binary and a fourth shared library.
+
+The counter-reading is real and is recorded rather than argued away: **NDCG@10
+and MRR both peak at 0.10**, where R@1, NDCG@10 and MRR improve together
+(60.8 / 74.2 / 72.3) for 18 up and 6 down. `0.00` and `0.25` help *disjoint*
+question sets (Jaccard 0.43), so this is a genuine configuration choice, not a
+stronger and weaker version of one setting. Which one is right depends on how
+many results a caller reads — a product question, not a benchmark question.
+**Unmade, and no artifact names a winner.**
+
+### 18.4 A finding this release surfaced and has not yet acted on
+
+`eval/SWEEP_FUSION.md` section D measures each stream alone. **BM25 on its own
+scores 97.0 / 99.0 / 99.6 / 89.9 / 91.4** at R@5 / R@10 / R@20 / NDCG@10 /
+MRR. Against the shipped fusion (97.2 / 98.6 / 99.6 / 88.2 / 89.2) that is
+**R@10 +0.4, NDCG@10 +1.7, MRR +2.2, R@5 −0.2** — better on three of five.
+
+The token-overlap stream was accepted in Phase E1 because it raised R@5 without
+moving R@20. It did. But it was never compared against *deleting itself*, and on
+this set that comparison favours deletion on three metrics. LoCoMo independently
+found `overlap: 0.00` ties `0.25` on R@1 and NDCG@10. Two datasets, same
+direction. The counter-argument stands and is why the stream is still here:
+LoCoMo banks hold 19–32 documents against LongMemEval's ~48 and `tests/scale.rs`'s
+5,000, so the dev set under-measures the pool size at which a second lexical
+voter pays (§14.2). **Live and unmade; the burden of proof has moved.**
+
+### 18.5 The two corrections this release makes to how we read the competitor numbers
+
+1. **agentmemory's graph stream is at 0.3, not 0** —
+   `hybrid-search.ts:32`, `src/index.ts:375`, `.env.example:106`. But
+   `longmemeval-bench.ts:196` passes `0.0`, so their 95.2% was measured with the
+   graph **off**. The constructor default and the benchmark call site disagree,
+   and only the call site is evidence about the number.
+2. **Their 95.2% is a single unswept configuration.** Weights `0.4/0.6` are
+   constructor defaults; `LONGMEMEVAL.md` documents no tuning procedure, no
+   ablation of the agreement bonus, and no negative results. It is a point
+   estimate from a hand-set configuration, not a swept optimum.
+
+And the correction that reframes the whole comparison: **our FTS5 BM25 alone
+scores 97.0% R@5, 10.8pp above their BM25-only 86.2% and above their full hybrid
+95.2%**, while carrying two features they had to add and still trailing. Their
++9.0pp from adding vectors is largely repair of their own weak lexical arm —
+their own doc says BM25+Vector 95.2% "nearly matches" pure vector search 96.6%.
+
+### 18.6 A process failure worth recording: `--locked` is a tripwire
+
+Bumping `version` in `Cargo.toml` without `Cargo.lock` makes **every** `--locked`
+command fail with `cannot update the lock file`. Two agents hit this
+independently during the `v0.4.0` cut; one worked around it in a `/tmp` copy
+before the lock was synced. A silent-looking symptom — a stale binary left in
+`target/` after a *failed* build — nearly produced a wrong footprint
+measurement, because two consecutive "measurements" returned byte-identical
+numbers for two different feature sets. The tell was that identical, not the
+bytes themselves. Fixed with `cargo update --offline -p memory-wire`; CI runs
+`--locked`, so this would have failed the release build.
+
+### 18.7 Deployability: one source, two flavours, one unqualified default
+
+Measured at `v0.4.0` (`8,872,000 B` / `3,605,103 B` gzipped / 3 `NEEDED` for the
+default build; `65,005,744 B` / `30,550,868 B` gzipped / 4 `NEEDED` for
+`--features embed`):
+
+- **The default build is the deployment.** 3.4 MiB to download, three shared
+  libraries, no daemon, no database to install. Every competitive claim in the
+  README is a claim about this artifact.
+- **`--features embed` is a source-build option, documented and measured, and no
+  release asset.** An embed build with `vector` at 0.0 is *strictly worse* than
+  the default: identical behaviour, 7.3× the bytes and a fourth `NEEDED`. There
+  is no honest reason to ship that artifact, so it is not shipped.
+- Bank config **cannot** enable vectors in the default build, because the
+  embedder is not compiled in. The arm is a build-time choice; only the weight
+  could ever be runtime, and per §18.3 no weight has been chosen. Shipping a dial
+  with no principled setting is the same error as §18.2.
+- If and when a weight is chosen, the shape is a second release asset plus an
+  installer flavour flag, with the weight taken per-bank alongside
+  `recallMaxTokens`. Not built, deliberately.
+
+### 18.8 The consultation count, reconstructed
+
+**Three** occasions on which LongMemEval-S was consulted to make a decision, and
+**one** parameter whose value was selected on it. All three on 2026-09-28, all at
+seed 42 over the same 500 questions.
+
+| # | phase | configurations | decision |
+|---|---|---|---|
+| 1 | E1 | 27 | `overlap` → **0.25**; `k` → 60 retained; `agreement` → 0.0 retained (0/500 queries moved) |
+| 2 | E2 | 2 (Porter stemming, on/off) | stemming **rejected** — flat at the shipped weight, −2.26pp on temporal-reasoning |
+| 3 | E3+E4 | 19 new (46 total) | IDF weighting **rejected**; coverage stream **rejected** |
+
+`k = 60` moved from "borrowed and unvalidated" (§2.6 of the hygiene doc) to
+"borrowed, measured, and retained" — a status change the audit had not recorded.
+
+**Left unresolved rather than guessed.** (1) Whether occasions 1 and 2 are one
+run or two: the artifact's two committed versions (27 rows at loadavg 20.03 /
+160.6s, then 46 rows at 60.42 / 398.8s, two commits an hour apart) say two;
+`NEXT_ITERATION` E3 says "the same 46 configurations", which cannot be literal.
+Both readings stand and the count is 3 either way. (2) **Everything before
+`v0.2.0`** — this history begins at `50614e4`, so the `0.1.0`-era records have no
+git evidence here. Unreachable, not clean. (3) E2's figures are prose-only and
+now say so at the point of use.
+
+### 18.9 Also closed in this release
+
+- `rank_by_cosine` discarded any candidate with cosine ≤ 0 instead of ranking it
+  last, deleting a document at −0.013 similarity. Dense-arm R@pool 99.9347% →
+  100.0%.
+- `created_at` is plumbed from `haystack_dates`; the harness passed `None`, so
+  every row was wall-clock stamped and a recency stream would have ranked by
+  insertion order. Verified behaviour-neutral: **0 per-question differences**
+  across all 500 rows and all 6 metrics.
+- `build.rs` links a static `libstdc++.a` into rustc's existing `-Wl,-Bstatic`
+  group, so the embed build no longer fails to start on a minimal root. The
+  default build is byte-identical with `build.rs` moved aside. The embed build's
+  4th `NEEDED` is `ld-linux-x86-64.so.2`, reachable only through `ld.so` since
+  glibc 2.34 — traced by replaying the link line, and benign.
+- Gate at `v0.4.0`: **291 tests** (188 lib + 94 main + 2 backup + 2 e2e + 3
+  recall_budget + 1 scale + 1 doc), clippy `--all-targets --all-features -D
+  warnings` clean, `cargo doc` 0 warnings.
+
+### 18.10 Standing items, recorded so they are not mistaken for oversights
+
+- The dense arm is **off in every build**. Off by measurement, not by oversight.
+- The overlap stream's necessity is **unresolved** (§18.4).
+- `plugin/skills/memory-wire/SKILL.md` said "a single static Rust binary" on two
+  lines. Fixed. The **published `v0.3.0` release body** carries the same claim and
+  is unreachable by an edit; the `v0.4.0` notes name it.
+- `eval/SELECTION_VECTOR_AXIS_FIXED.md` readings 2 and 4 still render an *unrun*
+  axis as a real number via `map_or(0.0, …)` — same defect class as the
+  empty-fold fixed in this release, different mechanism, out of the recorded
+  finding's scope. Unfixed.
+- `eval/results_selection_vector_axis_fixed.json` is stale relative to its `.md`
+  on provenance fields only; all measured values are identical.
