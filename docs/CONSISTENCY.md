@@ -19,9 +19,9 @@
 > retrieval metrics in `eval/RESULTS.md`. Those are the numbers as they stood at
 > the `0.2.0` cut.
 >
-> **§11–§12 are the tree ahead of the published `v0.2.0` tag** (2026-09-27 and
-> 2026-09-28). Read those for the current state: **229** tests, release binary
-> **8,836,032 B**, idle RSS 10,716–11,032 kB post-retain, 10k store 3,022,848 B
+> **§11–§12 are the current state** (measured 2026-09-27 and 2026-09-28, and
+> published in `v0.3.0`). Read those: **237** tests, release binary
+> **8,836,032 B**, idle RSS 10,716–11,080 kB post-retain, 10k store 3,022,848 B
 > settled / 7,237,496 B with the WAL unflushed, 4-connection WAL read pool, FTS5
 > `detail=none`. The earlier "the tree is ahead of the published release" banner
 > is retired for the same reason `docs/VERSIONS.md` retired its copy: `v0.3.0`
@@ -474,7 +474,7 @@ invalidated and was left untouched.**
 > **SUPERSEDED — see §12.4.** "Left untouched" was true when this section was
 > written. The read pool has since added four more connections' worth of page
 > cache, and the claim no longer holds: measured 2026-09-28 over 7 rounds, idle
-> post-retain is **10,716–11,032 kB, mean 10,911 kB (10.65 MiB)**, and the
+> post-retain is **10,716–11,080 kB, mean 10,911 kB (10.65 MiB)**, and the
 > README now publishes that range instead of a point value. This section is left
 > exactly as recorded so the page-cache deltas below stay legible.
 
@@ -634,7 +634,7 @@ prediction that did not reproduce, not as a finding.
 | 10k storage, settled total | 3,227,648 B | **3,055,616 B** (2.91 MiB) | — | exact |
 | 10k storage, WAL unflushed | 7,442,440 B | **7,237,496 B** (6.90 MiB) | — | exact |
 | index bytes per 1k memories | 322,764 B | **305,561 B** | — | exact |
-| tests | 217 (117 lib) | **229** (129 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test) | — | exact |
+| tests | 217 (117 lib) | **237** (137 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test) | — | exact |
 
 **"Idle RSS is flat" is no longer a true sentence, and the README now says so.**
 The old pin sits at the very bottom of today's band, so the claim moved up by
@@ -777,23 +777,23 @@ misread.
 | `PLAN.md` Phase B | "flat ~60 rec/s" | retracted in place with the in-process number | §12.7 |
 | `PLAN.md` Phase B | "19.9x headroom" | struck, replaced with 8-10x | §12.2 |
 | `PLAN.md` Phase B | the Porter-stemmer morphology probe | **not done**; the probe was not re-run, so 1-of-3 / 6-of-7 is the only evidence and is unversioned | the storage win on the same axis shipped instead |
-| `docs/BENCHMARK.md` §5 | 217 tests, binary 8,816,120 B | 229 tests, binary 8,836,032 B | re-measured |
+| `docs/BENCHMARK.md` §5 | 217 tests, binary 8,816,120 B | 237 tests, binary 8,836,032 B | re-measured |
 | `docs/VERSIONS.md` §3 | "INCOMPLETE — omits `rmcp`" | **complete**, regenerated; `fastembed`/`ort`/`tokenizers` confirmed absent | §12.4 |
 | `docs/BENCHMARK_SCALE.md` | the 13-17 ms / 16-23 ms p50 pair, profile unverified | **left exactly as recorded**, with its own standing note that the profile is unverified | not re-measured here; inventing a replacement would be worse than the ambiguity |
 | `docs/CONSISTENCY.md` §2 | 8,593,368 B, 10.3 MB, 2,375,680 B, 20 tests | left verbatim | §1-§5 is the baseline §9's deltas are computed from |
 | `eval/CODING_LIFE.md` | p50 "266 us" in a table whose own prose said 364-616 us | regenerated, self-consistent, with the range caveat in the template | the two halves of that file disagreed with each other |
 | `eval/SCALE_SWEEP.md` | 3,194,880 B and 7,442,440 B hand-written in prose | regenerated; the stale copies removed from the template | §12.6 |
-| `eval/BENCH_RECALL_CURVE.md` | p50 1,366 → 97,986 us | p50 2,443 → 131,642 us at loadavg 36 | **quality rows are bit-identical** (R@1 78.1/75.0/81.2/75.0, R@5 100% at every size, 32 gold in BM25 at every size); only wall-clock moved. This is the clearest single demonstration of the structural/wall-clock split |
+| `eval/BENCH_RECALL_CURVE.md` | p50 1,366 → 97,986 us | p50 2,443 → 131,642 us at loadavg 36 | **quality rows are bit-identical** (R@1 78.1/75.0/81.2/75.0, R@5 100% at every size, 32 gold in BM25 at every size — these are the **pre-E1** figures; the shipped weights read R@1 71.9/75.0/75.0/71.9, R@5 96.9/84.4/90.6/90.6%, see §13); only wall-clock moved. This is the clearest single demonstration of the structural/wall-clock split |
 | `README.md` "RSS under load" | "recall p50 6 ms / p95 10 ms" | **not re-pinned**; the equivalent HTTP round trip measures 13.8-32.2 ms per `curl`, which is the client, not recall. The store's own recall figures are cited instead | §12.4 |
 
 ## 12.9 Gates — verbatim, 2026-09-28
 
 | Gate | Result |
 |---|---|
-| `cargo test --locked` | **229 passed, 0 failed**: 129 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test |
+| `cargo test --locked` | **237 passed, 0 failed**: 137 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test |
 | `cargo clippy --all-targets --all-features --locked -- -D warnings` | clean, exit 0 |
 | `cargo doc --no-deps --all-features --locked` | 0 warnings |
-| `cargo run --release --example longmemeval -- --data eval/data/longmemeval_s_cleaned.json --n 500` | R@5 93.0 / R@10 97.4 / R@20 99.6 / NDCG@10 83.5 / MRR 83.9 |
+| `cargo run --release --example longmemeval -- --data eval/data/longmemeval_s_cleaned.json --n 500` | R@5 93.0 / R@10 97.4 / R@20 99.6 / NDCG@10 83.5 / MRR 83.9 — **the pre-E1 control row.** This run was taken while the overlap stream still voted at 1.00; the shipped `overlap: 0.25` reads 97.2 / 98.6 / 99.6 / 88.2 / 89.2, which is what `eval/RESULTS.md` publishes |
 
 **The retrieval match is not an aggregate coincidence.** All 500 per-question
 values for `recall_any_at_5`, `recall_any_at_10`, `recall_any_at_20`, `mrr` and
@@ -804,22 +804,50 @@ slices match too.
 
 `eval/results.json` itself is deliberately **not** claimed byte-identical: it
 embeds a per-question `latency_ms` recorded from the wall clock, which is
-load-dependent by construction and differs between runs (median 6 ms in the
-committed artifact's run, 8 ms today, 14 ms at loadavg 44). The per-question
+load-dependent by construction and differs between runs. The per-question
 *metric* fields are the invariant, and those are what is asserted. Quoting the
 byte-identity of a file that carries a timestamp would be quoting a coincidence
 as a guarantee.
 
 ---
+> **Correction, 2026-09-28.** This paragraph used to give that field's median as
+> "6 ms in the committed artifact's run, 8 ms today, 14 ms at loadavg 44". **None
+> of the three is a committed number.** `eval/results.json` is gitignored
+> (`.gitignore:13`) — it is a local byproduct, not an artifact of record — and the
+> copy in this working tree now reads a median of 9 ms, so the "8 ms" was stale
+> as well as unciteable. The committed latency for this suite is the `p50 ms`
+> column of `eval/RESULTS.md`, which reads **11 ms** for the same run, and that
+> is a different quantity from the median of a per-question field: one is the
+> harness's own p50 over the whole run, the other is the median of 500
+> per-question observations. The figures are deleted rather than re-pinned
+> because there is no committed artifact to re-pin them from.
+
 
 ## §13 — Idle-box re-measurement of the recall curve (2026-09-28)
 
-Every latency figure in §12 was measured while this box was loaded 26–112 on 24
-cores by unrelated `ultra_granular_001_regional_hpo.py` processes and
-`hindsight-api`, and was published as a range for that reason. The machine later
-rebooted and came back quiet, so the recall curve was re-measured properly.
+Every latency figure in §12 was measured on a box this record elsewhere bounds at
+**loadavg 20.9–48.1 on 24 cores** (§12.0), under unrelated
+`ultra_granular_001_regional_hpo.py` processes and `hindsight-api`, and was
+published as a range for that reason. The machine later rebooted and came back
+quiet, so the recall curve was re-measured properly.
 
-Three `bench_recall_curve` rounds at load **8.36–8.61**, p50 in µs:
+> **Correction, 2026-09-28.** This paragraph used to say §12 was measured at
+> "26–112 on 24 cores". That window belongs to no §12 figure: §12.0 records
+> 20.9–48.1, §12.4's per-figure windows are 20.9–29.9, 21.0–25.0 and 25.0, and
+> the two heaviest `eval/` runs it cites are `eval/BENCH_FOOTPRINT.md` at
+> loadavg 34.4 and 21.1 and `eval/SOAK.md` at 47.6. **The 26–112 window is
+> unaccounted for and has been dropped rather than re-attributed.** The two load
+> windows that *are* recorded — §11's own session at 42–98 and §12's at 20.9–48.1
+> — are left exactly as recorded in their own sections; both are per-session
+> observations whose raw log (`/tmp/mw-battery.log`) is not in the repository, so
+> neither can be re-derived from here.
+
+Three `bench_recall_curve` rounds at load **8.36–8.61**, p50 in µs. The
+`§12 loaded range` column is the only one of the two ranges here whose source run
+is not in the repository — it appears in no other file and no longer matches
+`eval/BENCH_RECALL_CURVE.md` at any generation. It is left exactly as recorded and
+flagged rather than reconciled, because the run that produced it cannot be
+re-derived from this tree.
 
 | Memories | r1 | r2 | r3 | idle median | §12 loaded range | inflation |
 |---|---|---|---|---|---|---|
@@ -833,15 +861,40 @@ Three `bench_recall_curve` rounds at load **8.36–8.61**, p50 in µs:
 1k–50k the idle spread is ±4–6%. Any §12 comparison that rested on a difference
 smaller than ~2.5× was not resolvable and should be read as "no difference".
 
-Retrieval quality is invariant across all nine runs: R@1 78.1 / 75.0 / 81.2 /
+Retrieval quality was invariant across all nine runs: R@1 78.1 / 75.0 / 81.2 /
 75.0 and R@5 100.0% at every size, all 32 gold rows in BM25's top-50. Latency
 grows **70× for a 100× larger bank** — sublinear, and consistent with §12's
 shape claim once the load is removed.
 
-`eval/BENCH_RECALL_CURVE.md` was regenerated at load 14.23 and reads
-1,090 / 7,019 / 38,366 / 79,205 µs. It sits inside the idle band and above its
-median, which is the expected direction for a busier box; the table above is the
-one to quote.
+> **These nine runs were all pre-E1**, taken while the overlap stream still voted
+> at weight 1.00. The figures above are a correct record of *that* configuration on
+> that date and are kept for that reason — but they are **not** the shipped
+> numbers, and Phase E1 moved them. The shipped configuration scores R@1
+> **71.9 / 75.0 / 75.0 / 71.9** and R@5 **96.9 / 84.4 / 90.6 / 90.6%** at
+> 1k/10k/50k/100k, which is what the committed
+> `eval/BENCH_RECALL_CURVE.md` reads. The invariance claim was always scoped to a
+> fixed configuration; E1 is what made the configuration move, not a counterexample
+> to the invariance.
+
+**The table above is the only record of the idle-box runs, and it is not a
+committed artifact.** Those three rounds were not written to `eval/`, so nothing
+under version control carries them. The committed
+`eval/BENCH_RECALL_CURVE.md` as it now stands was generated at load
+**24.64 33.47 31.95** and reads p50 **2,164 / 15,172 / 54,500 / 102,450 µs** at
+1k/10k/50k/100k, with R@1 71.9/75.0/75.0/71.9 and R@5
+96.9/84.4/90.6/90.6% on its `shipped` rows. That artifact says of itself that "the
+absolute microseconds still need an idle box", which is what the table above is
+the missing half of.
+
+> **Correction, 2026-09-28.** This paragraph used to read: "`eval/BENCH_RECALL_CURVE.md`
+> was regenerated at load 14.23 and reads 1,090 / 7,019 / 38,366 / 79,205 µs. It
+> sits inside the idle band and above its median, which is the expected direction
+> for a busier box." **None of that describes the committed file.** The artifact in
+> the tree is a later generation, from a run at load 24.64/33.47/31.95 with the
+> shipped 0.25 overlap weight, and it reads the p50 column quoted above. The
+> 14.23 generation and its figures are gone from the repository, so the
+> sentence was describing a file that does not exist rather than a stale number
+> in one that does.
 
 **This does not reopen §12's conclusions.** Every §12 finding that was structural
 — FTS index 434,176 → 262,144 B, the pool's soak-RSS effect, the no-pool control

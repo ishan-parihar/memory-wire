@@ -4,7 +4,7 @@
 
 The four-phase performance plan is complete and verified: `synchronous=NORMAL`,
 `prepare_cached`, a 4-connection WAL read pool with writer-first selection, FTS5
-`detail=none` (−39.6% index), five new benchmark harnesses, and 229 tests green
+`detail=none` (−39.6% index), five new benchmark harnesses, and 237 tests green
 with CI on `main`.
 
 Retrieval quality is **unchanged** by all of it — every one of the 500
@@ -75,7 +75,7 @@ fusion, defaulting to the swept point, and `examples/sweep_fusion.rs` sweeps it.
 The harness builds one index per question and scores **every** configuration on
 it, so two rows cannot disagree because an index built differently, and the grid
 is cheap enough to re-run on any change to the fusion. Full grid, per-category
-matrices for R@5 and R@10, and per-question data for all 27 rows:
+matrices for R@5 and R@10, and per-question data for all 46 rows:
 `eval/SWEEP_FUSION.md`.
 
 | | R@5 | R@10 | R@20 | NDCG@10 | MRR | R@5 up/down |

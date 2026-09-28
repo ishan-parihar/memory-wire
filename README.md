@@ -1,9 +1,10 @@
 # memory-wire
 
-**Agent memory that out-retrieves both incumbents at ~1% of their RAM.** One static
-Rust binary: retain/recall/reflect with bank isolation, FTS5 BM25 + RRF fusion, PII
-redaction on write — over HTTP, or as an MCP stdio server. No runtime, no daemon, no
-database to install.
+**Agent memory that out-retrieves both incumbents on 10.7 MiB of RSS** — ~1% of
+Hindsight's documented idle floor, and 3.4% of agentmemory's heap at their 50k
+observation figure. One static Rust binary: retain/recall/reflect with bank
+isolation, FTS5 BM25 + RRF fusion, PII redaction on write — over HTTP, or as an
+MCP stdio server. No runtime, no daemon, no database to install.
 
 - **97.2% R@5** LongMemEval-S · **10.7 MiB** idle RSS · **8.4 MiB** binary · 100% hit-rate coding-life
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook)
@@ -94,6 +95,17 @@ as ranges, never as a single run.
 Hindsight rows: their `docs/developer/installation.md` (RAM table). agentmemory rows:
 their `benchmark/SCALE.md` (§1 heap + storage tables).
 
+**The RAM comparison is only true against one of the two, and the basis is named
+rather than left implicit.** Against Hindsight's 0.8–1.0 GB documented idle RSS,
+10.7 MiB is **1.1–1.4%** — roughly 75–95x smaller. Against agentmemory the
+answer depends entirely on which of their figures you take, because it is a
+*heap* at an observation count and memory-wire is an RSS at a memory count: at
+their **50k** figure (316 MB) memory-wire is **3.4%**, and at their **1k** figure
+(6 MB heap) memory-wire is **larger**, not smaller. Neither row is a
+like-for-like measurement and the table does not pretend otherwise; the honest
+summary is that memory-wire is far below both on any large-bank comparison and
+above agentmemory's smallest published number.
+
 **How the memory-wire rows were measured, 2026-09-28, on this tree.** Binary by
 `stat -c %s` after `cargo build --release --locked`, cross-checked by
 `eval/BENCH_FOOTPRINT.md` (which reads the binary next to the harness's own path,
@@ -148,10 +160,13 @@ because `bm25()` needs it. The migration is gated by a one-shot
 `fts_detail_none` marker in the existing `schema_markers` table, so it runs once
 per database and never re-runs. Separately, the store runs in **WAL mode** and
 the settled figure is the settled one: while the process holds the file open,
-10,000 memories occupy **7,237,496 B** (main 3,022,848 + `-wal` 4,182,880 +
+10,000 memories occupy **7,237,496 B** (main 3,014,656 + `-wal` 4,190,072 +
 `-shm` 32,768), collapsing back to 3,022,848 B at a clean
 `wal_checkpoint(TRUNCATE)`. A server that has just been fed 10k memories and not
-yet checkpointed is using 2.4x the settled figure.
+yet checkpointed is using 2.4x the settled figure. The main file reads *smaller*
+in the first state than in the second because a checkpoint copies the committed
+WAL frames back into it — the same reason `eval/SCALE_SWEEP.md` samples
+3,014,656 B mid-run.
 
 **Under load.** 13,084–13,360 kB (mean 13,249 kB, 12.94 MiB) for 5,000 retains +
 200 recalls over HTTP, sequential, one process. The previous claim also carried
@@ -159,17 +174,21 @@ yet checkpointed is using 2.4x the settled figure.
 **not** re-pinned here, because today's equivalent — 200 sequential `curl`
 requests end to end, each a fresh process — measured **13.8–32.2 ms per
 request**, which is the client and the load, not recall. The store's own recall
-figures are in `eval/`: **849 µs** p50 under the 16-client soak, **1.0–1.1 ms**
-at a 1k-memory bank and **5.9–6.5 ms** at 10k, **3.1 ms** at a 2k bank with 1
-client, **8 ms** on LongMemEval-S sessions.
+figures are in `eval/`: **849 µs** p50 under the 16-client soak (`eval/SOAK.md`),
+**3.1 ms** at a 2k bank with 1 client (`eval/BENCH_CONCURRENCY.md`), and **11 ms**
+p50 on LongMemEval-S sessions (`eval/RESULTS.md`).
 
-The 1k and 10k latency figures are the only ones measured on a quiet machine —
-three `bench_recall_curve` rounds at load 8.4–8.6, where the 100k p50 settled to
-**70.5–73.8 ms** against 80–172 ms on a loaded box. Everything else above is
-wall-clock and load-confounded, and is quoted as a range for that reason. The
-latency figures in the current `eval/BENCH_RECALL_CURVE.md` were taken at
-loadavg 17–24 on 24 cores and are **not** comparable to that quiet-machine band;
-the retrieval columns from the same runs are.
+**The quiet-machine recall-curve figures live in `docs/CONSISTENCY.md` §13, not in
+`eval/`.** Three `bench_recall_curve` rounds at load 8.36–8.61 — the only
+low-load recall-curve measurement in the repo — read p50 **1,015 µs** at 1k,
+**6,129 µs** at 10k, **34,999 µs** at 50k and **71,331 µs** at 100k, with the
+100k round spread 70.5–73.8 ms against 80–172 ms on a loaded box. §13 records all
+four sizes, and it records that the session was *not* written to `eval/`, so
+nothing under version control carries those numbers. The committed
+`eval/BENCH_RECALL_CURVE.md` is a different, busier run — loadavg
+**24.64/33.47/31.95**, p50 2,164/15,172/54,500/102,450 µs — and is **not**
+comparable to the §13 band; its retrieval columns are. Everything else above is
+wall-clock and load-confounded, and is quoted as a range for that reason.
 
 **The recall-curve R@5 is no longer 100%, and that is E1's cost, not a bug.**
 Reweighting the fusion (below) took R@5 on that suite from 100% at every size to
