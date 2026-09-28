@@ -4,6 +4,13 @@ Status: proposal, nothing implemented. Supersedes nothing.
 Author: audit of 2026-09-28, from `eval/ORACLE_RERANK.md` and the registry.
 Constraint: the single ~8.4 MB static binary, offline, no model download stays.
 
+> **READ `docs/EVALUATION_HYGIENE.md` FIRST.** It changes the order of this
+> document. Section 5 below is superseded by §5′. The measurements in §§1–4 stand
+> — they are real — but the *selection protocol* in §5 was wrong: it proposed
+> cross-validating on the same 500 LongMemEval questions we report on, and it
+> proposed tuning `overlap: 0.25` on them, which is exactly the fitting that
+> `AGENTS.md` §1 forbids. The clean re-ranking plan is §8.
+
 ## 1. Is machine learning the right tool here?
 
 Yes, and more precisely than the question was posed. The problem is not
@@ -149,15 +156,68 @@ less is reverted and recorded.
   that a reranker is the right lever — but on ~43,000 queries, not 500. It
   should inform the direction, not the expectation.
 
-## 7. Recommendation
+## 7. Recommendation — SUPERSEDED, see §8
 
-Run **Tier 0 first**: a pairwise logistic ranker over features 1–5, 7 and 8,
-fitted offline, exported as a dozen constants, cross-validated by query. Start
-with **feature 3 alone** — restore BM25 magnitude as a tie-breaker above the
-RRF score — because it is a one-line change with a specific mechanistic
-hypothesis behind it and it needs no model at all.
+The original recommendation was to run Tier 0 first, cross-validated on the
+LongMemEval questions. **That was wrong** and is withdrawn: cross-validating on
+the set we report on is not a clean generalisation estimate, and fitting against
+it burns the instrument. See `docs/EVALUATION_HYGIENE.md`.
 
-If Tier 0 cannot beat RRF on held-out folds, the honest conclusion is that the
-remaining 16.2pp is semantic, and that means this architecture is finished. That
-is a genuinely useful answer: it would stop us spending effort here and settle
-the vectors question with evidence instead of argument.
+## 8. The clean plan
+
+### Step 1 — Build the dev harness on independent data. Nothing else starts first.
+
+`eval/data/locomo/`: 272 documents, 1,540 queries, `gold_ids` naming the gold
+document, `user_id` giving the isolation unit. Same shape as LongMemEval,
+retrieval-only, different source. A `examples/locomo.rs` harness is ~80 lines by
+analogy with `examples/longmemeval.rs`, and it is the precondition for
+everything below.
+
+It also settles an existing debt: **`overlap: 0.25` was selected on LongMemEval
+and is therefore fitted.** Running both `0.25` and the unfitted `1.00` on LoCoMo
+answers whether the effect replicates on independent data. If it does, 0.25 was a
+real discovery and gets promoted from provisional to earned. If it does not, it
+was an artifact of 500 questions and we revert.
+
+That question is worth more than any new model, and it costs one harness.
+
+### Step 2 — Restore the BM25 magnitude. Mechanistic, no free parameters.
+
+FTS5's `bm25()` returns a real number and `src/recall.rs` discards it, keeping
+only rank. A row at rank 7 with a far better BM25 score than a marginal rank-1
+row is precisely what RRF's rank-only form cannot see, and it is the exact shape
+of the 14 R@5 misses at ranks 6–20.
+
+This is a **signal restoration, not a tuning knob** — the code already computes
+the value. Decided on that argument. It is *then* measured, and whatever the
+measurement says is reported. It is **not** iterated until the number improves,
+and if it is neutral it stays neutral rather than being paired with a search for
+a weight that isn't.
+
+Gate: must not regress any of the six LongMemEval categories or R@20. Selected
+against LoCoMo, measured on LongMemEval once.
+
+### Step 3 — Only now, a learned reranker, fitted on LoCoMo
+
+Feature set 1–5, 7 and 8 from §4. Pairwise logistic. Fitted on the **dev** set.
+LoCoMo is large enough to split honestly: 1,540 queries gives real folds, and
+cross-validation happens *inside* LoCoMo.
+
+Gate, pre-registered: must beat the Step-2 configuration on held-out LoCoMo
+folds, must not regress any category, and must not regress R@20. Then LongMemEval
+is consulted **once**. A null result is written down.
+
+### Step 4 — If Steps 2 and 3 fail, the deficit is semantic
+
+The remaining gap is not lexically recoverable, this architecture is at its
+ceiling, and the choice is vectors (breaks the offline single-binary promise) or
+accept 97.2%. That is a legitimate place to stop, and it is a much better answer
+than six weeks of ranking experiments.
+
+### Carried forward from §6 — negative evidence still applies
+
+Pooling bias (a reranker trained on BM25-dominated pools largely learns to
+reproduce BM25), short-document saturation, and the 500-vs-43,000-query scale
+mismatch. The last one is now *better*: LoCoMo's 1,540 queries is a real
+improvement over 500, though still short of the tens of thousands the TREC
+Deep Learning literature uses.

@@ -19,6 +19,9 @@ Two rules bind every phase:
 2. **R@20 and NDCG@10 may not regress**, and no `question_type` may regress by
    more than 1 question. Quality only. A null result is a valid outcome and gets
    recorded as one.
+3. **No parameter is selected on the test set.** Phases P−1, P2, P3 and P4 select
+   against LoCoMo; LongMemEval is measured and reported, never optimised. See
+   `docs/EVALUATION_HYGIENE.md`.
 
 Latency may be claimed **only** on a quiet machine (`/proc/loadavg` under ~5 on 24
 cores) and then only with the load printed. Otherwise the phase reports quality
@@ -26,6 +29,38 @@ only. This box has not been quiet for most of the project's history, so treat an
 timing number without a load line as unsupported.
 
 ---
+
+## P−1 — Build the dev harness on independent data (added 2026-09-28)
+
+**This phase now gates every measurement-driven phase below.**
+
+`docs/EVALUATION_HYGIENE.md` established that `overlap: 0.25` was selected by
+sweeping 46 configurations against LongMemEval's 500 questions. That makes it
+**fitted**, it makes our headline 97.2% a non-generalisation estimate, and it
+leaves the only clean comparison we have at the unfitted **93.0%**.
+
+So: no parameter is selected against LongMemEval again, until there is another
+labelled set to select it against.
+
+`eval/data/locomo/` already exists on disk — 272 documents, 1,540 queries,
+`gold_ids` naming the gold document, `user_id` giving the isolation unit, from
+Snap Research's LoCoMo via the canonical
+`vectorize-io/agent-memory-benchmark` distribution. Same shape as LongMemEval,
+retrieval-only (the `gold_answers` prose is not needed), different source.
+`eval/download.sh` should fetch it alongside LongMemEval, not hand-placed.
+
+An `examples/locomo.rs` harness, by analogy with `examples/longmemeval.rs`, is
+the precondition for P2, P3 and P4. It measures `recall_any@{1,5,10,20}`,
+per-category via `meta.category`, and is selected against.
+
+It also settles the existing debt directly: run both `overlap: 0.25` and the
+unfitted `1.00` on LoCoMo. If 0.25 wins there too, the effect replicated on
+independent data and it is promoted from provisional to earned. If it loses, it
+was an artifact of 500 questions and we revert to 1.00 and re-baseline the
+README. **Either answer is worth more than any new model.**
+
+Gating rule: P0 (recording R@1) is bookkeeping and may proceed — it selects
+nothing. P1's `k` sweep and P2/P3/P4 all select, and all wait for this phase.
 
 ## P0 — Recover the pre-E1 R@1, and make R@1 a tracked column
 
@@ -209,6 +244,17 @@ evidence. Details in `docs/NEXT_ITERATION.md` and `eval/SWEEP_FUSION.md`.
   the cheap half of the same idea (stemming) was already measured and rejected.
 
 ## Order
+
+**P−1 → P0 → P1 → P2 → P3 → P4 → P5 → P6.** P−1 is new and gates everything that
+selects. P0 may run in parallel with P−1 because it selects nothing. P6 (the
+cross-encoder) stays last and stays declined unless P2 and P3 both come back
+empty, in which case the remaining gap is semantic and this architecture is at
+its ceiling.
+
+**P4 may be a deletion.** A 5% regression on synthetic distractors we author
+ourselves is weak evidence, and if the honest engineering answer is "recall-curve
+is adversarial to the overlap voter and we accept the trade", deleting P4 is a
+legitimate completion.
 
 **P0 → P1 → P2 → P3 → P4 → P5**, with P6 only if P2 and P3 both come back empty.
 
