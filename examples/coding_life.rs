@@ -16,6 +16,7 @@ use std::time::Instant;
 
 use memory_wire::api::MemoryService;
 use memory_wire::memory::{Bank, Memory};
+use memory_wire::recall::FusionWeights;
 use memory_wire::store::{SqliteStore, Store};
 use serde::Deserialize;
 
@@ -142,6 +143,57 @@ fn main() -> anyhow::Result<()> {
         eprintln!("memory-wire misses: {}", misses.join(", "));
     }
 
+    // ---- the same suite, swept across fusion configurations --------------------
+    // `recall_with_weights` is the identical code path `recall` takes with the
+    // weights as an argument, so a swept row and the shipped row above differ
+    // only in the arithmetic this selects. `None` resolves to
+    // `FusionWeights::SHIPPED` at sweep time rather than being copied from it,
+    // so the row labelled `shipped` is the shipped default whatever a future
+    // phase does to it.
+    let grid: Vec<(String, Option<FusionWeights>)> = vec![
+        ("shipped".into(), None),
+        ("raw overlap=0.50".into(), Some(FusionWeights { overlap: 0.50, ..FusionWeights::SHIPPED })),
+        ("raw overlap=0.75".into(), Some(FusionWeights { overlap: 0.75, ..FusionWeights::SHIPPED })),
+        ("raw overlap=1.00".into(), Some(FusionWeights { overlap: 1.00, ..FusionWeights::SHIPPED })),
+        ("idf overlap=0.25".into(), Some(FusionWeights { overlap_idf: true, ..FusionWeights::SHIPPED })),
+        ("idf overlap=0.50".into(), Some(FusionWeights { overlap: 0.50, overlap_idf: true, ..FusionWeights::SHIPPED })),
+        ("idf overlap=0.75".into(), Some(FusionWeights { overlap: 0.75, overlap_idf: true, ..FusionWeights::SHIPPED })),
+        ("idf overlap=1.00".into(), Some(FusionWeights { overlap: 1.00, overlap_idf: true, ..FusionWeights::SHIPPED })),
+        ("idf overlap=1.25".into(), Some(FusionWeights { overlap: 1.25, overlap_idf: true, ..FusionWeights::SHIPPED })),
+        ("shipped + coverage=0.10".into(), Some(FusionWeights { coverage: 0.10, ..FusionWeights::SHIPPED })),
+        ("shipped + coverage=0.25".into(), Some(FusionWeights { coverage: 0.25, ..FusionWeights::SHIPPED })),
+        ("shipped + coverage=1.00".into(), Some(FusionWeights { coverage: 1.00, ..FusionWeights::SHIPPED })),
+    ];
+    #[derive(Default)]
+    struct SweepRow {
+        agg: Agg,
+        misses: Vec<String>,
+    }
+    let mut swept: Vec<(String, FusionWeights, SweepRow)> = grid
+        .iter()
+        .map(|(label, w)| (label.clone(), w.unwrap_or(FusionWeights::SHIPPED), SweepRow::default()))
+        .collect();
+    // Queries outer, configurations inner, so a load spike lands on every row in
+    // the same pass and the latency column is comparable between them.
+    for q in &queries {
+        let gold: HashSet<&str> = q.gold_session_ids.iter().map(String::as_str).collect();
+        for (_, w, row) in swept.iter_mut() {
+            let t = Instant::now();
+            let hits_mw = svc.recall_with_weights("life", &q.question, 2000, w)?;
+            let ms = t.elapsed().as_micros();
+            let ranked_mw: Vec<String> = hits_mw.into_iter().map(|h| h.memory.id).collect();
+            let hits = ranked_mw.iter().take(k).filter(|id| gold.contains(id.as_str())).count();
+            row.agg.n += 1;
+            row.agg.p += hits as f64 / k as f64;
+            row.agg.r += if gold.is_empty() { 0.0 } else { hits as f64 / gold.len() as f64 };
+            row.agg.hit += usize::from(hits > 0);
+            row.agg.lat.push(ms);
+            if hits == 0 {
+                row.misses.push(q.id.clone());
+            }
+        }
+    }
+
     let mut md = format!(
         "# coding-life eval (memory-wire)\n\nDataset: vendored `eval/data/{{sessions,queries}}.json` (15 sessions, 15 labeled queries, from agentmemory `eval/data/coding-agent-life-v1`). Scoring mirrors their `eval/runner/score.ts`. k={k}.\n\nRun {} from `--profile={}`.\n\nThe corpus is 15 sessions, so the 200-row recall candidate pool cannot bind here and every session is scored on every query. P@{k} / R@{k} / hit rate are deterministic and are what this suite gates on. **The p50 latency column is not.** It is a {k}-sample median over one run of one machine: it has been measured across release runs of this binary between roughly 260 and 620 us, so it moves several-fold with the box's load and must be quoted as a range, never as a regression signal. Re-run it; do not pin it.\n\n| Adapter | P@{k} | R@{k} | Hit rate | p50 latency | n |\n|---|---|---|---|---|---|\n",
         chrono::Utc::now().format("%Y-%m-%d"),
@@ -159,6 +211,42 @@ fn main() -> anyhow::Result<()> {
             lat[lat.len() / 2],
             a.n
         ));
+    }
+    // The swept table, then its per-question miss lists. At 15 queries and a
+    // binary R@5, one query is 6.7 percentage points, so an aggregate alone
+    // cannot tell a configuration that missed the same question from one that
+    // missed a different one — the ids are the measurement.
+    md.push_str(&format!(
+        "\n## The same suite, swept across fusion configurations\n\n\
+         `recall_with_weights` is the identical code path `recall` takes with the \
+         weights as an argument, and all rows run on one index, so a row and the \
+         `memory-wire` row above differ only in the fusion arithmetic. Queries are outer and \
+         configurations inner, so a load spike lands on every row in the same pass. **P@{k}/R@{k}/hit \
+         rate are deterministic; the latency column is not** — same caveat as above, and at 15 \
+         samples it is a median of 15.\n\n\
+         | configuration | BM25 | overlap | coverage | idf | P@{k} | R@{k} | Hit rate | p50 latency | n |\n\
+         |---|---|---|---|---|---|---|---|---|---|\n",
+    ));
+    for (label, w, row) in &swept {
+        let mut lat = row.agg.lat.clone();
+        lat.sort();
+        md.push_str(&format!(
+            "| {label} | {:.2} | {:.2} | {:.2} | {} | {:.1}% | {:.1}% | {:.1}% | {} µs | {} |\n",
+            w.bm25,
+            w.overlap,
+            w.coverage,
+            if w.overlap_idf { "yes" } else { "no" },
+            row.agg.p / row.agg.n as f64 * 100.0,
+            row.agg.r / row.agg.n as f64 * 100.0,
+            row.agg.hit as f64 / row.agg.n as f64 * 100.0,
+            lat[lat.len() / 2],
+            row.agg.n
+        ));
+    }
+    md.push_str("\n### Missed query ids, per configuration\n\n");
+    for (label, _, row) in &swept {
+        let m = if row.misses.is_empty() { "none".to_string() } else { row.misses.join(", ") };
+        md.push_str(&format!("- **{label}**: {m}\n"));
     }
     fs::write(&out_md, &md)?;
     eprintln!("wrote {out_md}");

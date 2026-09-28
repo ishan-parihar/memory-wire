@@ -33,6 +33,17 @@ concentrated exactly where the deficit was — `single-session-preference` R@5
 56.7% → 86.7% and `single-session-assistant` 87.5% → 100.0%, with no category
 regressing. The cost is stated in full below rather than buried.
 
+**Two later attempts to make that weight unnecessary both failed, and one of them
+failed for an instructive reason** (`docs/NEXT_ITERATION.md` Phases E3–E4).
+Weighting the overlap stream by IDF (`overlap_idf`, ships off) does exactly what
+E1's diagnosis predicted — at equal weight it scores 96.4 / 88.6 where the raw
+stream scores 93.0 / 83.5 — but at the shipped 0.25 it costs 0.4pp R@5 for
++1.7pp NDCG@10, so it is not shipped. A third distinct-term-coverage stream
+(`coverage`, ships 0.0) is *algebraically identical* to raising the overlap weight:
+for any query with no repeated token the two rank identically, and RRF is linear
+in the weights, so `coverage: w` ≡ `overlap: 0.25 + w`. Both levers are kept in the
+tree, default off, so the sweep rows that produced these numbers can be re-run.
+
 Competitor rows: their `benchmark/LONGMEMEVAL.md` (same metric, verified in-audit).
 Hindsight publishes QA-accuracy leaderboard scores (needs an LLM reader), not
 retrieval recall — not comparable here; their retrieval stack is 4-stream TEMPR +
@@ -185,7 +196,10 @@ objects instead, where `score` is the fused RRF value the ranking actually used
 a token count — so it is a fraction, and only comparable against other scores from
 the same recall. Those two weights are the swept default
 (`docs/NEXT_ITERATION.md`, Phase E1); they are compile-time constants, not
-per-request options.
+per-request options. A third coverage stream and an IDF-weighted overlap scorer
+exist in the same struct and both ship at weight `0` / `false`, so the formula above
+is the whole of the shipped score — see Phases E3–E4 for the measurements that
+left them off.
 `reflect` returns the top hit prefixed with its id — there is no
 LLM in the loop yet.
 

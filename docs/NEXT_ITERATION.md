@@ -261,32 +261,251 @@ this data, so the expensive half is not worth reaching for either.
 
 ## Phase E3 — IDF weighting in the overlap stream
 
-The second stream scores by **raw token-overlap count**, so a document matching
-"the" counts the same as one matching "authentication". Both parents weight their
-lexical signals by IDF. This is dependency-free to fix — IDF is derivable from
-the FTS index or the candidate pool.
+**REJECTED on the gate. Shipped configuration unchanged.** The lever works, the
+diagnosis behind it was right, and the instrument that motivated it turns out not
+to be measuring what the hypothesis assumed.
 
-**E1 makes this the obvious next lever, and E2 says to do it alone.** E1's result
-is that the overlap stream is a *net negative* at equal weight because it
-double-counts common words — which is the same defect IDF fixes, attacked at the
-stream's own scale instead of the fusion's. At `overlap: 0.25` the stream is now
-a weak tiebreaker, so weighting its terms properly may make it worth more than
-0.25, or may not. Either way the gate is unchanged: per-question diff, per-
-category table, recall curve, R@5 and NDCG@10 up and R@20 not down.
+### Where the IDF comes from
 
-Same gates as E2, and it composes with E1: both change how the two streams are
-weighted relative to each other, so run E1 → E2 → E3 and re-measure after each
-rather than bundling.
+From the bounded candidate pool — the newest `store::RECALL_POOL_LIMIT` (200) rows
+of the bank ∪ the BM25 top-50, so `N ≤ 250` — with `df(t)` the number of those
+documents containing query token `t`. The weight is the one FTS5's own `bm25()`
+uses, `idf = ln(1 + (N − df + 0.5)/(df + 0.5))`. No new dependency, no schema
+change, no migration, no extra SQL.
+
+`df` is counted **in the single tokenizing pass the overlap stream already makes**
+over the pool: each document's matched query tokens go into a flat bit matrix
+(`n_docs × ⌈slots/64⌉` words — 2 KB at this store's pool ceiling for a query of up
+to 64 distinct tokens, 4 KB for 128) as they are seen, and the weighted sum is
+arithmetic over that matrix afterwards. Re-tokenizing to read `df` back off a
+second pass would have doubled the dominant loop in `rank_candidates` for nothing.
+
+Two alternatives were checked against the bundled SQLite rather than assumed:
+
+- **The FTS5 index.** `idf()` is `no such function`; `bm25()` is a whole-document
+  score, not a per-term statistic; and under `detail=none` the shadow tables
+  (`t_data`, `t_docsize`, `t_idx`) are opaque blobs with no readable per-term
+  counts. There is no per-term IDF in the index to read.
+- **`fts5vocab`.** It exists and it does expose per-term document counts — but
+  creating it is a new schema object plus a backfill of every term in the bank,
+  i.e. a migration. Out of scope for a phase whose whole argument is that it costs
+  nothing.
+
+The pool is the *right* denominator independently of what is cheap: the overlap
+stream ranks the pool, so "how rare is this term" is only ever asked relative to
+the set being ranked.
+
+**Unseen term** (`df == 0`): it occurs in no pool document, so its bit is never set
+in the bit matrix and it contributes nothing to any score. The largest weight the
+formula can produce is exactly the case that must contribute zero, and it does. The
+term still goes to FTS5 unchanged, so a query token the pool happens not to hold is
+still a token BM25 can match.
+
+**Universal term** (`df == N`): `ln(1 + 0.5/(N+0.5))` — small but **strictly
+positive**. A query made only of terms every document carries still returns those
+documents, in a stable order. A weight that could reach zero would silently empty
+the overlap stream of everything that matched; one that could go negative would rank
+the worst match first. Neither is reachable, and
+`a_universal_term_should_still_score_strictly_positive` pins both halves.
+
+### The sweep — `overlap` 0.00 → 2.00, raw and IDF-weighted
+
+500 questions, seed 42, every row scored on one shared index per question. The
+full 46-row grid and all per-question data are in `eval/SWEEP_FUSION.md`; the
+pairing is also printed there as its own table.
+
+**The box was loaded throughout** — loadavg 60.42 at the start of the sweep,
+24.64 at the start of the recall curve, on 24 cores, against a ~15 threshold. Every
+number in this section is a retrieval metric (R@k, NDCG, MRR) and those are
+load-independent and deterministic, so they stand. **No latency claim is made from
+these runs, and none is comparable to a committed one.** The visible tell is in
+the artifacts themselves: the same 46 configurations took 398.8s of index build
+here against 160.6s in the E1 run, which is the machine, not the code.
+
+| overlap | A: raw R@5 | A: raw NDCG@10 | F: idf R@5 | F: idf NDCG@10 | Δ R@5 | Δ NDCG | R@20 raw | R@20 idf |
+|---|---|---|---|---|---|---|---|---|
+| 0.00 | 97.0% | 89.9% | 97.0% | 89.9% | +0.0 | +0.0 | 99.6% | 99.6% |
+| 0.25 | **97.2%** | 88.2% | 96.8% | **89.9%** | **−0.4** | **+1.6** | 99.6% | 99.6% |
+| 0.50 | 95.4% | 86.5% | 96.8% | 89.3% | +1.4 | +2.8 | 99.6% | 99.6% |
+| 0.75 | 94.0% | 85.1% | 96.6% | 89.1% | +2.6 | +4.1 | 99.6% | 99.6% |
+| 1.00 | 93.0% | 83.5% | 96.4% | 88.6% | +3.4 | +5.2 | 99.6% | 99.6% |
+| 1.25 | 92.8% | 82.7% | 96.2% | 88.5% | +3.4 | +5.8 | 99.6% | 99.6% |
+| 1.50 | 92.4% | 82.2% | 96.4% | 88.5% | +4.0 | +6.4 | 99.4% | 99.6% |
+| 1.75 | 92.0% | 81.7% | 96.2% | 88.4% | +4.2 | +6.7 | 99.4% | 99.6% |
+| 2.00 | 91.6% | 81.0% | 96.2% | 88.3% | +4.6 | +7.4 | 99.4% | 99.6% |
+
+**E1's diagnosis is confirmed, and then some.** E1 found the overlap stream a net
+negative as a co-equal voter *because it double-counts common words*. E3 says that
+was the right diagnosis: at every weight ≥ 0.50 the rarity-weighted stream beats the
+raw one, by +1.4pp R@5 at 0.50 rising to +4.6pp at 2.00, and +2.8 to +7.4pp
+NDCG@10. Across the ladder the raw stream collapses 97.2 → 91.6; the IDF stream
+falls only 97.0 → 96.2, and it holds R@20 at 99.6% everywhere. **A rarity-weighted
+overlap stream can take a full vote without the collapse the raw stream suffers.**
+
+**And it still fails the gate, because the gain is only reachable at weights that
+were already rejected.** At the shipped 0.25 the best IDF row is R@5 96.8 /
+NDCG@10 89.9 against the shipped 97.2 / 88.2: **−0.4pp R@5 bought for +1.7pp
+NDCG@10 and +2.2pp MRR.** Per question: two lost, none gained, and both are still
+inside R@10 — `07b6f563` (single-session-preference) and `88432d0a` (multi-session)
+move from the top 5 into positions 6–10. Nothing leaves the top 20. Per category:
+
+| Type | n | ΔR@5 | ΔR@10 | ΔR@20 | ΔNDCG@10 |
+|---|---|---|---|---|---|
+| single-session-preference | 30 | **−3.33** | +0.00 | +0.00 | +5.79 |
+| multi-session | 133 | −0.75 | +0.00 | +0.00 | +0.22 |
+| single-session-assistant | 56 | +0.00 | +0.00 | +0.00 | +7.22 |
+| single-session-user | 70 | +0.00 | +0.00 | +0.00 | +1.02 |
+| knowledge-update | 78 | +0.00 | +0.00 | +0.00 | +0.00 |
+| temporal-reasoning | 133 | +0.00 | +1.54 | +0.00 | +1.10 |
+
+One persistent casualty across the whole sweep: `07b6f563` is also lost by raw at
+0.75. At 0.75, **raw loses 16 questions and IDF loses 3** — which is the strongest
+argument for the lever, and it is an argument about 0.75.
+
+### The recall curve says the motivating mechanism does not exist
+
+R@5, 32 fixed queries (one query = 3.125pp), raw against IDF at the same weight:
+
+| overlap | raw: 1k / 10k / 50k / 100k | IDF: 1k / 10k / 50k / 100k |
+|---|---|---|
+| 0.25 | 96.9 / 84.4 / 90.6 / 90.6 | 96.9 / 84.4 / 90.6 / 90.6 |
+| 0.50 | 96.9 / 90.6 / 96.9 / 96.9 | 96.9 / 90.6 / 96.9 / 96.9 |
+| 0.75 | 100.0 / 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 / 100.0 |
+| 1.00 | 100.0 / 100.0 / 100.0 / 100.0 | 100.0 / 100.0 / 100.0 / 100.0 |
+
+R@1 likewise: identical at every size for 0.50, 0.75 and 1.00 (at 1.00, both
+78.1 / 75.0 / 81.2 / 75.0). At 0.25 the per-query gold-rank vectors do differ — 8 of
+32 queries at 1k, 9 of 32 at 50k and 100k — so IDF genuinely reorders the tail. But
+nothing crosses into or out of the top 5, so R@1 and R@5 are unchanged at every size.
+
+**The proposed mechanism cannot be what is happening.** The hypothesis was that "a
+distractor matching many common query tokens out-votes the gold row that matches the
+one rare nonce". On this corpus it cannot: every query is six tokens — five from its
+topic sentence, repeated across a quarter of the bank, plus the unique nonce — the
+gold row contains all six, and a same-topic distractor contains five. **6 > 5, so the
+raw count already ranks the gold row first inside the overlap stream.** There is no
+ordering inversion for IDF to fix. What actually caps the stream at weight 0.25 is
+not its ordering but its *vote*: 0.25 of a term against ~50 same-topic rows sitting
+at BM25 ranks 1–50, with RRF's k=60 damping on top. IDF re-ranks correctly and
+changes nothing, because the ranking was already correct.
+
+`coding-life` is the third, independent witness and says the same thing: R@5 96.7%
+at `overlap` 0.25 (raw *and* IDF) and 100.0% at every weight from 0.50 up (raw *and*
+IDF), with the missed-query id list identical. Full table in `eval/CODING_LIFE.md`.
+**Both needle instruments respond to the overlap weight and to nothing else.**
+
+### What E3 changed, and what it did not
+
+E3 set out to dominate the 0.25-vs-0.75 argument. It half-does:
+
+- **The recall curve cannot tell the two scorers apart at any weight.** Raw 0.75 and
+  IDF 0.75 both give 100% at all four sizes; raw 0.50 and IDF 0.50 both give
+  96.9 / 90.6 / 96.9 / 96.9. **IDF buys nothing on the instrument that motivated it.**
+- **LongMemEval: the cost of a full overlap vote drops from −3.2pp R@5 (raw 0.75 =
+  94.0) to −0.6pp (IDF 0.75 = 96.6), and NDCG@10 from −3.1pp to +0.9pp.** The same
+  +15.6pp of curve R@5 at 10k costs 5.3× less LongMemEval R@5. That is a real
+  improvement to the shape of the trade.
+
+But the gate is an AND, and IDF 0.75 holds the curve at 100% while LongMemEval R@5
+lands at 96.6, below the 97.2 floor. The Pareto frontier moved; the shipped point
+did not become admissible. **Nothing is shipped.**
+
+**Deficit closed: none, and slightly reversed.** LongMemEval R@5 deficit vs perfect
+goes 2.8pp → 3.2pp. Recall-curve R@5 deficit at 10k stays 15.6pp. coding-life R@5
+stays 96.7%. E3's whole contribution is a *re-pricing*: if the recall curve ever
+becomes the binding constraint, the right configuration is
+`overlap: 0.75, overlap_idf: true`, not `overlap: 0.75` — a conclusion that costs
+2.6pp of LongMemEval R@5 today and would be free to take the moment the curve
+mattered more.
+
+**Kept in the tree, default off.** `FusionWeights::overlap_idf` ships `false`, and
+`false` runs the *original* single pass on the original scratch buffer — the
+un-weighted path is asserted to reproduce `overlap_score` exactly, for six queries
+across three corpora, in
+`the_unweighted_path_should_reproduce_the_raw_distinct_token_count`. The E1 grid rows
+in `eval/SWEEP_FUSION.md` therefore still reproduce the committed E1 numbers rather
+than merely resembling them. This is the same treatment `agreement` got: measured,
+rejected, kept only because the field is what made the measurement expressible.
 
 ## Phase E4 — multi-term query handling
 
-`SqliteStore::fts_match_query` splits a query on non-alphanumerics and emits each
-token as an independently quoted string joined by `OR`. That is what makes
-`detail=none` safe (FTS5 rejects multi-term phrase queries under it), and it is
-also a ranking weakness: a document matching one query token competes with one
-matching four, and preference questions are exactly the multi-facet kind. A
-conjunctive or coverage-based boost over distinct matched terms is free and
-targets the largest single deficit.
+**REJECTED on the gate, and the finding is stronger than "it did not help": a
+distinct-term-coverage signal is arithmetically identical to the overlap weight.**
+
+### What was built
+
+A third RRF stream over the same candidate pool the overlap stream ranks, ordered by
+`distinct query tokens present ÷ distinct query tokens in the query`, weighted by
+`FusionWeights::coverage` and dropped entirely at 0.0. `fts_match_query` is
+**unchanged**: still one independently double-quoted token per query token joined by
+`OR`, never a multi-term phrase, because FTS5 rejects a phrase under `detail=none`
+and emitting one would break every existing database at query time. The distinct
+count is read out of the overlap stream's own pass (`score_doc` now returns
+`(score, matched)`) and re-sorted in `api.rs`; nothing re-tokenizes, and at
+`coverage: 0.0` the stream is not built at all.
+
+### The finding
+
+**For any query with no repeated token, the coverage stream's rank list is identical
+to the overlap stream's.** The denominator is constant within one query, so ranking
+by coverage is ranking by distinct-match count, and the overlap score is a monotone
+function of that same count. Identical orderings contribute identically to the
+fusion, and the fusion is linear in the weights:
+
+    1.0/(60+r) + 0.25/(60+r) + w/(60+r)  ==  1.0/(60+r) + (0.25+w)/(60+r)
+
+**`coverage: w` is not a new lever. It is the E1 overlap-weight sweep wearing a
+different name, and E1 already priced it.** Confirmed at rank level rather than in
+the aggregate: on all 32 recall-curve queries at 10k, `shipped + coverage=0.25`
+produces the gold-rank vector
+
+    [4,0,0,4,1,5,5,5,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+
+byte-identical to `raw overlap=0.50`'s.
+
+The two orderings diverge only on a query that *repeats* a token, where the raw
+score charges the repeat and coverage does not. There the residual is small and it
+runs the wrong way on the category it was aimed at:
+
+| coverage | R@5 | R@10 | R@20 | NDCG@10 | MRR | ≡ raw overlap | R@5 there | NDCG there |
+|---|---|---|---|---|---|---|---|---|
+| 0.05 | 97.0% | 98.4% | 99.6% | 87.7% | 88.6% | 0.30 | — | — |
+| 0.10 | 96.6% | 98.4% | 99.6% | 87.6% | 88.6% | 0.35 | — | — |
+| 0.25 | 95.4% | 98.4% | 99.6% | 86.5% | 87.5% | 0.50 | 95.4% | 86.5% |
+| 0.50 | 94.0% | 98.2% | 99.6% | 85.1% | 85.6% | 0.75 | 94.0% | 85.1% |
+| 1.00 | 93.2% | 97.2% | 99.6% | 82.8% | 83.4% | 1.25 | 92.8% | 82.7% |
+
+Shipped for reference: 97.2 / 98.6 / 99.6 / 88.2 / 89.2. R@20 never moves.
+
+At `coverage: 0.25`, the worst row: `single-session-preference` 86.7 → 73.3
+(−13.3) and `single-session-assistant` 100.0 → 94.6 (−5.4), with every other
+category within 0.8pp. **The conjunctive signal is worst exactly where it was
+supposed to be best.** That is not a coincidence — it is the E1 curve again:
+preference questions are the ones that lose when the overlap stream is loud, and a
+coverage stream at weight 0.25 *is* the overlap stream at 0.50.
+
+Recall curve R@5: 96.9 / 84.4 / 90.6 / 90.6 at `coverage: 0.10`, 96.9 / 90.6 / 96.9 /
+96.9 at 0.25, 100.0 everywhere at 1.00 — the identical curve E1 already measured for
+`overlap` 0.35, 0.50 and 1.25, and rejected for the identical reason.
+`coding-life`: 96.7% at `coverage: 0.10`, 100.0% at 0.25 and 1.00, matching `raw
+overlap` 0.35 / 0.50 / 1.25 exactly.
+
+**Gate: FAIL.** Monotonically harmful on LongMemEval at every weight tested, with the
+damage concentrated in the two categories the lever targets, and no offsetting gain
+anywhere. **Deficit closed: none.** LongMemEval R@5 deficit 2.8pp → 3.0pp at best
+(`coverage: 0.05`) and 7.0pp at `coverage: 1.00`; the other two instruments are
+unchanged from what the equivalent overlap weight already gives.
+
+**Why this is worth more than the number.** E3 asked whether a smarter *score* helps
+and the answer was "not on the instrument that motivated it". E4 asked whether a
+*different signal* helps and the answer is that the signal is not different — it
+reduces algebraically to the weight E1 already swept. The productive question for
+this half of the space is not "what else can the overlap stream know about the
+query" but "what does the overlap stream know about the *document* that a token
+count throws away" — length, field structure, position. All of those need a scoring
+change rather than a weighting change, and all of them are unmeasured.
+
+Kept in the tree, default off, same treatment as E3 and `agreement`.
 
 ## Phase E5 — LoCoMo (blocked; low priority)
 
@@ -317,3 +536,30 @@ can state the measured retrieval delta rather than "no change".
    difference under ~2.5× on a loaded box is not a measurement.
 4. Record null results. "Equal weights were already optimal" and "stemming
    over-matched" are findings.
+
+## Where E1–E4 left the retrieval weights
+
+`overlap: 0.25`, `overlap_idf: false`, `coverage: 0.0`, `k: 60` — unchanged from
+E1, and now justified against three consecutive rejected attempts to move it
+rather than against one benchmark. The shape of the argument:
+
+| | what wants a higher `overlap` | what the higher weight costs |
+|---|---|---|
+| LongMemEval (500 q) | +4.2pp R@5 from 1.0 → 0.25 | −3.2pp R@5 from 0.25 → 0.75 (−0.6pp with IDF) |
+| recall curve (32 q × 4 sizes) | +15.6pp R@5 at 10k from 0.25 → 0.75 | nothing measured |
+| coding-life (15 q) | +3.3pp R@5 from 0.25 → 0.50 | nothing measured |
+
+Both needle instruments want 0.50–0.75 and cannot tell a rarity-weighted overlap
+stream from a raw one at any weight; LongMemEval wants 0.25 and is the only
+instrument that punishes raising it. Every attempt to make one instrument stop
+disagreeing with the other by changing *what the overlap stream knows* has failed
+— E2 (stemming, different problem, same answer), E3 (IDF), E4 (coverage, which
+turned out not to be a new signal at all).
+
+The next lever that is not a re-run of the weight sweep has to be about the
+**document** rather than the query: length, field structure, position, or a
+proximity term. None of those is measured. The one thing this map does establish
+is the ceiling: at 0.75 the fusion reaches 100% R@5 on both needle instruments and
+loses only 0.6pp of LongMemEval R@5, so the headroom that E3 identified is real and
+sized — it just is not free yet, and buying it is a data problem, not a weighting
+one.

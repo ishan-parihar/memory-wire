@@ -261,6 +261,37 @@ fn main() -> anyhow::Result<()> {
             ));
         }
     }
+    // F: the E3 lever — the same `overlap` axis as A, with the overlap stream's
+    // terms weighted by IDF instead of counted raw. Swept across the *whole* A
+    // range, not just the shipped point, because the question E3 raises is
+    // exactly "does a smarter stream deserve more of a vote" — and the best
+    // weight under a smarter stream need not be 0.25. A's ladder is reused rather
+    // than a second one invented, so the two curves are directly comparable
+    // point for point.
+    let mut w = 0.0;
+    while w <= 2.0 + 1e-9 {
+        grid.push((
+            format!("F: idf, overlap={w:.2}"),
+            FusionWeights { overlap: w, overlap_idf: true, ..FusionWeights::SHIPPED },
+        ));
+        w += 0.25;
+    }
+    // G: the E4 lever — the distinct-term-coverage stream, on its own and on top
+    // of E3. Swept at two overlap weights (the shipped 0.25 and 1.00) because
+    // the third stream and the second one both vote on the same candidates, and
+    // whether they compose is not something a single corner answers.
+    for cov in [0.05, 0.10, 0.25, 0.50, 1.00] {
+        grid.push((
+            format!("G: shipped + coverage={cov:.2}"),
+            FusionWeights { coverage: cov, ..FusionWeights::SHIPPED },
+        ));
+    }
+    for cov in [0.05, 0.10, 0.25, 0.50, 1.00] {
+        grid.push((
+            format!("G: idf, overlap=1.00 + coverage={cov:.2}"),
+            FusionWeights { coverage: cov, overlap: 1.0, overlap_idf: true, ..FusionWeights::SHIPPED },
+        ));
+    }
 
     // ---- one pass, all configurations ---------------------------------------------
     let raw = fs::read_to_string(&data)?;
@@ -390,7 +421,11 @@ fn main() -> anyhow::Result<()> {
          stream at a time, a bound on what the fusion is doing rather than a \
          candidate; **E** is the A×B interaction, measured because both axes act on \
          the same thing (how far a low BM25 rank can be outvoted) and an assumed \
-         additivity is how a corner goes unmeasured.\n\n\
+         additivity is how a corner goes unmeasured. Section **F** is the E3 lever: \
+         the same `overlap` ladder as A with the overlap stream's matched terms \
+         weighted by IDF in the candidate pool instead of counted raw. Section **G** \
+         is the E4 lever: a third stream ranking the same candidates by distinct-term \
+         coverage, swept alone and on top of F.\n\n\
          {}\n\n\
          Load at start `{}`, at end `{}`; index build {:.1}s for all {} \
          configurations. Retrieval metrics are load-independent; there is no \
@@ -405,18 +440,20 @@ fn main() -> anyhow::Result<()> {
 
     md.push_str("## Aggregate, every configuration\n\n");
     md.push_str(
-        "| Configuration | BM25 | overlap | agree | k | R@5 | ΔR@5 | R@10 | R@20 | ΔR@20 | NDCG@10 | ΔNDCG | MRR | R@5 up/down/same | gate |\n\
-         |---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+        "| Configuration | BM25 | overlap | agree | cover | idf | k | R@5 | ΔR@5 | R@10 | R@20 | ΔR@20 | NDCG@10 | ΔNDCG | MRR | R@5 up/down/same | gate |\n\
+         |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
     );
     for (i, (label, w)) in grid.iter().enumerate() {
         let t = &totals[i];
         let (up, down, same) = diffs[i];
         let passes = t.r5() > b5 && t.ndcg10() > bn && t.r20() >= b20;
         md.push_str(&format!(
-            "| {label} | {:.2} | {:.2} | {:.2} | {:.0} | {:.1}% | {:+.1} | {:.1}% | {:.1}% | {:+.1} | {:.1}% | {:+.1} | {:.1}% | {up}/{down}/{same} | {} |\n",
+            "| {label} | {:.2} | {:.2} | {:.2} | {:.2} | {} | {:.0} | {:.1}% | {:+.1} | {:.1}% | {:.1}% | {:+.1} | {:.1}% | {:+.1} | {:.1}% | {up}/{down}/{same} | {} |\n",
             w.bm25,
             w.overlap,
             w.agreement,
+            w.coverage,
+            if w.overlap_idf { "yes" } else { "no" },
             w.k,
             t.r5(),
             t.r5() - b5,
@@ -427,6 +464,54 @@ fn main() -> anyhow::Result<()> {
             t.ndcg10() - bn,
             t.mrr(),
             if passes { "**PASS**" } else { "—" }
+        ));
+    }
+    md.push('\n');
+
+    // The A-vs-F pairing, side by side. A and F are the same ladder over the
+    // same index with the same k; the only difference is whether the overlap
+    // stream weights a matched term by its rarity or counts it. Read as a pair,
+    // the two columns answer E3 directly — the E1 weight curve and the E3 one.
+    md.push_str("## A vs F — the overlap-weight curve, raw and IDF-weighted\n\n");
+    md.push_str(
+        "| overlap | A: raw R@5 | A: raw NDCG@10 | F: idf R@5 | F: idf NDCG@10 | Δ R@5 (F−A) | Δ NDCG (F−A) | R@20 raw | R@20 idf |\n\
+         |---|---|---|---|---|---|---|---|---|\n",
+    );
+    for (i, (label, _)) in grid.iter().enumerate() {
+        // Only the A ladder drives the pairing. Matching on `w.overlap` alone
+        // would also pick up the B, C, E and G rows, which share weights with A
+        // for entirely different reasons, and the ladder would print itself once
+        // per coincidental match.
+        if !label.starts_with("A:") {
+            continue;
+        }
+        let w = &grid[i].1;
+        let raw_i = match grid
+            .iter()
+            .position(|(l, _)| *l == format!("A: overlap={:.2}", w.overlap))
+        {
+            Some(i) => i,
+            None => continue,
+        };
+        let idf_i = match grid
+            .iter()
+            .position(|(l, _)| *l == format!("F: idf, overlap={:.2}", w.overlap))
+        {
+            Some(i) => i,
+            None => continue,
+        };
+        let (r, f) = (&totals[raw_i], &totals[idf_i]);
+        md.push_str(&format!(
+            "| {:.2} | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {:+.1} | {:+.1} | {:.1}% | {:.1}% |\n",
+            w.overlap,
+            r.r5(),
+            r.ndcg10(),
+            f.r5(),
+            f.ndcg10(),
+            f.r5() - r.r5(),
+            f.ndcg10() - r.ndcg10(),
+            r.r20(),
+            f.r20(),
         ));
     }
     md.push('\n');
@@ -481,7 +566,8 @@ fn main() -> anyhow::Result<()> {
             serde_json::json!({
                 "configuration": label,
                 "bm25": w.bm25, "overlap": w.overlap,
-                "agreement": w.agreement, "k": w.k,
+                "agreement": w.agreement, "coverage": w.coverage,
+                "overlap_idf": w.overlap_idf, "k": w.k,
                 "questions": rows.iter().map(|r| serde_json::json!({
                     "question_id": r.question_id,
                     "question_type": r.question_type,

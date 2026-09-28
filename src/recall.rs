@@ -3,12 +3,14 @@
 //! Hindsight TEMPR (semantic/keyword/graph/temporal) x agentmemory
 //! triple-stream (BM25/vector/graph). See PLAN.md Phase 2.
 //!
-//! Two streams ship: FTS5 BM25, and a token-overlap ranker that is the
-//! stand-in for the second stream. There is no vector stream and no graph
-//! stream, and none is planned behind a flag — the kernel fuses whatever it
-//! is given, and today that is two.
+//! Three streams ship: FTS5 BM25, a token-overlap ranker that is the stand-in
+//! for the second stream, and — at weight 0.0, i.e. switched off — a
+//! distinct-term-coverage ranker over the same candidates as the second. There
+//! is no vector stream and no graph stream, and none is planned behind a flag —
+//! the kernel fuses whatever it is given, and today that is three.
 
 use std::collections::HashMap;
+use std::cmp::Ordering;
 
 /// RRF constant (agentmemory k=60).
 pub const RRF_K: f64 = 60.0;
@@ -42,11 +44,12 @@ pub struct RankedHit {
 /// *swept* (`examples/sweep_fusion.rs`), and nothing in the shipped binary
 /// changes one per request — see `docs/NEXT_ITERATION.md` for the grid.
 ///
-/// `bm25` and `overlap` scale stream 0 and stream 1. A weight of 0.0 drops its
-/// stream's contribution entirely, which is what makes a one-stream arm a row
-/// in the sweep rather than a different code path. Any third stream keeps 1.0:
-/// there is no third stream, and guessing a weight for one would be a silent
-/// no-op dressed up as configuration.
+/// `bm25`, `overlap` and `coverage` scale streams 0, 1 and 2. A weight of 0.0
+/// drops its stream's contribution entirely, which is what makes a one-stream
+/// arm a row in the sweep rather than a different code path. There is no fourth
+/// stream, and a stream past the third would silently fall through to 1.0 — a
+/// no-op dressed up as configuration, which is why the weight lookup names every
+/// index it serves instead of counting them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FusionWeights {
     /// Weight on the FTS5 BM25 stream (stream 0).
@@ -62,6 +65,29 @@ pub struct FusionWeights {
     /// would be worth three such hits and "a small boost" would be neither.
     /// `0.05` here is a ~2.5% lift on a doubly-found rank-1 hit.
     pub agreement: f64,
+    /// Weight on the third stream — **distinct-term coverage** (Phase E4).
+    ///
+    /// Ranks the *same* candidate pool the overlap stream ranks, but by how
+    /// much of the query's distinct-token set each document contains, ignoring
+    /// how often the query repeats a token. The two orderings are identical
+    /// whenever the query has no repeated token, so this is a no-op on most
+    /// queries by construction rather than by tuning; it earns its place only
+    /// on a query that repeats a word. `0.0` — what ships — drops the stream
+    /// entirely, so an unmeasured E4 costs the recall path one `f64` per
+    /// candidate and nothing else.
+    pub coverage: f64,
+    /// Whether the overlap stream weights matched query terms by IDF (Phase E3).
+    ///
+    /// `false` — what ships — is the raw distinct-token count the stream has
+    /// always scored on, computed on the exact code path it has always used, so
+    /// the E1 grid rows stay bit-identical. `true` replaces each matched term's
+    /// unit contribution with its inverse document frequency in the candidate
+    /// pool, `ln(1 + (N − df + 0.5)/(df + 0.5))`.
+    ///
+    /// Carried in the struct rather than beside it because it is a property of
+    /// the stream, and the only way to price it is to run both orderings over
+    /// the same index in one sweep.
+    pub overlap_idf: bool,
     /// The RRF `k` constant: score = Σ wᵢ/(k + rank).
     ///
     /// Carried here rather than passed beside the weights so the fusion is one
@@ -99,18 +125,28 @@ impl FusionWeights {
     /// **zero** of 500 questions at every magnitude, so it is not a knob this
     /// build turns — it is measured-and-rejected, kept in the struct only
     /// because the field is what made that measurement expressible.
+    ///
+    /// `coverage` and `overlap_idf` are Phase E3/E4 and are documented at their
+    /// fields; both ship off unless a gate said otherwise.
     pub const SHIPPED: FusionWeights = FusionWeights {
         bm25: 1.0,
         overlap: 0.25,
         agreement: 0.0,
+        coverage: 0.0,
+        overlap_idf: false,
         k: RRF_K,
     };
 
     /// The weight of stream `i`, which is positional because the fusion is.
+    ///
+    /// Every index it can be handed is named. The fall-through is 1.0 rather
+    /// than 0.0 so that a caller adding a stream without a weight gets a
+    /// *visible* number in the swept grid rather than a stream that vanished.
     fn of(&self, i: usize) -> f64 {
         match i {
             0 => self.bm25,
             1 => self.overlap,
+            2 => self.coverage,
             _ => 1.0,
         }
     }
@@ -231,23 +267,28 @@ fn build_query_index(query: &[String]) -> (HashMap<&str, (usize, usize)>, Vec<bo
 /// counts it once. The score is the same number either way — the count runs over
 /// query tokens, weighted by how often the query repeats them — and nothing here
 /// allocates: document tokens are slices of `buf` and `seen` is just reset.
+///
+/// Returns `(score, distinct tokens matched)`. The count is what E4's coverage
+/// stream ranks on, so it is read out of the same pass rather than recomputed.
 fn score_doc(
     doc: &str,
     index: &HashMap<&str, (usize, usize)>,
     seen: &mut [bool],
     buf: &mut String,
-) -> usize {
+) -> (usize, usize) {
     seen.fill(false);
     let mut score = 0;
+    let mut matched = 0;
     for token in lowercase_tokens(doc, buf) {
         if let Some(&(slot, repeats)) = index.get(token) {
             if !seen[slot] {
                 seen[slot] = true;
                 score += repeats;
+                matched += 1;
             }
         }
     }
-    score
+    (score, matched)
 }
 
 /// Score a document against query tokens by overlap count (BM25 stand-in).
@@ -255,13 +296,125 @@ fn score_doc(
 /// Returns the number of distinct query tokens present in the document.
 pub fn overlap_score(query_tokens: &[String], doc: &str) -> usize {
     let (index, mut seen) = build_query_index(query_tokens);
-    score_doc(doc, &index, &mut seen, &mut String::new())
+    score_doc(doc, &index, &mut seen, &mut String::new()).0
 }
 
-/// Rank documents against a query (higher overlap first, stable by position).
+/// One document's result from the overlap stream: the score it ranks on, and
+/// how much of the query's distinct-token set it covers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OverlapHit {
+    /// The stream's ranking score — the raw distinct-token count, or its
+    /// IDF-weighted sum when [`FusionWeights::overlap_idf`] is set.
+    pub score: f64,
+    /// Distinct query tokens present, over distinct query tokens in the query.
+    ///
+    /// The denominator is a constant within one query, so this ordering is the
+    /// distinct-match count ordering — it differs from `score` only where the
+    /// query repeats a token, which is exactly the difference E4 is after.
+    pub coverage: f64,
+}
+
+/// Inverse document frequency of one query token within the candidate pool.
+///
+/// `ln(1 + (N - df + 0.5)/(df + 0.5))` — the BM25 weighting, in the same shape
+/// FTS5's `bm25()` uses it, so the second stream is weighted the way the first
+/// one already is rather than by a second, different idea of rarity.
+///
+/// **Why the pool, and not the FTS5 index.** FTS5 exposes no per-term
+/// statistic to SQL: `bm25()` is a whole-document score, there is no `idf()`
+/// function, and the one virtual table that does expose per-term document
+/// counts — `fts5vocab` — has to be *created* and populated, which is a new
+/// schema object and a migration. The pool is also the right denominator,
+/// independently: the overlap stream ranks the pool, so "how rare is this term"
+/// is only ever a question relative to the set being ranked. `N` is the pool
+/// length (`store::RECALL_POOL_LIMIT` newest rows ∪ the BM25 top-50, so at most
+/// ~250) and `df` is the number of *those* documents containing the term,
+/// counted in the single tokenizing pass the stream already makes over the pool.
+///
+/// **Unseen terms.** A term with `df == 0` occurs in no pool document, so its
+/// bit is never set and it contributes nothing — the term cannot inflate a
+/// score, it is simply absent, exactly as a non-matching term is today. A term
+/// in *every* document (`df == N`) gets `ln(1 + 0.5/(N+0.5))`, a small but
+/// strictly positive weight: universal terms still separate a matching document
+/// from a non-matching one, so the stream can never silently empty itself of
+/// the documents that match a query at all.
+fn idf(n_docs: usize, df: usize) -> f64 {
+    let n = n_docs as f64;
+    let d = df as f64;
+    (1.0 + (n - d + 0.5) / (d + 0.5)).ln()
+}
+
+/// IDF-weighted scores and coverage for every document, in one tokenizing pass.
+///
+/// One pass is not an optimisation detail: re-tokenizing the pool to read `df`
+/// back off the second pass would double the cost of the dominant loop in
+/// [`rank_candidates`]. Instead each document's matched query tokens go into a
+/// flat bit matrix (`n_docs * ceil(slots/64)` words) as they are seen, and the
+/// weighted sum is pure arithmetic over that matrix afterwards. At this store's
+/// pool ceiling that is 2 KB for a query of up to 64 distinct tokens and 4 KB for
+/// 128, and it is the only per-recall allocation the IDF path makes.
+fn score_docs_idf(
+    docs: &[&str],
+    index: &HashMap<&str, (usize, usize)>,
+    seen: &mut [bool],
+    buf: &mut String,
+) -> Vec<OverlapHit> {
+    let slots = index.len();
+    let words = slots.div_ceil(64);
+    let n = docs.len();
+    let mut masks = vec![0u64; n * words];
+    let mut df = vec![0usize; slots];
+    for (d, doc) in docs.iter().enumerate() {
+        seen.fill(false);
+        let base = d * words;
+        for token in lowercase_tokens(doc, buf) {
+            if let Some(&(slot, _)) = index.get(token) {
+                if !seen[slot] {
+                    seen[slot] = true;
+                    df[slot] += 1;
+                    masks[base + slot / 64] |= 1u64 << (slot % 64);
+                }
+            }
+        }
+    }
+    // Repeats per slot, hoisted out of the per-document loop: the query-side
+    // count is a property of the query, and reading it through the `HashMap`
+    // inside the inner loop would be a lookup per matched term per document.
+    let mut repeats = vec![0.0f64; slots];
+    for &(slot, rep) in index.values() {
+        repeats[slot] = rep as f64;
+    }
+    let weight: Vec<f64> = (0..slots).map(|s| idf(n, df[s])).collect();
+    let mut out = Vec::with_capacity(n);
+    for (d, _) in docs.iter().enumerate() {
+        let base = d * words;
+        let mut score = 0.0;
+        let mut matched = 0usize;
+        for (w, chunk) in masks[base..base + words].iter().enumerate() {
+            let mut bits = *chunk;
+            while bits != 0 {
+                let slot = w * 64 + bits.trailing_zeros() as usize;
+                bits &= bits - 1;
+                score += repeats[slot] * weight[slot];
+                matched += 1;
+            }
+        }
+        out.push(OverlapHit {
+            score,
+            coverage: matched as f64 / slots as f64,
+        });
+    }
+    out
+}
+
+/// Rank documents against a query (higher score first, stable by position).
 ///
 /// `docs` is walked in iteration order; the returned indices are positions in it.
-pub fn rank_candidates<'a, I>(query: &str, docs: I) -> Vec<(usize, usize)>
+/// `idf` selects the E3 weighting — see [`FusionWeights::overlap_idf`]. The
+/// unweighted path is the one that shipped, byte for byte: it is the same
+/// single pass over the same scratch buffer, so a sweep row that turns E3 off
+/// reproduces the E1 numbers rather than merely resembling them.
+pub fn rank_candidates<'a, I>(query: &str, docs: I, idf: bool) -> Vec<(usize, OverlapHit)>
 where
     I: IntoIterator<Item = &'a str>,
 {
@@ -269,14 +422,40 @@ where
     // Hoisted once: the query index, its dedup flags, and the scratch buffer are
     // reused for every document, so scoring the pool allocates nothing per doc.
     let (index, mut seen) = build_query_index(&qt);
+    let slots = index.len();
+    if slots == 0 {
+        return Vec::new();
+    }
     let mut buf = String::new();
-    let mut out: Vec<(usize, usize)> = docs
-        .into_iter()
-        .enumerate()
-        .map(|(i, d)| (i, score_doc(d, &index, &mut seen, &mut buf)))
-        .filter(|(_, s)| *s > 0)
-        .collect();
-    out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let scale = 1.0 / slots as f64;
+    let mut out: Vec<(usize, OverlapHit)> = if idf {
+        let docs: Vec<&str> = docs.into_iter().collect();
+        score_docs_idf(&docs, &index, &mut seen, &mut buf)
+            .into_iter()
+            .enumerate()
+            .collect()
+    } else {
+        docs.into_iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let (score, matched) = score_doc(d, &index, &mut seen, &mut buf);
+                (
+                    i,
+                    OverlapHit { score: score as f64, coverage: matched as f64 * scale },
+                )
+            })
+            .collect()
+    };
+    // A document matching no query token scores exactly 0.0 in both modes —
+    // every weight is strictly positive — so this test keeps its meaning: it is
+    // still "matched at least one query token", not "scored above some floor".
+    out.retain(|(_, h)| h.score > 0.0);
+    out.sort_by(|a, b| {
+        b.1.score
+            .partial_cmp(&a.1.score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     out
 }
 
@@ -467,7 +646,7 @@ mod tests {
     #[test]
     fn rank_should_match_keyword_overlap() {
         let docs = ["auth uses jose".to_string(), "rate limiting notes".to_string()];
-        let ranked = rank_candidates("jose auth", docs.iter().map(String::as_str));
+        let ranked = rank_candidates("jose auth", docs.iter().map(String::as_str), false);
         assert_eq!(ranked[0].0, 0);
     }
 
@@ -583,7 +762,8 @@ mod tests {
         // document; if it were not, `auth` would still be in it when the second
         // document is scored and that document would rank on a stale token.
         let docs = ["auth uses jose", "jose only"];
-        assert_eq!(rank_candidates("auth", docs), vec![(0, 1)]);
+        assert_eq!(rank_candidates("auth", docs, false).len(), 1);
+        assert_eq!(rank_candidates("auth", docs, false)[0].0, 0);
     }
 
     #[test]
@@ -668,5 +848,282 @@ mod tests {
         let kept = trim_to_budget(&ids, &c, tokens);
         assert!(kept[0].1.ends_with(TRUNCATION_MARKER), "the marker must appear once it fits");
         assert_eq!(kept[0].1.chars().count(), tokens * CHARS_PER_TOKEN);
+    }
+
+    // ---- E3: IDF weighting in the overlap stream -----------------------------
+
+    /// A small, deterministic corpus: one term everywhere, one term on one row.
+    ///
+    /// `FILLER` is padded to `FILLER_ROWS` copies of itself, and `NEEDLE` occurs
+    /// exactly once, in the row named by `NEEDLE_ROW`. Every term the filler rows
+    /// and the needle row share is therefore *maximally* common and the needle
+    /// term is *maximally* rare — the two extremes of what IDF separates, with
+    /// no generator and no randomness in the way.
+    const FILLER: &str = "the release notes cover auth and deploys";
+    const FILLER_ROWS: usize = 40;
+    const NEEDLE: &str = "quixotic";
+    /// Late in the pool on purpose: every tie in these tests is broken by
+    /// position, so the needle has to be somewhere a position tiebreak loses.
+    const NEEDLE_ROW: usize = 20;
+
+    /// `NEEDLE_ROWS` (query) × the filler corpus. Position 0 is the needle row;
+    /// every other row is a copy of [`FILLER`].
+    fn needle_corpus() -> Vec<String> {
+        (0..FILLER_ROWS)
+            .map(|i| {
+                if i == NEEDLE_ROW {
+                    format!("{FILLER} {NEEDLE}")
+                } else {
+                    FILLER.to_string()
+                }
+            })
+            .collect()
+    }
+
+    /// **The behaviour E3 exists to create.** A document matching one *rare*
+    /// query term must outrank a document matching an equal number of *common*
+    /// ones.
+    ///
+    /// The query is `auth deploys quixotic release`. Every filler row contains
+    /// `auth` and `deploys` and neither rare term; the needle row contains
+    /// `quixotic` and `release` and neither common one. **Both rows match exactly
+    /// two query terms**, so a raw token count ties them and the tiebreak is pool
+    /// position — and the needle row is placed late, so the raw stream puts a
+    /// filler row first. Only term rarity can reverse that.
+    #[test]
+    fn idf_weighting_should_rank_a_rare_term_above_an_equal_count_of_common_ones() {
+        let corpus: Vec<String> = (0..FILLER_ROWS)
+            .map(|i| {
+                if i == NEEDLE_ROW {
+                    format!("{NEEDLE} release rollout note")
+                } else {
+                    format!("auth deploys rollout note {i}")
+                }
+            })
+            .collect();
+        let docs: Vec<&str> = corpus.iter().map(String::as_str).collect();
+        let query = format!("auth deploys {NEEDLE} release");
+
+        let raw = rank_candidates(&query, docs.iter().copied(), false);
+        let raw_needle = raw.iter().find(|(i, _)| *i == NEEDLE_ROW).unwrap().1.score;
+        let raw_filler = raw.iter().find(|(i, _)| *i == 1).unwrap().1.score;
+        assert_eq!(raw_needle, raw_filler, "the counts must tie, or this proves nothing");
+        assert_ne!(raw[0].0, NEEDLE_ROW, "raw counting must lose the tie on position");
+
+        let weighted = rank_candidates(&query, docs.iter().copied(), true);
+        assert_eq!(
+            weighted[0].0, NEEDLE_ROW,
+            "two rare terms must outrank two common ones once rarity is counted"
+        );
+    }
+
+    /// The same claim in its stronger form: **one** rare term beats **two**
+    /// common ones, where a raw count is not a tie but points the other way.
+    ///
+    /// A filler row matches `auth` and `deploys`; the needle row matches only
+    /// `quixotic`. Raw scores are 2 and 1 and the filler wins outright. This is
+    /// the mechanism the recall-curve harness is built to expose — a haystack
+    /// repeating a small set of topic sentences against one row carrying a
+    /// unique token — so it is the case that has to invert, not the tie.
+    #[test]
+    fn idf_weighting_should_let_one_rare_term_beat_two_common_ones() {
+        let corpus: Vec<String> = (0..FILLER_ROWS)
+            .map(|i| {
+                if i == NEEDLE_ROW {
+                    format!("{NEEDLE} rollout note")
+                } else {
+                    format!("auth deploys rollout note {i}")
+                }
+            })
+            .collect();
+        let docs: Vec<&str> = corpus.iter().map(String::as_str).collect();
+        let query = format!("auth deploys {NEEDLE}");
+
+        let raw = rank_candidates(&query, docs.iter().copied(), false);
+        assert_ne!(raw[0].0, NEEDLE_ROW, "raw counting ranks the two-common-term row first");
+        let weighted = rank_candidates(&query, docs.iter().copied(), true);
+        assert_eq!(weighted[0].0, NEEDLE_ROW, "rarity must invert that");
+    }
+
+    /// E3 weights by **term rarity**; it is E4 that stops a query-side repeat
+    /// being a ranking advantage. Pinning the boundary so the two levers cannot
+    /// be confused later: with every query term equally rare, IDF leaves the
+    /// ordering exactly where the repeat-weighting put it.
+    #[test]
+    fn idf_should_change_order_only_by_rarity_not_by_repeats() {
+        let docs = ["auth", "jose retry"];
+        let query = "auth auth auth jose retry";
+        // Both documents contain every term they match, so `df == 1` for all
+        // three query terms across a two-document pool: one shared weight, and
+        // therefore nothing for IDF to reweight. The query-side repeat is still
+        // worth what it always was.
+        let order = |v: Vec<(usize, OverlapHit)>| v.into_iter().map(|(i, _)| i).collect::<Vec<_>>();
+        let weighted = order(rank_candidates(query, docs, true));
+        let raw = order(rank_candidates(query, docs, false));
+        assert_eq!(weighted, raw, "equal rarity must leave the order alone");
+        assert_eq!(idf(2, 1), idf(2, 1), "one shared df must give one shared weight");
+    }
+
+    /// Turning E3 off must reproduce the raw count exactly, in both score and
+    /// order, for every corpus — including the one the E3 tests use.
+    ///
+    /// This is what keeps the E1 rows comparable: `FusionWeights::overlap_idf:
+    /// false` is meant to be the code that shipped, not a similar-looking
+    /// reimplementation, and the sweep diffs its rows against E1's committed
+    /// numbers.
+    #[test]
+    fn the_unweighted_path_should_reproduce_the_raw_distinct_token_count() {
+        for query in [
+            "auth deploys quixotic",
+            "auth auth auth jose retry",
+            "the the the",
+            "jose",
+            "nomatch at all",
+            "über ΑΘΗΝΑ auth",
+        ] {
+            for corpus in [
+                needle_corpus(),
+                vec![
+                    "auth".to_string(),
+                    "jose retry".to_string(),
+                    "nothing here".to_string(),
+                ],
+                vec![FILLER.to_string()],
+            ] {
+                let docs: Vec<&str> = corpus.iter().map(String::as_str).collect();
+                let ranked = rank_candidates(query, docs.iter().copied(), false);
+                let qt = tokenize(query);
+                for (i, hit) in &ranked {
+                    assert_eq!(
+                        hit.score,
+                        overlap_score(&qt, &corpus[*i]) as f64,
+                        "raw score drift for query {query:?} at row {i}"
+                    );
+                }
+                assert!(
+                    ranked.windows(2).all(|w| w[0].1.score >= w[1].1.score),
+                    "raw mode must stay sorted by descending score"
+                );
+            }
+        }
+    }
+
+    /// A term every document carries still has to separate the documents that
+    /// contain it from the ones that do not.
+    ///
+    /// `ln(1 + (N-df+0.5)/(df+0.5))` goes to a *small positive* number at
+    /// `df == N` rather than to zero or negative, so a query made only of
+    /// universal terms does not empty the stream: the documents that match it
+    /// are still returned, and still in a stable order. A weight that could reach
+    /// zero would silently drop them, and a weight that could go negative would
+    /// rank the worst match first.
+    #[test]
+    fn a_universal_term_should_still_score_strictly_positive() {
+        let docs = ["the auth", "the deploys", "unrelated text"];
+        let ranked = rank_candidates("the", docs, true);
+        assert_eq!(ranked.len(), 2, "a universal term must still match its documents");
+        for (_, hit) in &ranked {
+            assert!(hit.score > 0.0, "a universal term must score above zero: {}", hit.score);
+        }
+        // And it must be a *small* weight: the whole point is that a term in
+        // every document carries almost no ranking information.
+        let univ = idf(3, 3);
+        let rare = idf(3, 1);
+        assert!(univ > 0.0 && univ < rare, "universal {univ} must be positive and below rare {rare}");
+    }
+
+    /// An unseen term must contribute nothing rather than something large.
+    ///
+    /// A query token that occurs in no pool document gets the *largest* IDF the
+    /// formula can produce, so if the weighting ever consulted `df` without the
+    /// document's own match set it would hand free score to matches of other
+    /// terms. It cannot: the term's bit is never set in any row, so it is absent
+    /// from every score.
+    #[test]
+    fn an_unseen_term_should_contribute_nothing() {
+        let docs = ["auth deploys", "auth deploys"];
+        let seen = rank_candidates("auth", docs, true);
+        let unseen = rank_candidates("auth quixotic", docs, true);
+        assert_eq!(seen[0].1.score, unseen[0].1.score, "an unmatched term must not move a score");
+        assert!(idf(2, 0) > idf(2, 1), "df=0 is the highest weight, and must still be unreachable");
+    }
+
+    /// Coverage is the distinct-match count over the query's distinct-token
+    /// count, so it is the quantity E4's third stream ranks on, and it is read
+    /// out of the same pass as the score rather than recomputed.
+    #[test]
+    fn coverage_should_count_distinct_query_terms_not_query_occurrences() {
+        // `auth` three times in a two-distinct-term query; the document matches
+        // `auth` and not `deploys`, so it covers one of two — the repetition
+        // must not raise it to 3/2 or lower it to 1/3.
+        let hit = rank_candidates("auth auth auth deploys", ["auth only"], false)[0].1;
+        assert_eq!(hit.coverage, 0.5, "one of two distinct query terms");
+        // Every distinct term matched is 1.0 whatever the query's repetition.
+        let all = rank_candidates("auth auth auth deploys", ["deploys auth"], false)[0].1;
+        assert_eq!(all.coverage, 1.0);
+        // And it is identical in both modes, so E4 is not itself an E3 effect.
+        let weighted = rank_candidates("auth auth auth deploys", ["auth only"], true)[0].1;
+        assert_eq!(weighted.coverage, hit.coverage);
+    }
+
+    // ---- E4: the distinct-term-coverage stream ------------------------------
+
+    /// The order the coverage stream hands to [`rrf_fuse`], built the way
+    /// `api.rs` builds it: re-sorted from the overlap stream's own output rather
+    /// than re-scored. Kept here so a test can state a property of that stream
+    /// instead of re-deriving the sort in three places.
+    fn coverage_order(query: &str, docs: &[&str]) -> Vec<usize> {
+        let mut ranked = rank_candidates(query, docs.iter().copied(), false);
+        ranked.sort_by(|a, b| {
+            b.1.coverage
+                .partial_cmp(&a.1.coverage)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        ranked.iter().map(|(i, _)| *i).collect()
+    }
+
+    /// **The behaviour E4 exists to create.** Ranking by *distinct* query terms
+    /// covered must invert a raw count that is decided by how often the *query*
+    /// repeats a word.
+    ///
+    /// `auth` three times in the query, `jose` and `retry` once each. Row 0
+    /// contains only `auth` — the raw stream charges it 3 and ranks it first.
+    /// Row 1 contains `jose` and `retry` — the raw stream charges it 2, but it
+    /// covers two of the three distinct terms the caller actually asked about,
+    /// so the coverage stream has to put it first.
+    #[test]
+    fn coverage_should_rank_broader_distinct_match_above_a_repeated_query_term() {
+        let docs = ["auth", "jose retry"];
+        let query = "auth auth auth jose retry";
+        let by_score: Vec<usize> = rank_candidates(query, docs, false)
+            .iter()
+            .map(|(i, _)| *i)
+            .collect();
+        assert_eq!(by_score, vec![0, 1], "the raw count charges the repeat three times");
+        assert_eq!(coverage_order(query, &docs), vec![1, 0], "coverage must reverse it");
+    }
+
+    /// The coverage stream is a no-op for a query with no repeated token, which
+    /// is most queries — and the reason E4 is a narrow lever rather than a
+    /// second re-ranking of the overlap stream. Stated as a property so a future
+    /// change to the scorer cannot quietly turn it into a duplicate stream that
+    /// double-counts every matched term.
+    #[test]
+    fn coverage_should_be_the_same_ordering_as_the_score_when_no_token_repeats() {
+        let docs = [
+            "auth deploys",
+            "auth",
+            "auth deploys retry quixotic",
+            "retry",
+            "nothing relevant",
+        ];
+        for query in ["auth deploys retry", "jose retry", "auth quixotic deploys"] {
+            let by_score: Vec<usize> = rank_candidates(query, docs, false)
+                .iter()
+                .map(|(i, _)| *i)
+                .collect();
+            assert_eq!(by_score, coverage_order(query, &docs), "coverage must be a no-op for {query:?}");
+        }
     }
 }

@@ -83,7 +83,11 @@ curl -sS -X POST "$MW/banks/demo/recall" \
 
 `budget` is optional and defaults to `2000`. Recall is bank-isolated: the same
 query against `/banks/other/recall` returns `[]` until that bank has content.
-Retrieval is SQLite FTS5 BM25 fused with token-overlap rank via RRF (k=60).
+Retrieval is SQLite FTS5 BM25 fused with token-overlap rank via RRF (k=60, BM25
+weight 1.0, overlap weight 0.25 — both compile-time constants, not per-request
+options). IDF weighting of the overlap stream and a third distinct-term-coverage
+stream both exist in the tree and both ship disabled (weights `false` and `0.0`);
+see `docs/NEXT_ITERATION.md` Phases E3–E4 for why neither is on.
 
 ### 4. Budget and result caps
 
@@ -258,9 +262,10 @@ curl -sS -w ' [%{http_code}]\n' -X POST "$MW/banks/demo/retain" \
 deletes the prior revision and inserts the new one in a single transaction.
 Observed for `spec`: `[{"content": "spec v2", "created_at": "2026-09-27T11:23:31.265Z", "id": "272de770-…"}]`,
 one row, `spec v2`. `format:"full"` returns `{"content":…,"id":…,"score":…}`
-objects — observed `[{"content":"spec v2","id":"272de770-…","score":0.032786885245901638}]`;
+objects — observed `[{"content":"spec v2","id":"da681332-…","score":0.020491803278688527}]`;
 `score` is the fused RRF value the ranking used
-(`1·1/(60 + rank_bm25) + 0.25·1/(60 + rank_overlap)`), not a token
+(`1·1/(60 + rank_bm25) + 0.25·1/(60 + rank_overlap)`, both at rank 1 in the
+example above, so `1.25/61`), not a token
 count, so it is a small positive float and only comparable against other scores
 from the same recall. The
 default (no `format`, or any value other than `full`) stays a bare array of
