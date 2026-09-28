@@ -41,6 +41,29 @@ methodology note in `RESULTS.md` once. Every harness shares one rule
 `--out-json` still defaults to `eval/results.json`, which is gitignored, so
 overwriting it is harmless.
 
+## Artifacts that must NOT be regenerated
+
+Two committed artifacts are **stale relative to their own generator**, because
+the configurations they record were removed from `src/` after they were measured.
+Running their generator today silently deletes the evidence for those removals.
+This is the same hazard `README.md` documents for `SWEEP_FUSION.md`; it applies
+here too, and the list below is the complete set.
+
+| artifact | what a re-run would destroy |
+|---|---|
+| `eval/SWEEP_FUSION.md` | sections F and G — the E3 `idf` and E4 `coverage` grid rows, removed from `examples/sweep_fusion.rs` |
+| `eval/CODING_LIFE.md` | **8 of its 12 swept rows and 2 of its 10 columns.** The committed table has `coverage` and `idf` columns; `examples/coding_life.rs` emits neither, and its grid is 4 entries (`shipped`, `raw overlap=0.50/0.75/1.00`) against the artifact's 12 — the 5 `idf overlap=*` rows and 3 `shipped + coverage=*` rows would vanish |
+
+Verified 2026-09-28 by reading both sides: `examples/coding_life.rs:218` writes
+`| configuration | BM25 | overlap | P@k | R@k | Hit rate | p50 latency | n |`
+and iterates the 4-entry grid at lines 154–157, while `eval/CODING_LIFE.md:18`
+declares `| configuration | BM25 | overlap | coverage | idf | P@k | R@k | Hit rate | p50 latency | n |`
+and carries 12 rows.
+
+So: read these two, do not run their generators. If a future change genuinely
+needs a refreshed coding-life sweep, the removed arms have to be restored to the
+generator first, and that is a `docs/NEXT_ITERATION.md` question, not a refresh.
+
 ## Method
 
 Same as agentmemory `benchmark/longmemeval-bench.ts` (see

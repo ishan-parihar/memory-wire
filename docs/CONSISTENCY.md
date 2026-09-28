@@ -903,3 +903,149 @@ collapsing at 64 clients, the write-path commit shape — was measured in bytes 
 ops and is unaffected. What the load *did* corrupt was the latency layer, and the
 honest statement is that the latency layer was under-powered and is now better,
 not that any earlier latency conclusion was wrong.
+
+## §14 — The dev set lands: replication, a null result, and R@1 (2026-09-28)
+
+Tree `90c5510`, `loadavg` 55.92 on 24 cores. **No latency or RSS figure in this
+section is a measurement** — the box was not quiet, and nothing here needs one.
+
+### 14.1 `overlap: 0.25` replicated on independent data, at a third of the size
+
+`eval/LOCOMO.md`, from `examples/locomo.rs`, on 1,531 LoCoMo queries that never
+chose the value (9 of 1,540 excluded, empty `gold_ids`; `gold_answers` is not used
+— the harness never generates an answer). One bank per `user_id`, 19–32 documents
+each.
+
+| overlap | R@1 | R@5 | R@10 | R@20 | NDCG@10 | MRR | R@pool | R@5 up/down/same | n |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.00 (unfitted) | 54.8% | 84.5% | 93.3% | 98.0% | 70.7% | 68.0% | 100.0% | 0/0/1531 | 1531 |
+| 0.75 | 57.0% | 85.8% | 94.0% | 98.0% | 72.0% | 69.5% | 100.0% | 22/3/1506 | 1531 |
+| 0.50 | 59.0% | 86.2% | 93.8% | 98.0% | 72.9% | 70.7% | 100.0% | 39/13/1479 | 1531 |
+| 0.25 (shipped) | 60.4% | 86.0% | 94.2% | 98.0% | 73.6% | 71.8% | 100.0% | 57/35/1439 | 1531 |
+| 0.00 (stream dropped) | 60.4% | 86.3% | 94.1% | 98.2% | 73.6% | 71.6% | 100.0% | 69/41/1421 | 1531 |
+
+**Direction replicates; magnitude does not.** On LongMemEval the move from 1.00 to
+0.25 was worth +4.2pp R@5 and +4.8pp NDCG@10. Here it is worth +1.4pp and +2.9pp.
+That is the shape a real-but-modest effect takes after the maximum of 46 noisy
+draws, and it is the first evidence that the E1 sweep's headline was inflated.
+
+**The `provisional:` marker on `overlap: 0.25` is discharged — as a replication,
+not as an endorsement.** `docs/EVALUATION_HYGIENE.md` §2.2 asked for independent
+confirmation; this is it, and it confirms the direction. It does not re-open the
+weight for tuning: a weight that wins on LoCoMo is a replication, and picking a
+new value off that table is a selection that would have to be counted here.
+
+**Revised out-of-sample estimate.** The clean measurement is the equal-weight
+93.0% R@5 on LongMemEval. The independently-measured value of the shipped delta
+is +1.4pp, not +4.2pp. So the best current estimate of out-of-sample R@5 is
+**≈94.4%**, not 97.2% — which puts memory-wire ≈0.8pp *behind* agentmemory's
+committed 95.2% hybrid rather than 2.0pp ahead of it. Both numbers are recorded
+and neither replaces the other: 97.2% is what this build measures on these 500
+questions, 93.0% is what the unfitted configuration measures, and 94.4% is an
+estimate built from a delta measured elsewhere.
+
+### 14.2 The token-overlap stream does not earn its weight
+
+`overlap: 0.00` ties `0.25` on R@1 (60.4% both) and NDCG@10 (73.6% both), edges it
+on R@5 by 0.3pp, and loses MRR by 0.2pp — while churning **69 queries up and 41
+down**. A tie with that much movement is noise, not signal. The E1 sweep found a
+**plateau, not a peak**, and `FusionWeights::overlap` may be a dead parameter.
+
+This is recorded as a null result, and **not acted on**, for a reason the artifact
+states itself: LoCoMo banks hold 19–32 documents against LongMemEval's ~50 and
+`tests/scale.rs`'s 5,000. A second lexical voter has far more room to break ties
+in a large pool than in a 25-document one, so the dev set under-measures exactly
+the regime where the stream might still pay. Re-test at pool scale before deleting
+it. `0.00` is a diagnostic bound and was never a candidate.
+
+### 14.3 R@1 is measured, and it is the number that matters
+
+`eval/RESULTS.md` now carries R@1 — the gap P0 was opened for.
+
+| slice | R@1 | R@5 | R@20 | n |
+|---|---|---|---|---|
+| knowledge-update | 94.9% | 100.0% | 100.0% | 78 |
+| multi-session | 87.2% | 97.0% | 99.2% | 133 |
+| single-session-assistant | 85.7% | 100.0% | 100.0% | 56 |
+| **single-session-preference** | **43.3%** | 86.7% | 100.0% | 30 |
+| single-session-user | 87.1% | 98.6% | 100.0% | 70 |
+| temporal-reasoning | 80.5% | 96.2% | 99.2% | 133 |
+| **overall** | **83.8%** | 97.2% | 99.6% | 500 |
+
+Overall R@1 83.8% re-derives `eval/ORACLE_RERANK.md`'s independent 419/500 — two
+harnesses, same number. `single-session-preference` is the target: gold in the
+pool 100% of the time, ranked first 43.3% of the time. That is an ordering
+collapse, not a coverage gap, and it is invisible in every K≥5 column.
+
+### 14.4 The recency stream was unmeasurable on LongMemEval, and why
+
+`memories.created_at` existed, was indexed, and was referenced nowhere in
+`src/recall.rs` — which is what made a recency stream look free. It was not
+measurable: `examples/longmemeval.rs` passed `created_at: None` and
+deserialised neither `haystack_dates` nor `question_date`, so SQLite stamped every
+row with the wall clock at insert and all ~50 sessions in a bank landed
+microseconds apart in `haystack_session_ids` order. A recency stream over that
+ranks by insertion order.
+
+Fixed by indexing sessions at the dataset's own `haystack_dates`
+(`2023/05/20 (Sat) 02:21` → `2023-05-20T02:21:00.000Z`, millisecond width to match
+what `store.rs` writes, since `expire_before` compares `created_at` as bytes and
+assumes a fixed width). **Verified behaviour-neutral: 0 per-question differences
+across all 500 rows and all 6 metrics** between the committed table and a fresh
+run. `eval/RESULTS.md` was not regenerated, because the only column that moved was
+p50 wall-clock and that file says not to pin it.
+
+**The empirical basis for the recency lead does not check out.** It was cited from
+agentmemory's reported "f2–f5 at 27% with token recency vs 14% without". A search
+of `_audit/agentmemory` — `benchmark/`, `docs/`, every markdown file — did not find
+that claim. The `R@1 43.3%` evidence that ordering is broken on
+`single-session-preference` stands on its own; the claim that recency is the fix
+does not, and is no longer cited as if it were.
+
+### 14.5 First end-to-end answer-quality number — partial, and the gate that broke it
+
+`examples/answer_quality.rs` exists to measure the thing the whole project has
+optimised a proxy for. LongMemEval's actual metric is LLM-judged answer accuracy;
+every number until this point was `recall_any@K`.
+
+At **n=20** (of a planned 25): retrieval-conditioned **35%**, closed-book control
+**10%**. Retrieval is not at parity with no memory at all.
+
+**This is a partial run and is not a release number.** The process hung at 20/25 —
+the gateway stopped responding, and the process sat blocked with 1.7s of CPU
+across 28 minutes. It also predates the four-mechanism kernel commit, so it is not
+attributable to a recorded SHA. Re-run pending.
+
+`reqwest` was added as a dev-dependency for it and is provably not linked into the
+release binary: `cargo tree --edges normal` shows zero reqwest edges and `strings`
+finds zero hits.
+
+### 14.6 `eval/CODING_LIFE.md` is stale against its generator — do not regenerate
+
+Found while auditing, and now written into `eval/README.md`.
+
+The committed artifact declares 10 columns
+(`configuration | BM25 | overlap | coverage | idf | P@k | R@k | Hit rate | p50 | n`)
+and carries 12 rows. `examples/coding_life.rs:218` writes 8 columns (no `coverage`,
+no `idf`) from the 4-entry grid at lines 154–157. A re-run would **silently delete
+8 rows and 2 columns** — the 5 `idf overlap=*` rows and 3 `shipped + coverage=*`
+rows that are the evidence for the E3/E4 removals.
+
+This is the same hazard `README.md` already documents for `SWEEP_FUSION.md`, and
+that file was not covered by the warning. The set of such artifacts is now
+enumerated in `eval/README.md`.
+
+### 14.7 Gate, on my own run rather than a subagent's word
+
+`cargo test --locked` — **258 passed / 0 failed** (158 lib + 94 bin + 2 + 2 + 1 + 1;
+baseline was 237, +21 from the mechanism tests).
+`cargo clippy --all-targets --all-features --locked -- -D warnings` — clean, exit 0.
+`cargo doc --no-deps --all-features --locked` — 0 warnings. (A subagent reported 3
+transient warnings in `src/recall.rs`; that was mid-write state, not a regression.)
+
+### 14.8 Selection count, unchanged
+
+No parameter was selected in this section. The four new mechanisms ship with every
+weight at an inert default and each is proved inert by a mutation check. LoCoMo
+measured; it did not choose. The count of test-set consultations is unchanged from
+`docs/EVALUATION_HYGIENE.md` §2.1.

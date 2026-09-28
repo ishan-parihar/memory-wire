@@ -31,11 +31,21 @@
 //! must not be able to read a fitted value as a generalisation estimate. That
 //! paragraph is generated here rather than typed into the artifact, because the
 //! next run would delete a hand-placed one.
+//!
+//! Sessions are indexed with `created_at` taken from the dataset's own
+//! `haystack_dates`, not from the insert clock. That field was previously left as
+//! `None`, so SQLite stamped every row with the wall clock at insert and all ~50
+//! sessions in a bank landed microseconds apart in `haystack_session_ids` order.
+//! A recency stream over that ranks by *insertion order*, not conversation time,
+//! so the stream had no valid measurement on this suite. Nothing about the
+//! shipped ranking changes — `recency` is 0.0, so the stream is dropped before
+//! the clock is read — but the data the recency path would see is now real.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::time::Instant;
 
+use chrono::{NaiveDateTime, SecondsFormat};
 use memory_wire::api::MemoryService;
 use memory_wire::memory::{Bank, Memory};
 use memory_wire::recall::FusionWeights;
@@ -60,6 +70,29 @@ struct Entry {
     answer_session_ids: Vec<String>,
     haystack_session_ids: Vec<String>,
     haystack_sessions: Vec<Vec<Turn>>,
+    /// Real per-session conversation time, parallel to `haystack_session_ids`.
+    /// Ignored until a recency stream is actually switched on; see the module doc.
+    haystack_dates: Vec<String>,
+}
+
+/// The dataset's session stamp, `2023/05/20 (Sat) 02:21`, as the RFC 3339 UTC
+/// string `memories.created_at` holds.
+///
+/// The output is millisecond-precision and always 24 characters wide, matching
+/// what `store.rs` writes on insert (`strftime('%Y-%m-%dT%H:%M:%fZ','now')`).
+/// That width is not cosmetic: `expire_before` compares `created_at` as bytes on
+/// the reasoning that a fixed-width column sorts correctly as text, so a
+/// second-precision stamp mixed in with millisecond stamps would compare
+/// incorrectly against a cutoff.
+///
+/// `None` on anything unparseable, which leaves the store to stamp the row at
+/// insert exactly as before. A session with no usable date is not a reason to
+/// fail a 500-question run, and the recency path treats an unstamped row as
+/// oldest rather than dropping it.
+fn session_created_at(raw: &str) -> Option<String> {
+    NaiveDateTime::parse_from_str(raw, "%Y/%m/%d (%a) %H:%M")
+        .ok()
+        .map(|t| t.and_utc().to_rfc3339_opts(SecondsFormat::Millis, true))
 }
 
 /// Deterministic LCG shuffle (no extra deps; seed-stable slice like `--seed`).
@@ -181,7 +214,12 @@ fn main() -> anyhow::Result<()> {
             id: "eval".into(),
             name: "eval".into(),
         })?;
-        for (sid, turns) in e.haystack_session_ids.iter().zip(e.haystack_sessions.iter()) {
+        for ((sid, turns), date) in e
+            .haystack_session_ids
+            .iter()
+            .zip(e.haystack_sessions.iter())
+            .zip(e.haystack_dates.iter())
+        {
             let text: Vec<String> =
                 turns.iter().map(|t| format!("{}: {}", t.role, t.content)).collect();
             store.put(&Memory {
@@ -189,7 +227,7 @@ fn main() -> anyhow::Result<()> {
                 bank_id: "eval".into(),
                 content: text.join("\n"),
                 context: None,
-                created_at: None,
+                created_at: session_created_at(date),
             })?;
         }
         let svc = MemoryService::new(store);
