@@ -810,7 +810,6 @@ load-dependent by construction and differs between runs. The per-question
 byte-identity of a file that carries a timestamp would be quoting a coincidence
 as a guarantee.
 
----
 > **Correction, 2026-09-28.** This paragraph used to give that field's median as
 > "6 ms in the committed artifact's run, 8 ms today, 14 ms at loadavg 44". **None
 > of the three is a committed number.** `eval/results.json` is gitignored
@@ -823,6 +822,7 @@ as a guarantee.
 > per-question observations. The figures are deleted rather than re-pinned
 > because there is no committed artifact to re-pin them from.
 
+---
 
 ## §13 — Idle-box re-measurement of the recall curve (2026-09-28)
 
