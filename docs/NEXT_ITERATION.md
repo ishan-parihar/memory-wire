@@ -124,6 +124,22 @@ stays in the struct only because it is what made that measurement expressible;
 it is not a knob this build turns. Agentmemory's 5% is not portable to a
 two-stream fusion whose streams already agree on their ordering.
 
+> **This one is an OPEN contradiction, not a settled result, and it is left
+> standing on purpose.** The explanation offered above — that the two streams
+> already agree on their ordering — **cannot be true, and the sweep artifact
+> proves it two ways.** RRF with weights (1, 0.25) over two *identical* rankings is
+> `1.25/(k+r)`, monotone in `r`, hence the same order, hence R@k could not have
+> moved at all; yet R@5 moved 93.0 → 97.2 across E1. And `eval/SWEEP_FUSION.md`
+> section D measures bm25-only R@5 at 97.0% against overlap-only 88.4% — two
+> rankings 8.6pp apart in R@5 are not the same ranking. So either the agreement
+> metric measures something narrower than rank identity, or it was inert for some
+> other reason, and the data needed to tell which was never collected. Both claims
+> are retained verbatim because the sweep rows that produced them are the
+> committed evidence; **no reconciliation is invented here.**
+> `docs/PERFORMANCE_PLAN.md` P1 is the phase that settles it. Until it runs, the
+> behaviour of the two streams is not actually understood and every fusion
+> decision rests on it.
+
 **What E1 costs, measured on the two harnesses LongMemEval cannot see.** The
 per-category table above is the designated instrument, and it is unanimous. It
 is not the only instrument, and pretending otherwise is how the `detail=none`
@@ -413,10 +429,19 @@ did not become admissible. **Nothing is shipped.**
 **Deficit closed: none, and slightly reversed.** LongMemEval R@5 deficit vs perfect
 goes 2.8pp → 3.2pp. Recall-curve R@5 deficit at 10k stays 15.6pp. coding-life R@5
 stays 96.7%. E3's whole contribution is a *re-pricing*: if the recall curve ever
-becomes the binding constraint, the right configuration is
-`overlap: 0.75, overlap_idf: true`, not `overlap: 0.75` — a conclusion that costs
-2.6pp of LongMemEval R@5 today and would be free to take the moment the curve
-mattered more.
+becomes the binding constraint, the re-pricing said the configuration to reach for
+was `overlap: 0.75` with the IDF scorer on, not `overlap: 0.75` alone — a
+conclusion that cost 2.6pp of LongMemEval R@5 today and would have been free to
+take the moment the curve mattered more. **That recommendation is no longer
+actionable:** the `overlap_idf` field and the IDF scorer were removed from the
+tree after E3 and E4 both landed (see the E4 update below), so there is no
+configuration to set. The re-pricing is kept as a record of what the measurement
+said; the lever is not in the tree.
+
+> **SUPERSEDED — the next paragraph is a record of the state at the end of E3,
+> not of the current tree.** It is left exactly as written because the E1 grid rows
+> in `eval/SWEEP_FUSION.md` were produced while the field existed and are the
+> committed evidence for the removal.
 
 **Kept in the tree, default off.** `FusionWeights::overlap_idf` ships `false`, and
 `false` runs the *original* single pass on the original scratch buffer — the
@@ -426,6 +451,12 @@ across three corpora, in
 in `eval/SWEEP_FUSION.md` therefore still reproduce the committed E1 numbers rather
 than merely resembling them. This is the same treatment `agreement` got: measured,
 rejected, kept only because the field is what made the measurement expressible.
+
+> **Removed, 3db88b4.** `overlap_idf`, the IDF scorer, and its test are gone from
+> `src/`. `FusionWeights` now carries `bm25`, `overlap`, `agreement` and `k`, and
+> nothing else. Unlike `agreement`, this lever got no second life: it was a
+> rejected E3 experiment, not an axis of the live E1 harness, so there was nothing
+> left to keep it for.
 
 ## Phase E4 — multi-term query handling
 
@@ -506,6 +537,9 @@ count throws away" — length, field structure, position. All of those need a sc
 change rather than a weighting change, and all of them are unmeasured.
 
 Kept in the tree, default off, same treatment as E3 and `agreement`.
+
+> **SUPERSEDED — and then removed, 3db88b4.** `coverage` is not in the tree. See
+> the update below.
 
 **Update, after both phases were measured and rejected.** `overlap_idf` and `coverage` were then removed from the tree — the fields, the IDF scorer, the third stream, the F and G grid rows in `examples/sweep_fusion.rs`, and their tests — which is the same treatment E2's stemming code got, and the findings above are the reason it was safe: a lever that can never be turned on is not configuration. `eval/SWEEP_FUSION.md` is deliberately **not** regenerated and its F/G rows stay exactly as written; that artifact is the committed evidence for this removal. No retrieval number moved: the raw single-pass scorer the E1 grid measures was left byte for byte, and the shipped row still reads 97.2 / 98.6 / 99.6 / 88.2 / 89.2 with the control still 93.0. `agreement` is left in place, unlike E3/E4 — it is a swept axis of the live E1 harness, not extra code.
 
