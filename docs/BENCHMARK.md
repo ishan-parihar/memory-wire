@@ -109,7 +109,7 @@ and `eval/ORACLE_RERANK.md`, and neither is a row below. See `docs/VERSIONS.md`.
 | `ttl_days` + `sweep` | shipped, off by default, no scheduler | README "Forgetting" |
 | Read path | 4-connection WAL read pool, writer-first with spill-on-contention; `prepare_cached` on 6 static-SQL read sites; `synchronous=NORMAL` | `eval/BENCH_CONCURRENCY.md` (64-client 772 ops/s, 1.89x vs 1 client, gate PASS); `docs/CONSISTENCY.md` §11, §12 |
 | FTS index | `detail=none` — index 434,176 → 262,144 B at 10k memories, −39.6%; `docsize` unchanged because `bm25()` needs it | `eval/BENCH_FOOTPRINT.md`; `docs/CONSISTENCY.md` §12.5 |
-| Benchmark surface | **five committed harnesses plus a soak artifact** under `eval/`, each with a provenance line | `eval/BENCH_{FOOTPRINT,WRITE,RECALL_CURVE,CONCURRENCY,COLDSTART}.md`, `eval/SOAK.md` |
+| Benchmark surface | **eleven harnesses under `examples/`**, each writing a markdown artifact that carries its own provenance line | `eval/BENCH_{FOOTPRINT,WRITE,RECALL_CURVE,CONCURRENCY,COLDSTART}.md`, `eval/SOAK.md`, `eval/SWEEP_FUSION.md`, `eval/ORACLE_RERANK.md`; the full list in `docs/PERFORMANCE_AUDIT.md` §6 |
 | Release binary size | **8,836,032 B** (gap 4 closed) | `stat -c %s target/release/memory-wire` after `cargo build --release --locked`; cross-checked by `eval/BENCH_FOOTPRINT.md` |
 | Tests | **237 passed / 0 failed** (137 lib + 94 bin + 2 backup + 2 e2e + 1 scale + 1 doc-test) | `cargo test --locked`, 2026-09-28 |
 

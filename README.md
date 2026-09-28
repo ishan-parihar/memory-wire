@@ -456,7 +456,7 @@ write-side handle only, so keep it yourself.
 
 Library in `0.3.0`: `src/{api,store,recall,capture,embed,lib,memory}.rs` —
 `capture.rs` supplies the redaction filter. Binary-side modules (`connect`,
-`doctor`, `guidelines`, `hooks`, `http`, `mcp`, `paths`, `sweep`) live in
+`doctor`, `guidelines`, `hooks`, `http`, `mcp`, `paths`, `seed`, `sweep`) live in
 `src/main.rs`; the HTTP surface is eight route groups (`/health`, and
 `/{retain,recall,reflect,config,memories,memories/:mid,stats}` under `/banks/:id`)
 plus four MCP tools.
@@ -491,7 +491,7 @@ pre-retain recall is normal, not exceptional: `GET .../memories` → `[]`,
 One corollary: **`PUT /banks/:id/config` requires an existing bank** and will not
 create one, so configure a bank after its first retain.
 
-`tests/{e2e,scale,backup}.rs` · `examples/{longmemeval,coding_life,scale_sweep,soak,bench_footprint,bench_write,bench_recall_curve,bench_concurrency,bench_coldstart}.rs`.
+`tests/{e2e,scale,backup}.rs` · `examples/{longmemeval,coding_life,scale_sweep,soak,bench_footprint,bench_write,bench_recall_curve,bench_concurrency,bench_coldstart,sweep_fusion,oracle_rerank}.rs`.
 
 ## Reproduce
 
@@ -511,7 +511,8 @@ silently replacing one has already destroyed real content here twice — a curat
 methodology note in `RESULTS.md`, and a benchmark artifact whose header then
 disagreed with the build. One rule, shared by every harness.
 
-The five `bench_*` harnesses plus `soak` are measurement, not CI:
+The five `bench_*` harnesses, `soak`, and the two analysis harnesses are
+measurement, not CI:
 
 ```bash
 cargo run --release --example bench_footprint    --out-md eval/BENCH_FOOTPRINT.md
@@ -520,7 +521,17 @@ cargo run --release --example bench_recall_curve --out-md eval/BENCH_RECALL_CURV
 cargo run --release --example bench_concurrency  --out-md eval/BENCH_CONCURRENCY.md
 cargo run --release --example bench_coldstart    --out-md eval/BENCH_COLDSTART.md
 cargo run --release --example soak               --out-md eval/SOAK.md
+# 500-question weight grid; ~7 min index build per full run
+cargo run --release --example sweep_fusion       --out-md eval/SWEEP_FUSION.md
+# oracle-rerank ceiling: where the first gold row actually sits in the pool recall builds
+cargo run --release --example oracle_rerank \
+  --data eval/data/longmemeval_s_cleaned.json --out-md eval/ORACLE_RERANK.md
 ```
+
+**`eval/SWEEP_FUSION.md` is read, not regenerated.** It carries the E3/E4 `idf`
+and `coverage` grid rows (its sections F and G) and those arms were removed from
+`src/` in 3db88b4 — `examples/sweep_fusion.rs` no longer contains them — so a
+re-run would silently drop the evidence for the removal. Leave it alone.
 
 The eval artifacts are generated from `--release`, the profile that ships; a
 default-profile run reports the same retrieval metrics but roughly 2–5× the

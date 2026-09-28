@@ -738,7 +738,8 @@ their first run, and the flag's absence would then be the thing that stops a
 silent overwrite. Writing to a temp path by default means a bare run is always
 harmless and always tells you where it put the file; the cost of being wrong is
 one extra flag on the run you actually meant to keep. One definition, shared by
-all nine harnesses, because five copies of this rule is how the rule drifts.
+all eleven harnesses, because five separate copies of this rule is how the rule
+drifted.
 
 **Also fixed while in the examples**, both cases of a generated artifact asserting
 something false about the build it was generated from: `bench_write`'s header
