@@ -1,7 +1,8 @@
 # Eval facility
 
-Retrieval-only harnesses (no LLM judge) over two corpora, on the three-set
-discipline in `AGENTS.md` §1 and `docs/EVALUATION_HYGIENE.md` §3.1:
+Harnesses over two corpora, on the three-set discipline in `AGENTS.md` §1 and
+`docs/EVALUATION_HYGIENE.md` §3.1. Most are **retrieval-only, no LLM judge**; the
+one exception is `answer_quality`, called out below.
 
 | set | corpus | role |
 |---|---|---|
@@ -108,6 +109,37 @@ contradict the provenance note at the top of each artifact. `coding_life` and
 `scale_sweep` take no dataset argument:
 `cargo run --release --example coding_life` and
 `cargo run --release --example scale_sweep`.
+
+## Answer quality — `examples/answer_quality.rs` → `eval/ANSWER_QUALITY.md`
+
+**The only harness here that calls an LLM**, and the only one that measures what
+LongMemEval actually scores. Everything else asks *did the gold session get
+retrieved*; this asks *did an LLM, handed what `recall` actually returned, produce
+an answer a grader accepted*. It runs both arms — retrieval-conditioned and a
+closed-book control over the same questions with an empty context — so the number
+cannot be read as a memory-system score on its own.
+
+```bash
+export MEMORY_WIRE_LLM_URL='<openai-compatible base url>'
+export MEMORY_WIRE_LLM_MODEL='<answering model id>'
+export MEMORY_WIRE_LLM_KEY='<bearer token>'
+cargo run --release --example answer_quality -- \
+  --data eval/data/longmemeval_s_cleaned.json --n 25 --seed 42 \
+  --out-md eval/ANSWER_QUALITY.md --out-json eval/results_answer_quality.json
+```
+
+Both judge and answering prompts are printed verbatim in the artifact, so the
+number can be audited rather than trusted. Two traps, both of which look like a
+dead endpoint: a gateway that **times out** (the harness caps each request at 180s,
+so 4 calls per question turns a hang into a very long run), and a model that
+returns an **empty completion at low `max_tokens`** with `finish_reason: 'length'`.
+
+**Its 40.0% is not a quality score and must not be quoted as one.** Two independent
+reasons, both in `docs/CONSISTENCY.md` §14.5: the judge is a local model rather than
+the official grader, and the shipped default recall budget of 2,000 tokens does not
+hold one median LongMemEval session (2,626 tokens), so the answerer was starved of
+context that retrieval had already found. The budget finding is the product bug
+here; the accuracy figure is the symptom.
 
 ## The benchmark harnesses
 

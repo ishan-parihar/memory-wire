@@ -1040,8 +1040,8 @@ and skips every lower hit that does not fit, so the answerer received a partial
 first session and essentially nothing else — while gold at rank 2–5 was
 structurally unreachable.
 
-The run's own disagreement table shows exactly that, and it is the most important
-number in this section:
+The run's own disagreement table, in the committed `eval/ANSWER_QUALITY.md`, shows
+exactly that, and it is the most important number in this section:
 
 | on this slice | count | share of n=25 |
 |---|---|---|
@@ -1064,7 +1064,8 @@ no ranking work in `eval/RESULTS.md` can show that, because `recall_any@K` count
 the gold row before the budget touches it.
 
 A budget sweep (2,000 / 20,000 / 50,000 on the same 25 questions) is the direct
-test and is recorded in §14.9.
+test; it was started, abandoned, and replaced with a deterministic measurement in
+§14.9.
 
 ### 14.6 `eval/CODING_LIFE.md` is stale against its generator — do not regenerate
 
@@ -1096,8 +1097,56 @@ weight at an inert default and each is proved inert by a mutation check. LoCoMo
 measured; it did not choose. The count of test-set consultations is unchanged from
 `docs/EVALUATION_HYGIENE.md` §2.1.
 
-The `--budget` sweep in §14.9 is the one number in this section that could be
+The `--budget` sweep in §14.9 is the one thing in this section that could be
 mistaken for a selection. It is not: it varies one *harness input* to explain an
 observed failure, on 25 questions, and the value it points at is the same for
 every consumer regardless of what the answer loop scores — the median session does
 not fit in 2,000 tokens. Decided on that arithmetic, not on a metric.
+
+### 14.9 The budget finding, measured without an LLM
+
+The LLM sweep was the wrong instrument and was killed. At 20,000-token budgets
+each of the 100 calls carries a 20k-token prompt through a local free-tier
+gateway, and the harness caps every request at 180s — so it would have spent hours
+and plausibly produced nothing but timeout rows. The mechanism does not need a
+model; it is arithmetic over the corpus, and that arithmetic does not depend on
+which judge produced the 40.0%.
+
+Session sizes in `longmemeval_s_cleaned.json`, at the store's own 4-chars-per-token
+rule, over all **23,867** haystack sessions in the 500 questions:
+
+| percentile | p10 | p25 | median | p75 | p90 | p99 | max |
+|---|---|---|---|---|---|---|---|
+| tokens | 811 | 1,498 | **2,626** | 3,640 | 4,252 | 5,181 | 19,534 |
+
+What fits whole in a budget of each size:
+
+| budget | sessions that fit whole | median-size sessions that fit |
+|---|---|---|
+| **2,000** (the shipped default) | **35.6%** | **0** |
+| 4,000 | 84.8% | 1 |
+| 8,000 | 100.0% | 3 |
+| 20,000 | 100.0% | 7 |
+
+**The shipped default budget does not hold one median session, and 64.4% of
+sessions are truncated by it.** This is not a harness artefact and it is not about
+this benchmark: `DEFAULT_RECALL_BUDGET` = 2,000 is a product default, correct for
+the short atomic memories the README's quick start uses ("auth uses jose", tens of
+tokens) and silently wrong for session-scale memories, where it truncates the top
+hit at the cap and skips every lower hit that does not fit. A consumer storing
+conversations gets an answer loop starved of its own second-best memory.
+
+The right follow-up is a budget-sweep *regression*, not another LLM run: assert
+that the served set holds the gold row for a slice whose R@K is high, at a budget
+that admits the corpus's median session. That is a `tests/` assertion, costs no
+tokens, and would have caught this.
+
+**The two n=25 runs are bit-identical.** Committed at `eval/ANSWER_QUALITY.md`
+(tree `45ac189`); the earlier run at tree `91b5597` wrote to `$TMPDIR` and is
+recorded in §14.5. They agree on every number —
+40.0% / 8.3% / +31.7pp, 346,517 prompt tokens, the same 2 row errors, and the same
+per-question verdicts — at temperature 0. The 40.0% is reproducible on this slice;
+the open questions are the slice size (n=25) and the judge, neither of which a
+repeat run narrows. Wall clock differed sharply between the two (286.5s vs 21.1s)
+on an identical 100-call workload, which is a caution against reading anything into
+per-call timing from that gateway.
