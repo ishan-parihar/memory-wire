@@ -23,8 +23,11 @@
 > 2026-09-28). Read those for the current state: **229** tests, release binary
 > **8,836,032 B**, idle RSS 10,716–11,032 kB post-retain, 10k store 3,022,848 B
 > settled / 7,237,496 B with the WAL unflushed, 4-connection WAL read pool, FTS5
-> `detail=none`. §12 also carries the honest negatives and the two places where
-> an earlier claim in this file or in the README was simply wrong.
+> `detail=none`. The earlier "the tree is ahead of the published release" banner
+> is retired for the same reason `docs/VERSIONS.md` retired its copy: `v0.3.0`
+> is published and `Cargo.toml` says `0.3.0`, so the version string describes the
+> tree as well as the release. §12 also carries the honest negatives and the two
+> places where an earlier claim in this file or in the README was simply wrong.
 >
 > **Do not edit a §1–§5 number to make it current.** They are the baseline, and
 > §9 is the single place movement is recorded — that is what makes the deltas
@@ -507,7 +510,7 @@ The README's exact byte count was updated to match; its RSS row was not, because
 
 ---
 
-# §12 — the tree ahead of published `v0.2.0` — 2026-09-27 and 2026-09-28
+# §12 — the current published state (`v0.3.0`) — measured 2026-09-27 and 2026-09-28
 
 §11 recorded the SQLite pragma/statement work. §12 records everything else that
 landed on top of it, every number that moved, and — deliberately, at length —
@@ -516,10 +519,14 @@ the product's shape; it is the re-pin and the honest negatives.
 
 ## 12.0 What this section is, and the machine it was measured on
 
-**The tree on `main` is substantially ahead of the published `v0.2.0` tag and
-release.** `Cargo.toml` still says `0.2.0`, so the version string describes the
-*release*, not the tree. Cutting the next version is a separate decision and
-nothing in this record makes it.
+**Everything in §12 is in the published `v0.3.0` tag and release.**
+`Cargo.toml` says `0.3.0` and `v0.3.0` is cut, so the version string describes
+the tree and the release alike. The earlier framing here — "the tree on `main` is
+substantially ahead of the published `v0.2.0` tag and release, and `Cargo.toml`
+still says `0.2.0`" — was true when written and is now false on both counts; the
+3db88b4 removal of the E3/E4 levers and 3e902ff's version bump are both inside
+the tag. `main` is one oracle-rerank harness ahead of the tag, which touches no
+number below.
 
 **The machine, because it governs every latency number in this section.** The
 box is shared and was under sustained load from unrelated work for the whole

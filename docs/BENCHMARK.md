@@ -1,6 +1,6 @@
 > # ⚠️ HISTORICAL RECORD — **NOT** THE CURRENT STATE OF THIS TREE
 >
-> **§1–§4 describe memory-wire `0.1.0` and are false of the current `0.2.0`
+> **§1–§4 describe memory-wire `0.1.0` and are false of the current `0.3.0`
 > tree.** Their `NOT IMPLEMENTED` rows (MCP, the `bank`/`memory`/`mental-model`/
 > `fs`/`explore` CLI), the `20 passed` test count, the 76 MB debug binary, the
 > 1.9/2.1 ms seeded-benchmark latencies, the "recall is token-overlap, not
@@ -14,11 +14,12 @@
 >
 > **The current state is §5**, plus the live artifacts: `eval/RESULTS.md`,
 > `eval/CODING_LIFE.md`, `eval/SCALE_SWEEP.md`, the README footprint table, and
-> `docs/CONSISTENCY.md` §6–§12. Last re-measured 2026-09-28 on the tree ahead of
-> the published `v0.2.0` tag: **236** tests green, release binary **8,836,032 B**,
-> R@5 97.2 (Phase E1 reweighted the fusion; see `docs/NEXT_ITERATION.md` and
-> `eval/SWEEP_FUSION.md`). §5 carries the current matrix; §6–§12 of
-> `docs/CONSISTENCY.md` carry everything that moved since the `0.2.0` cut.
+> `docs/CONSISTENCY.md` §6–§12. Last re-measured 2026-09-28 on `main`, which sits
+> at the published `v0.3.0` tag plus one oracle-rerank harness: **237** tests
+> green, release binary **8,836,032 B**, R@5 97.2 (Phase E1 reweighted the
+> fusion; see `docs/NEXT_ITERATION.md` and `eval/SWEEP_FUSION.md`). §5 carries the
+> current matrix; §6–§12 of `docs/CONSISTENCY.md` carry everything that moved
+> since the `0.2.0` cut.
 >
 > **CI runs no benchmarks** (deliberate — Actions quota; see
 > `.github/workflows/ci.yml`), so nothing re-checks any number in this file
@@ -30,7 +31,7 @@
 > **This file holds two records.** §1–§4 are the **0.1.0 audit, run 2026-09-27**,
 > kept verbatim as evidence about that build — its "NOT IMPLEMENTED" rows and its
 > debug-build numbers are *true of 0.1.0* and false of this tree. Do not read them
-> as the current state. §5 is the current `0.2.0` matrix. Nothing below rewrites
+> as the current state. §5 is the current matrix. Nothing below rewrites
 > the 0.1.0 numbers.
 
 ## 1. Tool matrix (live, :8891) — **0.1.0 record, 2026-09-27**
@@ -82,16 +83,17 @@ Baseline pins: `docs/VERSIONS.md` (hindsight `ccfe85b`, agentmemory `bcf4f0d`,
 `memory-wire` 0.1.0, rustc 1.98.0). Binary: debug build, 76,178,192 bytes
 (symbols included; release+LTO not yet measured).
 
-## 5. Current matrix — memory-wire 0.2.0 tree, re-measured 2026-09-28
+## 5. Current matrix — memory-wire 0.3.0 tree, re-measured 2026-09-28
 
-Everything in §1–§4 that 0.2.0 has since closed, and where the evidence is. The
-authoritative current numbers live in `eval/` and in the README footprint table;
-this section exists so a reader who lands here does not take the 0.1.0 matrix for
-the shipped product. **This tree is ahead of the published `v0.2.0` tag** — see
-`docs/VERSIONS.md` — and every row below is measured against the tree, not the
-release.
+Everything in §1–§4 that 0.2.0 and 0.3.0 have since closed, and where the evidence
+is. The authoritative current numbers live in `eval/` and in the README footprint
+table; this section exists so a reader who lands here does not take the 0.1.0
+matrix for the shipped product. **These rows are measured against `main`**, which
+is at the published `v0.3.0` tag and one oracle-rerank harness ahead of it — the
+only things `main` carries that the tag does not are `examples/oracle_rerank.rs`
+and `eval/ORACLE_RERANK.md`, and neither is a row below. See `docs/VERSIONS.md`.
 
-| Tool / surface | Status at 0.2.0 | Evidence |
+| Tool / surface | Status at 0.3.0 | Evidence |
 |---|---|---|
 | Retrieval stack | **FTS5 BM25 (LIMIT 50) + token-overlap (cap 200), fused by weighted RRF at k=60 with the overlap weight swept to 0.25** (equal weight measured 4.2pp worse on R@5) over a candidate pool of the newest 200 rows ∪ the BM25 hits | `eval/RESULTS.md`: R@5 97.2 / R@10 98.6 / R@20 99.6 / NDCG@10 88.2 / MRR 89.2 on official LongMemEval-S, 500 questions; `eval/SWEEP_FUSION.md` for the grid |
 | Official LongMemEval-S harness | **built and run** (gap 4 closed) | `examples/longmemeval.rs`, `eval/RESULTS.md`; all 500 per-question `recall_any_at_5/10/20`, `mrr`, `ndcg_at_10` values verified identical to the pre-change artifact on 2026-09-28 |

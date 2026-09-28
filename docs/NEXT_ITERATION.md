@@ -519,11 +519,19 @@ that the per-category LongMemEval diagnostic pinpoints the deficit to two
 categories, a second dataset would not change what we do next. Revisit if the
 E-phases land and a public comparison still matters.
 
-## Phase E6 — release 0.3.0
+## Phase E6 — release 0.3.0 (cut; this is the record of what was cut)
 
-The tree is far ahead of published `v0.2.0`. Everything since is additive with no
-API break, so **0.3.0**. Cut only after the E-phases settle, so the release notes
-can state the measured retrieval delta rather than "no change".
+**0.3.0 is cut.** `Cargo.toml` says `0.3.0` and `v0.3.0` is tagged, so the phase
+ran as written — and the reason the phase existed is the one it named: everything
+since `0.2.0` was additive with no API break, and the cut could state the measured
+retrieval delta from E1 (+4.2pp R@5, +4.8pp NDCG@10) rather than "no change".
+
+What is in the tag: the `0.2.0` feature set plus E1's reweighting. The E2, E3 and
+E4 levers are **not** in it — all three were removed from `src/` before the cut
+(`git show v0.3.0:src/recall.rs` already shows `FusionWeights` carrying only
+`bm25`, `overlap`, `agreement` and `k`). E7's oracle harness landed on `main` after
+the tag, so it is not in the release either; `eval/ORACLE_RERANK.md` and
+`examples/oracle_rerank.rs` are `main`-only.
 
 ## Sequencing and honesty rules
 
