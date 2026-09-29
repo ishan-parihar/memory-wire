@@ -359,20 +359,34 @@ Cheapest and highest-value first. Each is independently shippable.
    A bare `connect` deliberately does **not** wire it: the other five hosts are
    additive, while Hermes activates exactly one memory provider, so wiring it moves a
    single global slot. `connect hermes` says what it does. See §20.3.
-   rather than a config-file one.
-6. **G5 — HTTP MCP transport**, which also unlocks `/mcp/{bank_id}` scoping.
+    rather than a config-file one.
+
+The first five are done; the order was forced by file claims rather than by
+preference, since `paths.rs` is shared by G4 and G1, and `main.rs` by G2 and G1.
 
 ## What is left
 
-G1, G2, G3, G4 (collision), G6.1–G6.4 and G6.6 are **closed**. What remains:
+G1, G2, G3, G4 (collision), G5, G6.1, G6.5, G6.6 and G6.7 are **closed**,
+re-verified against the binary on 2026-09-29. G6.3 and G6.4 are **not** closed
+despite having appeared in an earlier version of this list; both are stated
+below. What remains:
 
 | | gap | why it is still open |
 |---|---|---|
-| **G4** | bank opt-in | A policy decision, not a bug: should a repo have to opt in to memory? Both parents fail closed; we do not. Not bundled into the collision fix. |
-| **G6.5** | ~~port default~~ | Closed — one literal, `8888`. |
-| **G7** | `stop` retains a pointer | Highest-churn writer of a useless row. Reads the transcript the way the two new events do; out of scope when they landed. |
-| **G8** | pre-compact and session-end store the same prose | Inherited from a shared `flush_at`. Collapsing via `document_id` is one line and would also collapse genuinely different tails. |
-| **G5** | HTTP MCP transport | **Done** — stdio is still the default path; HTTP adds Codex tool access. +12.0% binary, 3 shared libraries unchanged. Tool count still 4, and rmcp's `Host` allowlist is a default, not auth. |
+| **G4** | bank opt-in | A policy decision, not a bug: should a repo have to opt in to memory? Both parents fail closed; we do not. Not bundled into the collision fix. The measurement that informs it is in `docs/BANK_IDENTITY.md`: a **fork does not collide** (different owner, different `origin`, different bank), so the case the parents design against is already covered. The residual is two remote-less local directories sharing a basename. |
+| **G6.3** | `--uninstall --guidelines` still refused | `memory-wire connect --uninstall --guidelines` prints `cannot combine --uninstall with --guidelines`. Both parents fully reverse every write. The block is marker-delimited, so removal is easy to add. |
+| **G6.4** | no `--endpoint` flag on the hook path | Only `MEMORY_WIRE_URL` (`src/paths.rs:38-45`). Re-checked 2026-09-29: still absent, and the bare `memory-wire` home view now says so in as many words rather than leaving an agent to discover it. agentmemory threads `--api-url` through re-resolution with a `tokenProvider`. Minor. |
+| **G6.8** | no `system_prompt_block` injection | We inject at `UserPromptSubmit`; hermes wants a block in the system prompt. Different mechanism, not strictly missing. |
+| **G6.9** | `doctor` does not check that the *installed hook* still points at a live binary | `src/doctor.rs` has no reference to any host config. It checks the store and the server, not whether `~/.claude/settings.json` names an existing path. hindsight's installer refuses to write when a foreign server exists (`installer.ts:1766-1775`). Would catch a moved or deleted binary. |
+
+Closed since the register was first written, and previously miscounted here:
+
+| | gap | closed by |
+|---|---|---|
+| **G5** | HTTP MCP transport | `7c363fe`. stdio is still the default path; HTTP adds Codex tool access. +12.0% binary, 3 shared libraries unchanged. Tool count still 4, and rmcp's `Host` allowlist is a default, not auth. |
+| **G6.5** | port default mismatch | One literal, `paths::DEFAULT_ADDR`; both clap defaults read from it. Binary byte-identical. `docs/CONSISTENCY.md` §20.2. |
+| **G7** | `stop` retained a pointer | `30b0ede`. The body no longer carries a transcript path, so the per-turn rows stopped injecting `/tmp`, `jsonl` and a random basename into the FTS index; the body is stable per session, so the store's existing content dedup collapses the repeats. Verified live: six firings, five in one session, produce two rows. |
+| **G8** | pre-compact and session-end store the same prose | **Not a defect.** `flush_at` composes each body as `{event} session {id} ({why})\n{tail}`, so the two events produce genuinely different bodies and content dedup correctly declines. The bodies match only below the header, and the header plus the `context` field is what distinguishes two different moments; collapsing them would silently drop one event's record. |
 
 Two things recorded in `docs/CONSISTENCY.md` §20.6 rather than here, because they are
 small and already written down: `$HOME/.hermes` is hardcoded so a `HERMES_HOME` profile

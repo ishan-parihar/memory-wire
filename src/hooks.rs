@@ -12,7 +12,9 @@
 //!   otherwise the historian framing from `REFLECT_SYSTEM_PROMPT`), plus a
 //!   recall of the opening prompt when the host supplies one.
 //! - `prompt` — the recall results, plain text, nothing else.
-//! - `stop` — no output; retains one compacted line naming the transcript.
+//! - `stop` — no output; retains one session marker, deduped to a single row
+//!   per session. It names no transcript path: a path there is unreadable from
+//!   the store and its filesystem tokens land in the FTS index recall searches.
 //! - `pre-compact`, `session-end` — no output; retain the conversation's own
 //!   prose, read off the transcript, because both fire at the moment the words
 //!   stop being available.
@@ -71,7 +73,7 @@ pub enum Lifecycle {
     SessionStart,
     /// Recall for the submitted prompt.
     Prompt,
-    /// Retain a compacted session-end line.
+    /// Retain one session marker, deduped to a single row per session.
     Stop,
     /// Retain the conversation's prose before compaction discards it.
     PreCompact,
