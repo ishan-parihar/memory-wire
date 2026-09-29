@@ -1,0 +1,32 @@
+# One-off: build a fully static linux-x86_64 musl binary for the Debian 12 VPS
+# (glibc 2.36 — the gnu release asset needs 2.39). Not part of the release matrix.
+name: musl-build
+on:
+  workflow_dispatch:
+
+jobs:
+  musl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl
+      - name: Smoke test
+        run: |
+          ./target/x86_64-unknown-linux-musl/release/memory-wire --version
+          ./target/x86_64-unknown-linux-musl/release/memory-wire --help >/dev/null
+          ldd ./target/x86_64-unknown-linux-musl/release/memory-wire || echo "static (ldd fails) — good"
+      - name: Package
+        run: |
+          cd target/x86_64-unknown-linux-musl/release
+          tar czf ../../../memory-wire-linux-x86_64-musl.tar.gz memory-wire
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memory-wire-linux-x86_64-musl
+          path: memory-wire-linux-x86_64-musl.tar.gz
