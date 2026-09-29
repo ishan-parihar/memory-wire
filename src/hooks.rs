@@ -172,33 +172,39 @@ pub fn prompt_at(endpoint: &str, bank: &str, input: &Value) -> String {
     }
 }
 
-/// `stop`: retain one compacted line about the finished session.
+/// `stop`: retain one marker per finished session.
 ///
-/// This retains a **pointer**: the transcript's path and its size on disk. It
-/// is the shape `stop` has always had, kept here byte-for-byte because the
-/// behaviour was not in scope — but it is a pointer to a file outside this
-/// database, so it is worth flagging plainly. Nothing in this crate can read
-/// that row back into content: `recall` will return the string
-/// "session ended; transcript /home/…/abc.jsonl (1.2 MB)" and no way to reach
-/// what the session said. `pre-compact` and `session-end` below deliberately
-/// do not copy it. See `docs/INTEGRATION_GAPS.md` §G2.
+/// This used to retain a **pointer** — the transcript's path and its size on
+/// disk. That was worse than useless in three ways, all of which are now gone:
+///
+/// - Nothing in this crate can read it back. `recall` returned the string
+///   "session ended; transcript /home/…/abc.jsonl (1.2 MB)" and no way to reach
+///   what the session actually said.
+/// - `stop` fires on **every turn**, so it was the highest-churn writer in the
+///   crate: fifty rows of the same useless sentence in a fifty-turn session.
+/// - The path injected filesystem tokens — `/tmp`, `home`, `jsonl`, and a
+///   random per-transcript basename — into the FTS index that recall searches.
+///   That is real retrieval damage, not just clutter: those rows compete for
+///   "session" and "ended" in every BM25 query about sessions.
+///
+/// What is left is a marker whose content is **stable for the life of a
+/// session**, which means the store's existing per-bank content dedup collapses
+/// the per-turn repeats into one row with no extra state here: the second and
+/// subsequent `stop` firings in a session are byte-identical writes that dedup
+/// already absorbs. `pre-compact` and `session-end` below capture the prose at
+/// the two moments it stops being available. See `docs/INTEGRATION_GAPS.md` §G2.
 pub fn stop_at(endpoint: &str, bank: &str, input: &Value) {
-    let transcript = field(input, &["transcript_path", "transcriptPath"]);
-    if transcript.is_empty() {
+    // A payload with no transcript path is malformed for this event: without it
+    // there is no session to mark as finished. Say nothing, as every other hook
+    // does on a payload it cannot use.
+    if field(input, &["transcript_path", "transcriptPath"]).is_empty() {
         return;
     }
-    let size = std::fs::metadata(&transcript).map(|m| m.len()).unwrap_or(0);
     let session = field(input, &["session_id", "sessionId"]);
     let line = if session.is_empty() {
-        format!(
-            "session ended; transcript {transcript} ({})",
-            paths::human_bytes(size)
-        )
+        "session ended".to_string()
     } else {
-        format!(
-            "session {session} ended; transcript {transcript} ({})",
-            paths::human_bytes(size)
-        )
+        format!("session {session} ended")
     };
     retain(endpoint, bank, &line, "hook:stop");
 }
@@ -520,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_should_retain_one_compacted_line() {
+    fn stop_should_retain_one_marker_carrying_no_path() {
         let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
         stop_at(
             &ep,
@@ -530,8 +536,59 @@ mod tests {
         let seen: Vec<String> = rx.try_iter().collect();
         assert_eq!(seen.len(), 1, "{seen:?}");
         assert!(seen[0].starts_with("/banks/demo/retain"), "{:?}", seen[0]);
-        assert!(seen[0].contains("/tmp/does-not-exist.jsonl"), "{:?}", seen[0]);
         assert!(seen[0].contains("session s-7 ended"), "{:?}", seen[0]);
+        // The regression this removed: a path in the body put /tmp, jsonl and a
+        // random transcript basename into the FTS index recall searches.
+        assert!(!seen[0].contains("does-not-exist"), "{:?}", seen[0]);
+        assert!(!seen[0].contains("/tmp"), "{:?}", seen[0]);
+    }
+
+    /// `stop` fires on every turn. Its content is deliberately stable for the
+    /// life of a session so the store's per-bank content dedup collapses the
+    /// repeats into one row — asserted here by byte-equality, which is the
+    /// property dedup actually keys on.
+    #[test]
+    fn stop_should_be_byte_identical_across_turns_of_one_session() {
+        let payload = json!({
+            "session_id": "s-7",
+            "transcript_path": "/tmp/first.jsonl",
+            "transcript_size": 100,
+        });
+        let mut bodies = Vec::new();
+        for _ in 0..3 {
+            let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
+            stop_at(&ep, "demo", &payload);
+            let seen: Vec<String> = rx.try_iter().collect();
+            assert_eq!(seen.len(), 1, "{seen:?}");
+            bodies.push(seen[0].clone());
+        }
+        assert!(
+            bodies.windows(2).all(|w| w[0] == w[1]),
+            "three firings of one session must produce one identical write: {bodies:?}"
+        );
+    }
+
+    /// Two sessions in one bank are two different events, so they must not
+    /// collapse into each other.
+    #[test]
+    fn stop_should_distinguish_two_sessions() {
+        let (ep, rx) = canned(vec![
+            ("/retain", r#"{"id":"m1"}"#),
+            ("/retain", r#"{"id":"m2"}"#),
+        ]);
+        stop_at(
+            &ep,
+            "demo",
+            &json!({ "session_id": "s-7", "transcript_path": "/tmp/a.jsonl" }),
+        );
+        stop_at(
+            &ep,
+            "demo",
+            &json!({ "session_id": "s-8", "transcript_path": "/tmp/b.jsonl" }),
+        );
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 2, "{seen:?}");
+        assert_ne!(seen[0], seen[1], "two sessions must not dedup into one row");
     }
 
     #[test]
@@ -738,7 +795,9 @@ mod tests {
             "stdout is exactly the recall section"
         );
 
-        // stop: no output at all, and one compacted retain on the wire.
+        // stop: no output at all, and one marker retain on the wire. The body
+        // carries no transcript path: a path here is unreachable from the store
+        // and its filesystem tokens land in the FTS index recall searches.
         let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
         let got = run_hook(
             "stop",
@@ -750,8 +809,8 @@ mod tests {
         assert_eq!(got.stdout, "", "`stop` speaks only to the server");
         let seen: Vec<String> = rx.try_iter().collect();
         assert_eq!(seen.len(), 1, "{seen:?}");
-        assert!(seen[0].contains("/tmp/does-not-exist.jsonl"), "{:?}", seen[0]);
         assert!(seen[0].contains("session s-7 ended"), "{:?}", seen[0]);
+        assert!(!seen[0].contains("does-not-exist"), "{:?}", seen[0]);
     }
 
     // H4.4 — the override is what a hook talks to. Neither run names a bank or
