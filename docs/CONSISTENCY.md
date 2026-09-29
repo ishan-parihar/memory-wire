@@ -2583,3 +2583,105 @@ test that reads the default back out of the built clap `Command`.
   them, which was the part of G5 that was a real capability gap. Adding tools to close a
   count is the thing `docs/INTEGRATION_GAPS.md` recommends against, and nothing here
   changed that.
+
+---
+
+## 22. Rust best-practices audit, and the two real defects it found
+
+The `rust-best-practices` skill (Apollo GraphQL handbook, plus the extras at
+`/home/ishanp/.agents/skills/rust-best-practices/`) was ingested on 2026-09-29 and
+the crate audited against it. The audit was partitioned by chapter across three
+agents, each reading only its own chapters, so no slice could re-report another's
+findings. **AGENTS.md §4** now carries the rules this repo enforces beyond what the
+compiler already catches.
+
+**Two findings are real defects in shipping code.** Both were verified by hand
+against the tree rather than accepted on an agent's word.
+
+### 22.1 `StoreHandle` silently dropped `get_bank_config`, so `vector::retain` lost the bank's `retainTags`
+
+`src/vector.rs` defined `struct StoreHandle<'a>(&'a dyn Store)` with a hand-written
+`impl Store` forwarding **6 of the trait's 18 methods**. `get_bank_config` was not
+among them, so it fell through to the trait default (`src/store.rs:568`,
+`Ok(None)`).
+
+The retain path reads bank config: `src/api.rs:484` does
+`all.extend(self.config_of(bank_id)?.retain_tags)` and `config_of` calls
+`self.store.get_bank_config(bank_id)?`.
+
+**Consequence:** `vector::retain` wrote a memory *without* the bank's configured
+`retainTags`, while `MemoryService::<SqliteStore>::retain` wrote it *with* them. Two
+public retain paths, divergent answers, no test covering the difference. The
+wrapper's own doc comment claimed `MemoryService` "never asks for anything
+`put_vector`/`bank_vectors` lack" — the forwarding table contradicts it.
+
+This is chapter 6's "avoid dynamic dispatch when you control the concrete types",
+and the vtable was never the real cost. The real cost was that a hand-written
+forwarder is a place to forget a method. The fix is a blanket
+`impl<T: Store + ?Sized> Store for &T` in `store.rs` and **deleting** `StoreHandle`
+— which removes the `dyn`, makes full forwarding structural, and makes the doc
+comment true, by deletion rather than by vigilance.
+
+The `embed` feature is off by default, so this could not fire in the published
+default build. It is recorded anyway: it was reachable, and silent divergence
+between two public retain paths is the failure class worth removing rather than
+documenting.
+
+### 22.2 The MCP handlers bypassed the crate's own blocking discipline
+
+Blocking rusqlite work must not run on a tokio worker. If every worker is parked,
+the graceful-shutdown future can never be polled and the process stops answering
+SIGTERM — `src/api.rs`'s helper documents that exact failure, and the REST routes
+use it at 5 call sites.
+
+`src/mcp.rs` used it **zero** times. Four `async fn` handlers — `call_tool`
+(`:614`), `list_resources` (`:651`), `read_resource` (`:666`), `complete` (`:723`)
+— call sync store-touching methods (`call_scoped`, `list_scoped`, `read_scoped`)
+inline.
+
+This reaches a real worker, which I did not take on faith: rmcp 3.5.0's
+`src/handler/server.rs:207` is a bare
+`self.call_tool(request.params, context).await?` with no `spawn_blocking` and no
+dedicated thread, and the HTTP mount (`mcp_http.rs:85-98`, `Server::over(...)` on
+the same `Server`) is served under `#[tokio::main]` — a multi-thread runtime. The
+stdio path is affected more mildly, since a stdio client is serial; the hazard is
+`/mcp` and `/mcp/{bank}` under concurrent clients.
+
+**MCP was the sole gap.** Every REST route was already covered.
+
+### 22.3 The audit's verdict on the rest of the crate
+
+Clippy is clean on `--all-targets --all-features --locked -- -D warnings`. The five
+default lint groups are denied in `Cargo.toml`; `pedantic`/`nursery` are off by a
+documented decision (~263 findings, mostly naming and docs), which is chapter 2.4's
+"you understand why and you document why". **Zero `#[allow(...)]` anywhere in
+`src/` or `tests/`.**
+
+**Chapter 4 is the strongest part of the crate.** `ApiError` → `StoreError` is a
+thiserror hierarchy with `#[error(transparent)] #[from]`; the library is
+anyhow-free with `anyhow` confined to binary-side modules; `http_error` is a single
+classification point whose `_` arm is *exactly* the storage path, so one
+`tracing::error!` covers both HTTP and MCP. **Zero bare `.unwrap()` on any non-test
+line, crate-wide** — the AGENTS.md rule actually holds. Errors are test-validated,
+including a dedicated `LockPoisoned` suite across four store methods.
+
+**Chapter 9 primitives are all correct:** no `Rc`/`RefCell`/`Cell`/`static mut`/
+`thread_local!` anywhere in `src/`; `std::sync::LazyLock` (the thread-safe one) for
+the regex and synonym statics; `OnceLock<Mutex<Embedder>>` for ONNX, `Mutex`
+because `embed` takes `&mut self`; mutex poisoning becomes a typed error rather
+than an `unwrap`, and a poisoned lock is *refused* rather than served from.
+
+Several things that read as error-swallowing in a grep and are not:
+`hooks.rs`'s silent catches (required by the never-fail contract),
+`doctor.rs:fold_wal`'s `let _ =` on a PASSIVE checkpoint ("a checkpoint that did
+not run is not a health finding"), `paths.rs:341`'s best-effort temp cleanup on a
+path that already returns the real error, and `doctor.rs:249`, where an integrity
+failure is returned as `Some(Err(why))` and reported as `unreadable`.
+
+Also reported and **not** changed: two adjacent `pub` fields in
+`src/recall.rs` carry doc comments that give opposite guidance, and the crate's own
+test `a_unit_weight_on_an_inverted_stream_is_a_knife_edge_not_a_wash` refutes one of
+them. Two hundred-plus lines of measured rationale live on public fields where
+`docs/RERANKING_PLAN.md` and `docs/EXCEED_PLAN.md` would hold them, and the
+disagreement between the two fields is the evidence that the channel is where this
+content goes stale. A doc comment is documentation of *what*; that material is *why*.

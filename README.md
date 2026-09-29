@@ -813,6 +813,7 @@ quoting a number.
 curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/install/get-memory-wire.sh | sh
 # sh get-memory-wire.sh --db <path>     # echoes the serve line with that --db
 # sh get-memory-wire.sh --daemon        # also start the server and run doctor
+# sh get-memory-wire.sh --hosts a,b     # wire only these hosts, never prompts
 # sh get-memory-wire.sh --no-connect    # install the binary only, wire nothing
 # sh get-memory-wire.sh --uninstall     # removes the binary only, keeps the db
 ```
@@ -822,14 +823,27 @@ Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 defaults, which resolve to this repo and its latest published release
 (`v0.4.0`, asset `memory-wire-linux-x86_64.tar.gz`).
 
-**The installer wires your agent hosts for you.** After the binary lands it runs
-`memory-wire connect`, which detects every supported host and writes both the
-lifecycle hooks and the MCP entry: `claude-code`, `codex`, and `copilot-cli` get
-the five hooks, `cursor` and `opencode` get the MCP server. It is idempotent, keeps
-a timestamped backup of every file it edits, refuses a malformed config untouched,
-and never overwrites a hook it did not write. Pass `--no-connect` to skip it, or
-`connect --uninstall` to undo it. The MCP entry points at the **installed binary
-by absolute path**, so it survives a `cargo clean` of a development checkout.
+**The installer wires your agent hosts for you, and lets you choose which.** It
+first runs `memory-wire connect --list`, which reports every supported host with
+whether it is present on this machine and whether it is already wired — read-only,
+touching nothing. Then:
+
+- **`--hosts claude-code,codex`** wires exactly that list. This is the
+  non-interactive path and it never prompts. Use it from a script or an agent.
+- **On a terminal, with no flag**, it shows the detected hosts as a numbered menu
+  and waits. Enter alone accepts all detected hosts; `2,4` or `codex,cursor`
+  selects a subset.
+- **On a non-terminal with no flag**, it does not prompt — it wires all detected
+  hosts and prints the list. An unattended install can never hang.
+- **`--no-connect`** skips wiring entirely.
+
+Wiring writes both the lifecycle hooks and the MCP entry: `claude-code`, `codex`,
+and `copilot-cli` get the five hooks, `cursor` and `opencode` get the MCP server,
+and `hermes` gets a `MemoryProvider` plugin when named explicitly. It is
+idempotent, keeps a timestamped backup of every file it edits, refuses a malformed
+config untouched, and never overwrites a hook it did not write. `connect --uninstall`
+undoes it. The MCP entry points at the **installed binary by absolute path**, so it
+survives a `cargo clean` of a development checkout.
 
 Downloads are verified against the `.sha256` the release publishes next to each
 asset; a mismatch aborts the install rather than installing a corrupt binary.
@@ -875,7 +889,7 @@ Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 ## Roadmap
 
 Shipped: `GET`/`PUT /banks/:id/config` (merged into the `serve` router) · the
-`connect <agent>` / `hook` / `doctor` / `seed` CLI subcommands · the MCP stdio
+`connect [HOSTS]...` / `hook` / `doctor` / `seed` CLI subcommands · the MCP stdio
 server (`rmcp`, 4 tools, +1.6 MB binary) · tag filtering on retain and recall ·
 the lifecycle routes (`GET .../memories`, `GET`/`DELETE .../memories/:mid`,
 `GET .../stats`) with `created_at` on every served memory · `format: "full"` on

@@ -365,7 +365,8 @@ Usage: memory-wire [COMMAND]
 Commands:
   info     Print audit + plan pointers (default)
   serve    Start the HTTP server (retain/recall/reflect + health)
-  connect  Wire memory-wire into agent hosts (default: every detected host)
+  connect  Wire memory-wire into agent hosts; takes zero or more host names
+           --list reports every host and its detected/wired state, writing nothing
   hook     Lifecycle hook (hosts call this; reads hook JSON on stdin)
   doctor   Report endpoint, bank, store, and server health
   mcp      Serve MCP over stdio: memory_retain / recall / reflect / bank_config_get
@@ -377,6 +378,13 @@ Options:
   -h, --help     Print help
   -V, --version  Print version
 ```
+
+`connect` takes **zero or more** host names: `connect claude-code`,
+`connect claude-code,codex`, or `connect claude-code codex` are all accepted. With
+no host argument it wires every host it detects. `connect --list` writes nothing at
+all and prints one line per host — name, `detected` or `absent`, and `wired` or
+`unwired` — so it is safe to run before deciding. Hosts not present on the machine
+still appear, marked `absent`.
 
 `connect claude-code` on a machine with no `~/.claude/settings.json` prints
 `claude-code  wired         SessionStart, UserPromptSubmit, Stop, PreCompact,
@@ -391,9 +399,20 @@ hook list, it wires the other four and reports
 `claude-code  FAILED        <path>: malformed JSON (…); left untouched` and
 exit 1. `connect` with no host argument wires all five it detects
 (claude-code, codex, copilot-cli, cursor, opencode) — cursor and opencode get an
-MCP entry, the other three the five lifecycle hooks. `connect --uninstall
+MCP entry, the other three the five lifecycle hooks. `hermes` is never wired
+implicitly: it fills Hermes' single global `memory.provider` slot, so naming it
+replaces whatever held that slot. `connect --uninstall
 --guidelines` is refused (`memory-wire: cannot combine --uninstall with
 --guidelines`, exit 1) and an unknown host is a clap error, exit 2.
+
+The installer decides what to wire, and its choice is explicit:
+
+- `--hosts claude-code,codex` wires exactly that list and never prompts.
+- On a terminal with no flag it prints the detected hosts as a numbered menu and
+  waits; a bare Enter takes all of them, `2,4` or `codex,cursor` takes a subset.
+- On a **non**-terminal with no flag it does not prompt. It wires all detected hosts
+  and prints the list, so an unattended or piped install cannot hang on stdin.
+- `--no-connect` installs the binary and wires nothing.
 
 `hook --help` lists `session-start`, `prompt`, `stop`, `pre-compact`,
 `session-end`. `doctor` prints endpoint,
