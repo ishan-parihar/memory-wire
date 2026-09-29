@@ -4,13 +4,16 @@
 //! - recall: overlap-ranked retrieval + token-budget trim.
 //! - reflect: top-hit synthesis with cited ids (LLM synthesis lands later).
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::extract::{Path, Query, State};
+use axum::http::{header::CONTENT_TYPE, HeaderName, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::capture::redact_pii;
@@ -824,6 +827,330 @@ pub fn bank_config_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>>
     Router::new().route("/banks/:id/config", get(get_bank_config).put(put_bank_config))
 }
 
+/// The TOON encoder, built in-tree rather than pulled in as a crate.
+///
+/// Declared here with an explicit `#[path]` so this module is the one file that
+/// has to exist for it to compile — the crate root's module list belongs to
+/// whoever owns `src/lib.rs`, and a `mod render;` here would look for
+/// `src/api/render.rs` rather than `src/render.rs`. Promoting it to a top-level
+/// `pub mod render;` in `lib.rs` is a one-line change whenever that is free; the
+/// two are identical modules either way.
+#[path = "render.rs"]
+mod render;
+
+/// The memory read routes, shipped next to the service for the same reason
+/// [`bank_config_routes`] is.
+///
+/// `GET /banks/:id/memories` and `GET /banks/:id/memories/:mid` together, because
+/// the truncated list value points at the second one as its escape hatch: split
+/// across two files, the pointer and the route it names could disagree.
+pub fn memories_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
+    Router::new()
+        .route("/banks/:id/memories", get(list_memories))
+        .route("/banks/:id/memories/:mid", get(get_memory))
+}
+
+/// Ceiling on one page of memories, so one request cannot ask for the whole bank.
+///
+/// Unchanged from the value the binary shipped with, because the default response
+/// may not move. A caller who genuinely wants the whole bank pages with
+/// `?limit=500&offset=…`.
+pub const MAX_PAGE: usize = 500;
+
+/// Page size when `?limit` is absent.
+const DEFAULT_PAGE: usize = 50;
+
+/// `Content-Type` for `?format=toon`.
+///
+/// `text/toon; charset=utf-8`, which is the TOON specification's own provisional
+/// media type (SPEC v4.1 §17) plus the charset it says is always assumed. Chosen
+/// over the two candidates because it is a `text/*` type — so every generic HTTP
+/// client, log viewer and text tool handles it without knowing the format — while
+/// still naming the format, which `text/plain; charset=utf-8` would discard and
+/// `application/toon` would get wrong (that subtype is neither specified nor
+/// IANA-registered, and a client meeting an unknown `application/*` type may try
+/// to parse it as a structured document).
+pub const TOON_CONTENT_TYPE: &str = "text/toon; charset=utf-8";
+
+/// True total in the bank, whatever `?limit` and `?offset` cut the page down to.
+///
+/// A header, not a body field, because the body of the list route is a bare JSON
+/// array and that is frozen. It is the only way a caller learns whether the page
+/// it is holding is the whole bank, which is otherwise guesswork.
+const TOTAL_COUNT: HeaderName = HeaderName::from_static("x-total-count");
+
+/// How many rows this response cut short, present only when at least one was cut.
+///
+/// The per-row marker inside each `content` names the exact original length and
+/// the full form; this says how many rows are affected, so a caller can tell one
+/// long memory from a whole page of them.
+const TRUNCATED: HeaderName = HeaderName::from_static("x-truncated");
+
+/// Which encoding a read route answers in.
+///
+/// A closed enum rather than a free string, so `?format=xml` is refused by the
+/// query extractor as axum's own 400 — the same answer a non-numeric `?limit`
+/// already gives this route — instead of being silently served as JSON. That
+/// adds no status and no message to the frozen error table; it reuses the 400 a
+/// malformed query parameter has always produced here.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum OutputFormat {
+    /// `application/json`. The default, and byte-identical to the pre-TOON body.
+    Json,
+    /// `text/toon; charset=utf-8`.
+    Toon,
+}
+
+/// Query parameters for `GET /banks/:id/memories`.
+///
+/// Every one is opt-in and every one defaults to what the route did before it
+/// existed: `limit` 50 capped at [`MAX_PAGE`], `offset` 0, no truncation, JSON.
+#[derive(Debug, Default, Deserialize)]
+struct MemoriesQuery {
+    /// Maximum rows in the page.
+    limit: Option<usize>,
+    /// Rows to skip before the page.
+    offset: Option<usize>,
+    /// Cap each `content` at this many characters. Absent means no cap.
+    truncate: Option<usize>,
+    /// `json` (default) or `toon`.
+    format: Option<OutputFormat>,
+}
+
+/// Query parameters for `GET /banks/:id/memories/:mid`.
+///
+/// Only `format`. This route is the escape hatch a truncated list value points
+/// at, so it is never truncated — and a separate struct rather than a shared one
+/// so a malformed `?limit` on it stays the ignored query parameter it has always
+/// been instead of becoming a new 400.
+#[derive(Debug, Default, Deserialize)]
+struct FormatQuery {
+    /// `json` (default) or `toon`.
+    format: Option<OutputFormat>,
+}
+
+/// Page size and offset: `DEFAULT_PAGE`/`0` by default, limit capped.
+fn page_bounds(limit: Option<usize>, offset: Option<usize>) -> (usize, usize) {
+    (
+        limit.unwrap_or(DEFAULT_PAGE).min(MAX_PAGE),
+        offset.unwrap_or(0),
+    )
+}
+
+/// The content one row serves, and whether it was cut.
+///
+/// `cap` is `?truncate`. The cap applies to the memory's **own** characters; the
+/// marker that follows is not counted against it, because a caller has to be able
+/// to find where the memory stops — a cap that swallowed the marker would make
+/// the notice indistinguishable from content.
+///
+/// Borrowed whenever nothing was cut, so a request that does not ask for
+/// truncation copies no content: this is the default path.
+fn served_content<'a>(memory: &'a Memory, cap: Option<usize>, bank: &str) -> (Cow<'a, str>, bool) {
+    let Some(n) = cap else {
+        return (Cow::Borrowed(memory.content.as_str()), false);
+    };
+    let total = memory.content.chars().count();
+    if total <= n {
+        return (Cow::Borrowed(memory.content.as_str()), false);
+    }
+    let mut out: String = memory.content.chars().take(n).collect();
+    out.push_str(&format!(
+        "…[truncated from {total} chars; full: GET /banks/{bank}/memories/{id}]",
+        id = memory.id
+    ));
+    (Cow::Owned(out), true)
+}
+
+/// One memory as the lifecycle routes serve it.
+///
+/// `created_at` is always present; `context` only when the memory has one, so a
+/// memory stored without capture context does not claim an empty one. `content` is
+/// the served string rather than the stored one, which is the same string unless
+/// `?truncate` cut it.
+fn memory_json(memory: &Memory, content: &str) -> serde_json::Value {
+    let mut v = serde_json::json!({
+        "id": memory.id,
+        "content": content,
+        "created_at": memory.created_at
+    });
+    if let Some(ctx) = &memory.context {
+        v["context"] = serde_json::json!(ctx);
+    }
+    v
+}
+
+/// `GET /banks/:id/memories` — one page of the bank's memories.
+///
+/// The default answer is byte-for-byte what this route answered before `?limit`'s
+/// companions, `?format` and the two metadata headers existed: a bare JSON array
+/// built by [`Json`] from the same values in the same order. Everything added here
+/// is opt-in through the query or carried in a header, because the array shape is
+/// frozen and a client parsing it as an array is entitled to keep working.
+async fn list_memories<S: Store + 'static>(
+    State(svc): State<Arc<MemoryService<S>>>,
+    Path(bank): Path<String>,
+    Query(q): Query<MemoriesQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    let (limit, offset) = page_bounds(q.limit, q.offset);
+    let format = q.format.unwrap_or(OutputFormat::Json);
+    let rows = blocking({
+        let (page_svc, page_bank) = (Arc::clone(&svc), bank.clone());
+        move || page_svc.list_memories(&page_bank, limit, offset)
+    })
+    .await
+    .map_err(to_http)?;
+    // A second read, because the page cannot answer "is that everything" on its
+    // own: a full page and a whole bank look identical from inside the array.
+    // `bank_stats` is the count already on the surface — a narrower count would
+    // mean a new `Store` method, and `src/store.rs` is not this change's file.
+    // It costs one `COUNT(*)` alongside the page read, not a second pass over the
+    // rows the page already holds.
+    let total = blocking({
+        let (count_svc, count_bank) = (Arc::clone(&svc), bank.clone());
+        move || count_svc.bank_stats(&count_bank).map(|s| s.memories)
+    })
+    .await
+    .map_err(to_http)?;
+
+    let cap = q.truncate;
+    let mut truncated = 0usize;
+    let mut res = match format {
+        OutputFormat::Json => {
+            let body: Vec<serde_json::Value> = rows
+                .iter()
+                .map(|m| {
+                    let (content, cut) = served_content(m, cap, &bank);
+                    truncated += usize::from(cut);
+                    memory_json(m, content.as_ref())
+                })
+                .collect();
+            Json(body).into_response()
+        }
+        OutputFormat::Toon => {
+            let (cells, cut) = toon_rows(&rows, cap, &bank);
+            truncated = cut;
+            let body = render::document(&toon_fields(total, cut), "memories", &cells);
+            (StatusCode::OK, [(CONTENT_TYPE, TOON_CONTENT_TYPE)], body).into_response()
+        }
+    };
+    set_metadata_headers(&mut res, total, truncated);
+    Ok(res)
+}
+
+/// `GET /banks/:id/memories/:mid` — one memory, or 404 `unknown memory`.
+///
+/// Also the destination a `?truncate`d list value names, so it accepts `?format`
+/// and answers in the format the caller is already reading.
+async fn get_memory<S: Store + 'static>(
+    State(svc): State<Arc<MemoryService<S>>>,
+    Path((bank, mid)): Path<(String, String)>,
+    Query(q): Query<FormatQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    let found = blocking(move || svc.get_memory(&bank, &mid))
+        .await
+        .map_err(to_http)?;
+    let Some(m) = found else {
+        return Err((StatusCode::NOT_FOUND, "unknown memory".to_string()));
+    };
+    Ok(match q.format.unwrap_or(OutputFormat::Json) {
+        OutputFormat::Json => Json(memory_json(&m, m.content.as_str())).into_response(),
+        OutputFormat::Toon => {
+            let mut fields = vec![
+                ("id".to_string(), render::Cell::Text(m.id.clone())),
+                (
+                    "created_at".to_string(),
+                    m.created_at
+                        .clone()
+                        .map_or(render::Cell::Null, render::Cell::Text),
+                ),
+                ("content".to_string(), render::Cell::Text(m.content.clone())),
+            ];
+            if let Some(ctx) = &m.context {
+                fields.push(("context".to_string(), render::Cell::Text(ctx.clone())));
+            }
+            let mut res = (
+                StatusCode::OK,
+                [(CONTENT_TYPE, TOON_CONTENT_TYPE)],
+                render::object(&fields),
+            )
+                .into_response();
+            set_metadata_headers(&mut res, 1, 0);
+            res
+        }
+    })
+}
+
+/// Attach the two metadata headers a list response carries.
+fn set_metadata_headers(res: &mut Response, total: usize, truncated: usize) {
+    let headers = res.headers_mut();
+    headers.insert(TOTAL_COUNT, count_header(total));
+    if truncated > 0 {
+        headers.insert(TRUNCATED, count_header(truncated));
+    }
+}
+
+/// An integer as a header value.
+///
+/// `HeaderValue::from_str` rejects anything but visible ASCII, and a `usize`
+/// renders as decimal digits, so this cannot fail for the only input it takes.
+fn count_header(n: usize) -> HeaderValue {
+    HeaderValue::from_str(&n.to_string()).expect("a usize renders as ASCII digits")
+}
+
+/// The scalar fields a TOON document carries ahead of its table.
+///
+/// `total` is unconditional: TOON has no response headers a caller can read
+/// without parsing the body, so the count the caller needs has to be in the body
+/// it is already parsing, and making it conditional on having been truncated is
+/// arithmetic the caller then has to do to learn whether it is looking at
+/// everything. `content_truncated` appears only when rows were cut.
+fn toon_fields(total: usize, truncated: usize) -> Vec<(String, render::Cell)> {
+    let mut fields = vec![("total".to_string(), render::Cell::Number(total.to_string()))];
+    if truncated > 0 {
+        fields.push((
+            "content_truncated".to_string(),
+            render::Cell::Number(truncated.to_string()),
+        ));
+    }
+    fields
+}
+
+/// The list rows as TOON cells, `id` first, plus how many were truncated.
+///
+/// Field order is the header's and nothing depends on it being alphabetical the
+/// way the JSON object's is — `id` first because a caller reading a table wants
+/// the key before the prose, and `created_at` before `content` for the same
+/// reason. `context` is last and present only when the memory has one, which is
+/// what makes a page that mixes context-bearing rows non-uniform and therefore
+/// list-shaped (see [`render`]).
+fn toon_rows(rows: &[Memory], cap: Option<usize>, bank: &str) -> (Vec<render::Row>, usize) {
+    let mut cut = 0;
+    let cells = rows
+        .iter()
+        .map(|m| {
+            let (content, was_cut) = served_content(m, cap, bank);
+            cut += usize::from(was_cut);
+            let mut row = vec![
+                ("id".to_string(), render::Cell::Text(m.id.clone())),
+                (
+                    "created_at".to_string(),
+                    m.created_at
+                        .clone()
+                        .map_or(render::Cell::Null, render::Cell::Text),
+                ),
+                ("content".to_string(), render::Cell::Text(content.into_owned())),
+            ];
+            if let Some(ctx) = &m.context {
+                row.push(("context".to_string(), render::Cell::Text(ctx.clone())));
+            }
+            row
+        })
+        .collect();
+    (cells, cut)
+}
+
 /// Run one blocking store call off the async worker threads.
 ///
 /// SQLite is synchronous, so a handler that called the store inline parked a
@@ -1124,6 +1451,448 @@ mod tests {
                 .expect("bank");
         }
         MemoryService::new(s)
+    }
+
+    // ── the memory read routes ──────────────────────────────────────────────
+    //
+    // These drive the handlers directly rather than through a live server: the
+    // router is wired in `main.rs`, which this change does not own, and a handler
+    // called with the same `State`/`Path`/`Query` values a real request produces
+    // exercises the same code. The one thing this cannot prove is that the route
+    // is registered at all, which is a one-line merge in the binary.
+
+    /// Split a response into its headers and raw body bytes.
+    async fn split(res: Response) -> (axum::http::HeaderMap, Vec<u8>) {
+        let (parts, body) = res.into_parts();
+        let bytes = axum::body::to_bytes(body, usize::MAX).await.expect("body");
+        (parts.headers, bytes.to_vec())
+    }
+
+    /// A response body as text.
+    async fn text(res: Response) -> String {
+        let (_, body) = split(res).await;
+        String::from_utf8(body).expect("a utf-8 body")
+    }
+
+    /// `GET /banks/:bank/memories` with an explicit query.
+    async fn call_list(
+        svc: &Arc<MemoryService<SqliteStore>>,
+        bank: &str,
+        q: MemoriesQuery,
+    ) -> Response {
+        list_memories(
+            State(Arc::clone(svc)),
+            Path(bank.to_string()),
+            Query(q),
+        )
+        .await
+        .expect("a valid bank lists")
+    }
+
+    /// `GET /banks/:bank/memories/:mid` with an explicit query.
+    async fn call_get(
+        svc: &Arc<MemoryService<SqliteStore>>,
+        bank: &str,
+        mid: &str,
+        q: FormatQuery,
+    ) -> Result<Response, (StatusCode, String)> {
+        get_memory(
+            State(Arc::clone(svc)),
+            Path((bank.to_string(), mid.to_string())),
+            Query(q),
+        )
+        .await
+    }
+
+    /// The list route's pre-change row builder, kept exactly as `main.rs` had it.
+    ///
+    /// Deliberately a second implementation: a byte-identity test that called the
+    /// helper under test would compare a value with itself and pass whatever the
+    /// helper did.
+    fn legacy_memory_json(m: &Memory) -> serde_json::Value {
+        let mut v = serde_json::json!({
+            "id": m.id,
+            "content": m.content,
+            "created_at": m.created_at
+        });
+        if let Some(ctx) = &m.context {
+            v["context"] = serde_json::json!(ctx);
+        }
+        v
+    }
+
+    /// A bank with one short row, one 9,000-character row, and one context row —
+    /// the shapes that make truncation, the total count and the TOON form each do
+    /// something other than pass through.
+    fn wide_bank() -> Arc<MemoryService<SqliteStore>> {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        svc.retain("t", "auth uses jose", None).expect("retain");
+        svc.retain("t", &"deploy key rotates. ".repeat(450), None)
+            .expect("retain long");
+        svc.retain_doc(
+            "t",
+            "hooks retain the transcript",
+            Some("saw the prompt".into()),
+            &[],
+            None,
+            UpdateMode::Replace,
+        )
+        .expect("retain with context");
+        svc
+    }
+
+    /// The long row's id, which the truncation marker has to name.
+    fn long_id(svc: &MemoryService<SqliteStore>) -> String {
+        svc.list_memories("t", 50, 0)
+            .expect("list")
+            .into_iter()
+            .find(|m| m.content.chars().count() == 9_000)
+            .expect("the 9000-character row")
+            .id
+    }
+
+    #[tokio::test]
+    async fn the_default_list_body_should_be_byte_identical_to_the_pre_change_shape() {
+        let svc = wide_bank();
+        let rows = svc.list_memories("t", DEFAULT_PAGE, 0).expect("rows");
+
+        // The response the route served before this change, rebuilt here.
+        let legacy: Vec<serde_json::Value> = rows.iter().map(legacy_memory_json).collect();
+        let (want_headers, want_body) = split(Json(legacy).into_response()).await;
+
+        let (got_headers, got_body) = split(call_list(&svc, "t", MemoriesQuery::default()).await).await;
+
+        assert_eq!(got_body, want_body, "the default body bytes moved");
+        // Every header the old response carried is still there, unchanged, and
+        // the only addition is the count.
+        for (name, value) in &want_headers {
+            assert_eq!(got_headers.get(name), Some(value), "{name} changed");
+        }
+        let added: Vec<&str> = got_headers
+            .keys()
+            .filter(|n| !want_headers.contains_key(*n))
+            .map(axum::http::HeaderName::as_str)
+            .collect();
+        assert_eq!(added, vec!["x-total-count"], "unexpected new headers");
+    }
+
+    #[tokio::test]
+    async fn format_json_should_be_byte_identical_to_no_format_at_all() {
+        let svc = wide_bank();
+        let (default_headers, default_body) =
+            split(call_list(&svc, "t", MemoriesQuery::default()).await).await;
+        let (json_headers, json_body) = split(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { format: Some(OutputFormat::Json), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(default_body, json_body);
+        assert_eq!(default_headers, json_headers);
+    }
+
+    #[tokio::test]
+    async fn the_total_count_header_should_name_the_whole_bank_not_the_page() {
+        let svc = wide_bank();
+        let (headers, _) = split(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { limit: Some(1), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(headers.get("x-total-count").expect("count"), "3");
+    }
+
+    #[tokio::test]
+    async fn an_untruncated_response_should_carry_no_truncation_header() {
+        let svc = wide_bank();
+        let (headers, body) = split(call_list(&svc, "t", MemoriesQuery::default()).await).await;
+        assert!(headers.get("x-truncated").is_none(), "{headers:?}");
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
+        assert_eq!(rows.len(), 3);
+        assert!(rows.iter().all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")));
+    }
+
+    #[tokio::test]
+    async fn truncate_should_cap_content_and_name_the_full_form() {
+        let svc = wide_bank();
+        let id = long_id(&svc);
+        let (headers, body) = split(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { truncate: Some(40), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
+        let long = rows
+            .iter()
+            .find(|r| r["content"].as_str().unwrap_or("").contains("truncated from"))
+            .expect("the truncated row")
+            .clone();
+        let content = long["content"].as_str().expect("content");
+
+        // The cap applies to the memory's own characters; the marker is added
+        // after them, so a caller can still find where the memory stopped.
+        assert!(content.starts_with(&"deploy key rotates. ".repeat(2)[..40]), "{content}");
+        assert!(content.contains("truncated from 9000 chars"), "{content}");
+        assert!(
+            content.contains(&format!("full: GET /banks/t/memories/{id}")),
+            "the escape hatch must name this row's own full form: {content}"
+        );
+        assert_eq!(headers.get("x-truncated").expect("count"), "1");
+        assert_eq!(headers.get("x-total-count").expect("count"), "3");
+    }
+
+    #[tokio::test]
+    async fn truncate_should_leave_a_row_that_fits_untouched() {
+        let svc = wide_bank();
+        let (_, body) = split(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { truncate: Some(9_000), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
+        assert!(
+            rows.iter().all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")),
+            "a cap the whole page fits under must cut nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn truncate_should_count_characters_and_not_bytes() {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        // Every character here is two bytes, so a byte cap would land mid-character.
+        let content = "é".repeat(100);
+        svc.retain("t", &content, None).expect("retain");
+        let (_, body) = split(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { truncate: Some(10), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
+        let served = rows[0]["content"].as_str().expect("content");
+        assert!(served.starts_with(&"é".repeat(10)), "{served}");
+        assert!(served.contains("truncated from 100 chars"), "{served}");
+    }
+
+    #[tokio::test]
+    async fn the_empty_list_should_stay_a_bare_array_by_default() {
+        let svc = Arc::new(svc_with_banks(&["empty"]));
+        let (headers, body) = split(call_list(&svc, "empty", MemoriesQuery::default()).await).await;
+        assert_eq!(body, b"[]");
+        assert_eq!(headers.get("x-total-count").expect("count"), "0");
+    }
+
+    #[tokio::test]
+    async fn a_toon_list_should_be_tabular_and_carry_the_total() {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        svc.retain("t", "auth uses jose", None).expect("retain");
+        svc.retain("t", "the deploy key rotates on the first", None)
+            .expect("retain");
+        let res = call_list(
+            &svc,
+            "t",
+            MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+        )
+        .await;
+        let headers = {
+            let (h, _) = split(res).await;
+            h
+        };
+        assert_eq!(
+            headers.get(CONTENT_TYPE).expect("content-type"),
+            TOON_CONTENT_TYPE
+        );
+        let out = text(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[0], "total: 2");
+        assert_eq!(lines[1], "memories[2]{id,created_at,content}:");
+        // The two rows, each declaring its own length in the header above.
+        assert!(lines[2].starts_with("  "), "{out}");
+        assert!(lines[2].contains(",auth uses jose"), "{out}");
+        assert!(!out.contains("truncated"), "{out}");
+        assert!(!out.ends_with('\n'), "§12: no trailing newline");
+    }
+
+    #[tokio::test]
+    async fn an_empty_toon_list_should_state_the_zero_and_the_success() {
+        let svc = Arc::new(svc_with_banks(&["empty"]));
+        let out = text(
+            call_list(
+                &svc,
+                "empty",
+                MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        // §9.1's `name: []` on its own, under an explicit count: the array form
+        // says the collection is empty and the count says there is nothing hidden
+        // behind a page either.
+        assert_eq!(out, "total: 0\nmemories: []");
+    }
+
+    #[tokio::test]
+    async fn a_toon_page_mixing_context_rows_should_fall_back_to_list_form() {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        svc.retain("t", "plain row", None).expect("retain");
+        svc.retain_doc("t", "row with context", Some("saw the prompt".into()), &[], None, UpdateMode::Replace)
+            .expect("retain with context");
+        let out = text(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+            )
+            .await,
+        )
+        .await;
+        // §9.3 requires one key set across the whole array, so this page is not a
+        // table and must not pretend to be one.
+        assert!(out.contains("memories[2]:"), "{out}");
+        assert!(!out.contains('{'), "a non-uniform page takes the list form: {out}");
+        assert!(out.contains("  - id: "), "{out}");
+        assert!(out.contains("    context: saw the prompt"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_toon_list_should_carry_its_truncation_notice_in_band() {
+        let svc = wide_bank();
+        let out = text(
+            call_list(
+                &svc,
+                "t",
+                MemoriesQuery {
+                    truncate: Some(40),
+                    format: Some(OutputFormat::Toon),
+                    ..Default::default()
+                },
+            )
+            .await,
+        )
+        .await;
+        // No headers to fall back on, so both facts are in the body.
+        assert!(out.contains("total: 3"), "{out}");
+        assert!(out.contains("content_truncated: 1"), "{out}");
+        assert!(out.contains("truncated from 9000 chars"), "{out}");
+        assert!(out.contains("full: GET /banks/t/memories/"), "{out}");
+    }
+
+    #[test]
+    fn an_unknown_format_should_be_refused_rather_than_served_as_json() {
+        // The closed enum is what makes `?format=xml` a 400 from the query
+        // extractor instead of a silent JSON body: no new status, no new message.
+        assert!(serde_json::from_str::<OutputFormat>("\"toon\"").is_ok());
+        assert!(serde_json::from_str::<OutputFormat>("\"json\"").is_ok());
+        assert!(serde_json::from_str::<OutputFormat>("\"xml\"").is_err());
+        assert!(serde_json::from_str::<OutputFormat>("\"TOON\"").is_err());
+    }
+
+    #[tokio::test]
+    async fn the_single_memory_route_should_answer_both_formats() {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        let id = svc.retain("t", "auth uses jose", None).expect("retain");
+
+        let (json_headers, json_body) =
+            split(call_get(&svc, "t", &id, FormatQuery::default()).await.expect("found")).await;
+        let json: serde_json::Value = serde_json::from_slice(&json_body).expect("object");
+        assert_eq!(json["id"], serde_json::json!(id));
+        assert_eq!(json["content"], serde_json::json!("auth uses jose"));
+        assert_eq!(json_headers.get(CONTENT_TYPE).expect("content-type"), "application/json");
+
+        let toon_res = call_get(
+            &svc,
+            "t",
+            &id,
+            FormatQuery { format: Some(OutputFormat::Toon) },
+        )
+        .await
+        .expect("found");
+        let (toon_headers, _) = split(toon_res).await;
+        assert_eq!(toon_headers.get(CONTENT_TYPE).expect("content-type"), TOON_CONTENT_TYPE);
+        let out = text(
+            call_get(&svc, "t", &id, FormatQuery { format: Some(OutputFormat::Toon) })
+                .await
+                .expect("found"),
+        )
+        .await;
+        assert!(out.starts_with(&format!("id: {id}\n")), "{out}");
+        assert!(out.contains("\ncontent: auth uses jose"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn the_single_memory_route_should_keep_its_404_for_an_unknown_id() {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        let (status, msg) = call_get(&svc, "t", "nope", FormatQuery::default())
+            .await
+            .expect_err("absent");
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(msg, "unknown memory");
+    }
+
+    #[tokio::test]
+    async fn the_single_memory_route_should_ignore_a_page_parameter_it_never_had() {
+        // It takes only `format`, so `?limit=abc` stays the ignored query
+        // parameter it has always been here rather than becoming a new 400.
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        let id = svc.retain("t", "auth uses jose", None).expect("retain");
+        let res = list_memories(
+            State(Arc::clone(&svc)),
+            Path("t".to_string()),
+            Query(MemoriesQuery { limit: Some(1), ..Default::default() }),
+        )
+        .await
+        .expect("valid bank lists");
+        assert!(!text(res).await.is_empty());
+        assert!(call_get(&svc, "t", &id, FormatQuery::default()).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn limit_and_offset_should_keep_their_established_bounds() {
+        let svc = Arc::new(svc_with_banks(&["t"]));
+        for i in 0..3 {
+            svc.retain("t", &format!("row {i}"), None).expect("retain");
+        }
+        let rows = |q: MemoriesQuery| async {
+            let body = text(call_list(&svc, "t", q).await).await;
+            body.matches("\"content\"").count()
+        };
+        // Default page size.
+        assert_eq!(rows(MemoriesQuery::default()).await, 3);
+        // The cap, and the offset that walks the bank with it.
+        assert_eq!(rows(MemoriesQuery { limit: Some(1), ..Default::default() }).await, 1);
+        assert_eq!(rows(MemoriesQuery { limit: Some(1), offset: Some(2), ..Default::default() }).await, 1);
+        assert_eq!(rows(MemoriesQuery { offset: Some(99), ..Default::default() }).await, 0);
+        assert_eq!(
+            page_bounds(Some(usize::MAX), None).0,
+            MAX_PAGE,
+            "an absurd limit is capped, not honoured"
+        );
     }
 
     // `format: "full"` is the citing shape, so the number in it has to be the

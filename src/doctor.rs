@@ -510,7 +510,7 @@ mod tests {
             "memory-wire doctor\n  \
 endpoint   http://127.0.0.1:8888\n  \
 bank       demo\n  \
-store      /tmp/memory.db  (2.0 KB, ok)\n  \
+store      /tmp/memory.db  (2.0 KiB, ok)\n  \
 banks      3\n  \
 memories   42\n  \
 server     up"

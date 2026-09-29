@@ -348,9 +348,14 @@ pub fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
     }
 }
 
-/// Human-readable byte count (`0 B`, `1.2 KB`, `3.4 MB`).
+/// Human-readable byte count (`0 B`, `1.2 KiB`, `3.4 MiB`, `1.1 GiB`).
+///
+/// KiB/MiB/GiB, not KB/MB/GB: the divisor is 1024, and a 2.9 MiB store labelled
+/// `2.9 MB` reads 4.9% smaller than it is. Every other size claim in this
+/// project is stated in MiB, so the same word has to mean the same thing in a
+/// machine-readable field.
 pub fn human_bytes(n: u64) -> String {
-    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
     let mut v = n as f64;
     let mut u = 0;
     while v >= 1024.0 && u < UNITS.len() - 1 {
@@ -399,8 +404,8 @@ mod tests {
     fn human_bytes_should_scale_units() {
         assert_eq!(human_bytes(0), "0 B");
         assert_eq!(human_bytes(999), "999 B");
-        assert_eq!(human_bytes(1024), "1.0 KB");
-        assert_eq!(human_bytes(3 * 1024 * 1024), "3.0 MB");
+        assert_eq!(human_bytes(1024), "1.0 KiB");
+        assert_eq!(human_bytes(3 * 1024 * 1024), "3.0 MiB");
     }
 
     /// A throwaway directory, removed when the returned guard drops.

@@ -1,3 +1,4 @@
+mod cli_home;
 mod connect;
 mod connect_codex;
 mod connect_plugin;
@@ -17,7 +18,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -26,8 +27,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tracing_subscriber::EnvFilter;
 
-use memory_wire::api::{bank_config_routes, blocking, http_error, parse_update_mode, ApiError, MemoryService};
-use memory_wire::memory::{Bank, Memory};
+use memory_wire::api::{
+    bank_config_routes, blocking, http_error, memories_routes, parse_update_mode, ApiError,
+    MemoryService,
+};
+use memory_wire::memory::Bank;
 use memory_wire::store::{default_db_path, BankStats, SqliteStore, Store};
 
 /// The compiled binary, which cargo builds before running any unit test.
@@ -43,8 +47,36 @@ pub(crate) fn bin() -> PathBuf {
     p.join("memory-wire")
 }
 
+// The route map, and the reason `--help` carries it.
+//
+// It used to print on a bare invocation, which is what this text replaced: an
+// agent that ran `memory-wire` to find out what existed learned nothing about
+// the state of anything and still had to make a second call. The map is not
+// deleted, it moves here — `--help` is where a caller goes when it wants the
+// manual rather than the state, and `-h` stays the concise form.
+//
+// Written inline in the attribute rather than through a `const` because a
+// derive attribute is not a format string, and `{SURFACE}` in one of those is
+// six literal characters rather than the block it looks like.
 #[derive(Parser)]
-#[command(name = "memory-wire", version, about = "memory-wire: Rust agent-memory infrastructure (Hindsight x agentmemory)")]
+#[command(
+    name = "memory-wire",
+    version,
+    about = "memory-wire: Rust agent-memory infrastructure (Hindsight x agentmemory)",
+    long_about = "memory-wire: Rust agent-memory infrastructure (Hindsight x agentmemory)\n\n\
+                  Bare `memory-wire` prints live state — bank, store, server, newest memory,\n\
+                  tags — not this list. `info` prints the audit and plan pointers.\n\n\
+                  HTTP  POST /banks/:id/{retain,recall,reflect} · tags on retain and recall\n\
+                  \x20     GET|PUT /banks/:id/config · GET .../memories[/:mid] · DELETE .../memories/:mid\n\
+                  \x20     GET /banks/:id/stats · GET /health\n\
+                  MCP   `memory-wire mcp` on stdio — retain / recall / reflect / bank config\n\
+                  \x20     `memory-wire serve` also answers MCP at /mcp and /mcp/{bank}\n\
+                  CLI   daemon start|stop|status — run the server in the background\n\
+                  \x20     connect (hooks + MCP entries) · hook <lifecycle> · doctor [--strict]\n\
+                  \x20     sweep [--dry-run] [--db PATH] — forget expired memories (per-bank, opt-in)\n\
+                  \x20     seed [--commits N] [--transcripts] — one-shot bank seeding\n\n\
+                  Audit: docs/AUDIT.md | Plan: PLAN.md"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -52,7 +84,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Print audit + plan pointers (default).
+    /// Print the audit + plan pointers. The bare binary prints live state.
     Info,
     /// Start the HTTP server (retain/recall/reflect + health).
     Serve {
@@ -174,19 +206,27 @@ async fn main() -> anyhow::Result<()> {
         // line there is a framing error the client reports as a broken server.
         .with_writer(std::io::stderr)
         .init();
-    let cli = Cli::parse();
-    match cli.cmd.unwrap_or(Cmd::Info) {
+    // `try_parse` rather than `parse`, so a rejected argument can be answered
+    // with the subcommand's own concise help instead of exiting after one line
+    // of error. The `--help` and `--version` paths land in the same place and
+    // still exit 0, and nothing here runs unless the parse already failed —
+    // `--version` is unchanged in what it does.
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => cli_home::usage_failure(&e),
+    };
+    // No subcommand is not "no information": AXI wants the most relevant live
+    // content here, so this is the home view and not a route map. `info`
+    // remains the explicit ask for the document pointers.
+    let Some(cmd) = cli.cmd else {
+        cli_home::print_home();
+        return Ok(());
+    };
+    match cmd {
         Cmd::Info => {
             println!("memory-wire v{}", env!("CARGO_PKG_VERSION"));
             println!("Audit: docs/AUDIT.md | Plan: PLAN.md");
-            println!("HTTP  POST /banks/:id/{{retain,recall,reflect}} · tags on retain and recall");
-            println!("      GET|PUT /banks/:id/config · GET .../memories[/:mid] · DELETE .../memories/:mid");
-            println!("      GET /banks/:id/stats · GET /health");
-            println!("MCP   `memory-wire mcp` on stdio — retain / recall / reflect / bank config");
-            println!("CLI   daemon start|stop|status — run the server in the background");
-            println!("      connect (hooks + MCP entries) · hook <lifecycle> · doctor [--strict]");
-            println!("      sweep [--dry-run] [--db PATH] — forget expired memories (per-bank, opt-in)");
-            println!("      seed [--commits N] [--transcripts] — one-shot bank seeding");
+            println!("Run `memory-wire` for live state, or `memory-wire --help` for the surface.");
         }
         Cmd::Serve { addr, db } => {
             serve(&addr, db).await?;
@@ -385,27 +425,11 @@ struct RecallReq {
     format: Option<String>,
 }
 
-/// `limit`/`offset` for the memory list. A value that is not a number is axum's
-/// own 400 — the same answer a bad JSON body gets.
-#[derive(Deserialize)]
-struct Page {
-    limit: Option<usize>,
-    offset: Option<usize>,
-}
-
 /// Delete response body.
 #[derive(Serialize)]
 struct DeleteRes {
     /// False when the memory was already gone.
     deleted: bool,
-}
-
-/// Ceiling on one page of memories, so one request cannot ask for the whole bank.
-const MAX_PAGE: usize = 500;
-
-/// Page size and offset for the memory list: 50/0 by default, limit capped.
-fn page_bounds(limit: Option<usize>, offset: Option<usize>) -> (usize, usize) {
-    (limit.unwrap_or(50).min(MAX_PAGE), offset.unwrap_or(0))
 }
 
 /// Start the axum server (retain/recall/reflect + bank config + lifecycle + health).
@@ -544,8 +568,8 @@ fn router(svc: Svc) -> Router {
         // The lifecycle half: read a bank's memories back, take one away, and
         // ask what is in the bank at all. `recall` is for relevance, these are
         // for custody — an agent that stored a secret needs to find and delete it.
-        .route("/banks/:id/memories", get(list_memories))
-        .route("/banks/:id/memories/:mid", get(get_memory).delete(delete_memory))
+        .merge(memories_routes::<SqliteStore>())
+        .route("/banks/:id/memories/:mid", axum::routing::delete(delete_memory))
         .route("/banks/:id/stats", get(bank_stats))
         // GET/PUT /banks/:id/config — recallMaxTokens, retainTags, and the hooks'
         // `GET .../config` preamble probe. The handlers live next to the service
@@ -630,33 +654,6 @@ async fn reflect(
     Ok(Json(answer))
 }
 
-/// `GET /banks/:id/memories` — one page of the bank's memories.
-async fn list_memories(
-    State(svc): State<Svc>,
-    Path(bank): Path<String>,
-    Query(page): Query<Page>,
-) -> Result<Json<Vec<Value>>, HttpErr> {
-    let (limit, offset) = page_bounds(page.limit, page.offset);
-    let rows = blocking(move || svc.list_memories(&bank, limit, offset))
-        .await
-        .map_err(to_http)?;
-    Ok(Json(rows.iter().map(memory_json).collect()))
-}
-
-/// `GET /banks/:id/memories/:mid` — one memory, or 404 `unknown memory`.
-async fn get_memory(
-    State(svc): State<Svc>,
-    Path((bank, mid)): Path<(String, String)>,
-) -> Result<Json<Value>, HttpErr> {
-    let found = blocking(move || svc.get_memory(&bank, &mid))
-        .await
-        .map_err(to_http)?;
-    match found {
-        Some(m) => Ok(Json(memory_json(&m))),
-        None => Err((StatusCode::NOT_FOUND, "unknown memory".to_string())),
-    }
-}
-
 /// `DELETE /banks/:id/memories/:mid` — 200 with `deleted: false` when already gone.
 async fn delete_memory(
     State(svc): State<Svc>,
@@ -676,18 +673,6 @@ async fn bank_stats(
     Ok(Json(blocking(move || svc.bank_stats(&bank)).await.map_err(to_http)?))
 }
 
-/// One memory as the lifecycle routes serve it.
-///
-/// `created_at` is always present; `context` only when the memory has one, so a
-/// memory stored without capture context does not claim an empty one.
-fn memory_json(m: &Memory) -> Value {
-    let mut v = json!({ "id": m.id, "content": m.content, "created_at": m.created_at });
-    if let Some(ctx) = &m.context {
-        v["context"] = json!(ctx);
-    }
-    v
-}
-
 /// Client-facing error: an opaque status + message pair.
 type HttpErr = (StatusCode, String);
 
@@ -705,6 +690,7 @@ fn to_http(e: ApiError) -> HttpErr {
 mod tests {
     use super::*;
     use crate::http;
+    use memory_wire::memory::Memory;
     use std::time::Duration;
 
     /// The real router on an ephemeral port, over a throwaway store file.
@@ -1202,13 +1188,32 @@ mod tests {
         assert!(arm.contains("tracing::error!"), "the log must be on the 500 arm: {arm}");
     }
 
-    // The page bounds the handler applies, isolated from the route so the
-    // defaults and the cap are asserted directly.
+    // The memory-list paging bounds (default 50, cap 500) moved to
+    // `api::memories_routes`, which is where the handler now lives; its tests
+    // moved with it. Asserted here instead, against the route itself, so the
+    // default the wire actually serves stays pinned in this file too.
     #[test]
-    fn page_bounds_should_default_to_fifty_and_cap_at_five_hundred() {
-        assert_eq!(page_bounds(None, None), (50, 0));
-        assert_eq!(page_bounds(Some(10), Some(20)), (10, 20));
-        assert_eq!(page_bounds(Some(10_000), Some(20)), (MAX_PAGE, 20));
+    fn memory_list_should_default_to_fifty_and_cap_at_five_hundred() {
+        let (base, _db) = serve_scratch("page-bounds");
+        let first = get(&base, "/banks/pb/memories");
+        assert_eq!(first.status, 200, "{}", first.body);
+        let arr: Vec<Value> = serde_json::from_str(&first.body).expect("array body");
+        assert!(arr.len() <= memory_wire::api::MAX_PAGE, "{} rows", arr.len());
+        let capped = get(&base, "/banks/pb/memories?limit=10000");
+        assert_eq!(capped.status, 200, "{}", capped.body);
+        let capped: Vec<Value> = serde_json::from_str(&capped.body).expect("array body");
+        assert!(capped.len() <= memory_wire::api::MAX_PAGE, "{} rows", capped.len());
+        assert_eq!(capped.len(), arr.len(), "an empty bank is empty either way");
+        let default_body: Vec<Value> = serde_json::from_str(&first.body).expect("array body");
+        assert!(default_body.is_empty(), "a fresh bank lists nothing");
+        // The compatibility property that matters: the default body is still a
+        // bare JSON array, not an envelope. Totals ride a header, so a client
+        // written against the old shape keeps working byte for byte.
+        assert!(
+            first.body.trim_start().starts_with('['),
+            "default body is an array, got: {}",
+            &first.body[..first.body.len().min(40)]
+        );
     }
 
     /// One row of the unknown-bank matrix: operation, method, path with `{b}`,
