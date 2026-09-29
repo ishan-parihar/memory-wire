@@ -13,6 +13,9 @@
 //!   recall of the opening prompt when the host supplies one.
 //! - `prompt` — the recall results, plain text, nothing else.
 //! - `stop` — no output; retains one compacted line naming the transcript.
+//! - `pre-compact`, `session-end` — no output; retain the conversation's own
+//!   prose, read off the transcript, because both fire at the moment the words
+//!   stop being available.
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -21,7 +24,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::guidelines::curl_examples;
-use crate::{http, paths};
+use crate::{http, paths, seed};
 use memory_wire::api::REFLECT_SYSTEM_PROMPT;
 
 /// Recalled lines injected into a session; enough to orient, few enough to
@@ -43,6 +46,24 @@ const BUDGET: usize = 1200;
 /// ~6 seconds a `session-start` can spend before it must answer.
 const STDIN_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Bytes of a transcript's end that `pre-compact` / `session-end` read.
+///
+/// The read is bounded by size rather than by a clock, which is the honest
+/// shape for it: a 128 KiB tail is a sub-millisecond read from any page cache,
+/// so the wall-clock claim the module makes stays the one `paths::IO_TIMEOUT`
+/// already bounds — stdin (2s) plus one network call (2s), inside the ~6s
+/// `session-start` ceiling. A size cap is also what keeps a long session from
+/// turning the hook into a multi-megabyte read inside somebody else's turn.
+///
+/// ponytail: tail-only, 128 KiB. A turn larger than the whole window is dropped
+/// rather than half-read; raise `TAIL_BYTES` if a session ever produces one.
+const TAIL_BYTES: u64 = 128 * 1024;
+
+/// Characters of transcript prose one flush retains — the same ceiling
+/// `seed` applies to a whole transcript file, so a seeded and a flushed
+/// conversation cost the same to store.
+const FLUSH_CHARS: usize = 2000;
+
 /// Session lifecycle events a host can fire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::Subcommand)]
 pub enum Lifecycle {
@@ -52,18 +73,36 @@ pub enum Lifecycle {
     Prompt,
     /// Retain a compacted session-end line.
     Stop,
+    /// Retain the conversation's prose before compaction discards it.
+    PreCompact,
+    /// Retain the conversation's prose as the session ends.
+    SessionEnd,
 }
 
 /// Run one hook: never fails, always exits 0.
-pub fn run(lifecycle: Lifecycle) -> i32 {
+///
+/// `bank` is the `--bank` override, when the host could pass one. It wins over
+/// `MEMORY_WIRE_BANK` and over the repository the process is running in — see
+/// [`paths::resolve_bank_with`] for the full order and `docs/BANK_IDENTITY.md`
+/// for why the order is what it is.
+pub fn run(lifecycle: Lifecycle, bank: Option<&str>) -> i32 {
     let input = read_input(std::io::stdin(), STDIN_TIMEOUT);
     let endpoint = paths::endpoint();
-    let bank = paths::resolve_bank();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let bank = paths::resolve_bank_with(bank, &cwd);
     let out = match lifecycle {
         Lifecycle::SessionStart => session_start_at(&endpoint, &bank, &input),
         Lifecycle::Prompt => prompt_at(&endpoint, &bank, &input),
         Lifecycle::Stop => {
             stop_at(&endpoint, &bank, &input);
+            String::new()
+        }
+        Lifecycle::PreCompact => {
+            flush_at(&endpoint, &bank, &input, "pre-compact");
+            String::new()
+        }
+        Lifecycle::SessionEnd => {
+            flush_at(&endpoint, &bank, &input, "session-end");
             String::new()
         }
     };
@@ -134,6 +173,15 @@ pub fn prompt_at(endpoint: &str, bank: &str, input: &Value) -> String {
 }
 
 /// `stop`: retain one compacted line about the finished session.
+///
+/// This retains a **pointer**: the transcript's path and its size on disk. It
+/// is the shape `stop` has always had, kept here byte-for-byte because the
+/// behaviour was not in scope — but it is a pointer to a file outside this
+/// database, so it is worth flagging plainly. Nothing in this crate can read
+/// that row back into content: `recall` will return the string
+/// "session ended; transcript /home/…/abc.jsonl (1.2 MB)" and no way to reach
+/// what the session said. `pre-compact` and `session-end` below deliberately
+/// do not copy it. See `docs/INTEGRATION_GAPS.md` §G2.
 pub fn stop_at(endpoint: &str, bank: &str, input: &Value) {
     let transcript = field(input, &["transcript_path", "transcriptPath"]);
     if transcript.is_empty() {
@@ -152,7 +200,88 @@ pub fn stop_at(endpoint: &str, bank: &str, input: &Value) {
             paths::human_bytes(size)
         )
     };
-    let body = json!({ "content": line, "context": "hook:stop" }).to_string();
+    retain(endpoint, bank, &line, "hook:stop");
+}
+
+/// `pre-compact` and `session-end`: the two moments a session's words stop being
+/// available, so the words themselves are what gets stored.
+///
+/// The host's transcript *is* readable here — it is a file on the same machine,
+/// owned by the same user, whose path the payload hands over — so unlike `stop`
+/// this reads it and retains the prose. That is the whole difference: a
+/// conversation that survives a compaction is worth far more than a filename
+/// that points at it.
+///
+/// The payload shape is read per event rather than assumed. `PreCompact` carries
+/// `trigger` (`manual` or `auto`) and `SessionEnd` carries `reason` (`clear`,
+/// `logout`, `prompt_input_exit`, `other`); both carry `session_id` and
+/// `transcript_path`. A payload missing any of them, or missing all of them,
+/// collapses to a no-op the same way malformed stdin does.
+pub fn flush_at(endpoint: &str, bank: &str, input: &Value, event: &str) {
+    let transcript = field(input, &["transcript_path", "transcriptPath"]);
+    if transcript.is_empty() {
+        return;
+    }
+    let Some(digest) = transcript_tail(&transcript) else {
+        return;
+    };
+    let mut head = event.to_string();
+    let session = field(input, &["session_id", "sessionId"]);
+    if !session.is_empty() {
+        // The session id is the half of the path that is actually a memory:
+        // Claude Code names the transcript after it, so a later `recall` of
+        // this row can still be traced back to the file it came from.
+        head.push_str(&format!(" session {session}"));
+    }
+    let why = field(input, &["trigger", "reason"]);
+    if !why.is_empty() {
+        head.push_str(&format!(" ({why})"));
+    }
+    retain(endpoint, bank, &format!("{head}\n{digest}"), &format!("hook:{event}"));
+}
+
+/// The tail of a transcript's prose, or `None` when it carries none.
+///
+/// Only the file's last [`TAIL_BYTES`] are read, and only the tail of the prose
+/// those hold is kept: the last turns are the ones compaction is about to
+/// discard. The prose extraction is `seed`'s transcript parser, reused rather
+/// than reimplemented, so a seeded conversation and a flushed one are split the
+/// same way.
+fn transcript_tail(path: &str) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    if len == 0 {
+        return None;
+    }
+    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES))).ok()?;
+    let mut buf = Vec::new();
+    file.take(TAIL_BYTES).read_to_end(&mut buf).ok()?;
+
+    let window = String::from_utf8_lossy(&buf);
+    let mut text = String::new();
+    for line in window.lines() {
+        // The window usually starts mid-record, so its first fragment is not a
+        // whole JSONL line. It fails to parse and drops out here, which is the
+        // same thing `seed` does with a line that is not JSON.
+        if let Some(part) = seed::turn_text(line) {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(&part);
+        }
+    }
+    let content: String = text
+        .chars()
+        .skip(text.chars().count().saturating_sub(FLUSH_CHARS))
+        .collect();
+    (!content.trim().is_empty()).then_some(content)
+}
+
+/// One best-effort retain. Every failure is silence, by the module's contract.
+fn retain(endpoint: &str, bank: &str, content: &str, context: &str) {
+    let body = json!({ "content": content, "context": context }).to_string();
     if let Ok(resp) = http::post_json(
         &format!("{endpoint}/banks/{bank}/retain"),
         &body,
@@ -412,6 +541,94 @@ mod tests {
         stop_at("http://127.0.0.1:1", "demo", &json!({ "session_id": "s-7" }));
     }
 
+    /// A host transcript in Claude Code's JSONL shape: a bare-string turn, a
+    /// block-list turn, a line that is not JSON, and a non-turn record. Its
+    /// path is returned because the payload hands the hook a path, not a file.
+    fn transcript(tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!("mw-hook-{tag}-{}", std::process::id()));
+        std::fs::write(
+            &path,
+            [
+                r#"{"type":"user","message":{"role":"user","content":"how does auth work"},"sessionId":"s-7"}"#,
+                r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"auth uses jose"}]}}"#,
+                r#"not json at all"#,
+                r#"{"type":"summary","summary":"ignored"}"#,
+            ]
+            .join("\n"),
+        )
+        .expect("write transcript");
+        path.to_string_lossy().into_owned()
+    }
+
+    /// The four cases a never-fail lifecycle has to survive, run through the
+    /// compiled binary with a real transcript on disk. `qualifier` is the
+    /// payload field that distinguishes the event: `PreCompact` sends
+    /// `trigger`, `SessionEnd` sends `reason`.
+    fn flush_should_never_fail(lifecycle: &str, qualifier: &str) {
+        let path = transcript(lifecycle);
+        let payload = format!(
+            r#"{{"session_id":"s-7","transcript_path":"{path}",{qualifier}}}"#
+        );
+
+        // Well-formed: the conversation's own prose is what lands, and the path
+        // to it does not — the distinction `stop` gets wrong.
+        let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
+        let got = run_hook(lifecycle, Some(&payload), &ep, "off");
+        assert_eq!(got.code, Some(0), "{lifecycle}: {}", got.stderr);
+        assert_eq!(got.stdout, "", "`{lifecycle}` speaks only to the server");
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 1, "{lifecycle}: {seen:?}");
+        assert!(seen[0].starts_with("/banks/"), "{lifecycle}: {:?}", seen[0]);
+        assert!(
+            seen[0].contains("auth uses jose"),
+            "{lifecycle} must persist the conversation, not a pointer: {:?}",
+            seen[0]
+        );
+        assert!(
+            !seen[0].contains(".jsonl"),
+            "{lifecycle} must not persist a path it cannot read back: {:?}",
+            seen[0]
+        );
+        assert!(seen[0].contains("hook:"), "{lifecycle}: {:?}", seen[0]);
+
+        // Missing payload fields: no transcript, so no work and no request.
+        let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
+        for empty in [r#"{}"#, r#"{"session_id":"s-7"}"#, r#"{"transcript_path":""}"#] {
+            let got = run_hook(lifecycle, Some(empty), &ep, "off");
+            assert_eq!(got.code, Some(0), "{lifecycle} {empty}: {}", got.stderr);
+            assert_eq!(got.stdout, "", "{lifecycle} {empty}");
+        }
+        assert_eq!(rx.try_iter().count(), 0, "{lifecycle}: nothing to retain");
+
+        // Malformed stdin: the same collapse, by the path `read_input` already has.
+        let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
+        let broken = ["not json", "", r##"{"transcript_path":"#}"##];
+        for empty in broken {
+            let got = run_hook(lifecycle, Some(empty), &ep, "off");
+            assert_eq!(got.code, Some(0), "{lifecycle} {empty:?}: {}", got.stderr);
+            assert_eq!(got.stdout, "", "{lifecycle} {empty:?}");
+        }
+        assert_eq!(rx.try_iter().count(), 0, "{lifecycle}: no panic, no retain");
+
+        // A server that is down: exit 0, no stdout, and no budget spent.
+        let got = run_hook(lifecycle, Some(&payload), "http://127.0.0.1:1", "off");
+        assert_eq!(got.code, Some(0), "{lifecycle}: {}", got.stderr);
+        assert_eq!(got.stdout, "", "{lifecycle}: an unreachable server says nothing");
+        assert!(got.elapsed < Duration::from_secs(5), "{lifecycle}: {:?}", got.elapsed);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn pre_compact_should_retain_the_conversation_before_it_is_discarded() {
+        flush_should_never_fail("pre-compact", r#""trigger":"auto""#);
+    }
+
+    #[test]
+    fn session_end_should_retain_the_conversation_when_the_session_ends() {
+        flush_should_never_fail("session-end", r#""reason":"clear""#);
+    }
+
     #[test]
     fn unreachable_server_should_degrade_to_silence_not_a_crash() {
         let ep = "http://127.0.0.1:1";
@@ -470,7 +687,7 @@ mod tests {
     // H4.3 — the compiled binary, real argv, a real pipe on stdin: the path a
     // host actually takes. Nothing here calls `session_start_at` directly, so
     // argument parsing, stdin parsing, output, and the exit code are all in
-    // scope. The three names are the three `Lifecycle` variants.
+    // scope. `pre-compact` and `session-end` are covered by their own tests.
     #[test]
     fn the_hook_binary_should_answer_every_lifecycle_from_a_piped_stdin() {
         // session-start: the preamble, then the recall of the opening prompt.
@@ -615,7 +832,7 @@ mod tests {
             ("/retain", r#"{"id":"m1"}"#),
         ]);
         let payload = r#"{"prompt":"auth","session_id":"s-1","transcript_path":"/tmp/nope.jsonl"}"#;
-        for lifecycle in ["session-start", "prompt", "stop"] {
+        for lifecycle in ["session-start", "prompt", "stop", "pre-compact", "session-end"] {
             let quiet = run_hook(lifecycle, Some(payload), &ep, "off");
             assert_eq!(quiet.code, Some(0), "{lifecycle}: {}", quiet.stderr);
             for level in ["error", "warn", "info", "debug", "trace"] {

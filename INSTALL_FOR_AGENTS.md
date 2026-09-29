@@ -319,23 +319,37 @@ Options:
 ```
 
 `connect claude-code` on a machine with no `~/.claude/settings.json` prints
-`claude-code  wired         SessionStart, UserPromptSubmit, Stop` and exits 0;
-run it again and it prints `claude-code  already-wired -`; `--uninstall` prunes
-exactly those entries (`claude-code  unwired       SessionStart (pruned),
-UserPromptSubmit (pruned), Stop (pruned)  (backup: …)`). It never touches a hook
+`claude-code  wired         SessionStart, UserPromptSubmit, Stop, PreCompact,
+SessionEnd` and exits 0; run it again and it prints `claude-code  already-wired
+-`; `--uninstall` prunes exactly those entries (`claude-code  unwired
+SessionStart (pruned), UserPromptSubmit (pruned), Stop (pruned), PreCompact
+(pruned), SessionEnd (pruned)  (backup: …)`). It never touches a hook
 it did not write: where the host already has a `SessionStart` value that is not a
-hook list, it wires the other two and reports
+hook list, it wires the other four and reports
 `| left alone: SessionStart (existing value is not a hook list)`; a
 `settings.json` that is not valid JSON is refused untouched with
 `claude-code  FAILED        <path>: malformed JSON (…); left untouched` and
 exit 1. `connect` with no host argument wires all five it detects
 (claude-code, codex, copilot-cli, cursor, opencode) — cursor and opencode get an
-MCP entry, the other three the three lifecycle hooks. `connect --uninstall
+MCP entry, the other three the five lifecycle hooks. `connect --uninstall
 --guidelines` is refused (`memory-wire: cannot combine --uninstall with
 --guidelines`, exit 1) and an unknown host is a clap error, exit 2.
 
-`hook --help` lists `session-start`, `prompt`, `stop`. `doctor` prints endpoint,
+`hook --help` lists `session-start`, `prompt`, `stop`, `pre-compact`,
+`session-end`. `doctor` prints endpoint,
 bank, store size and health, row counts, and server state.
+
+The five lifecycles split three ways by what they do. `session-start` and
+`prompt` print to the host's stdout — a bank preamble, and recall lines.
+`stop`, `pre-compact`, and `session-end` print **nothing**; their value is
+entirely in what they retain. `pre-compact` and `session-end` are the two
+moments a conversation stops being available — `PreCompact` fires immediately
+before Claude Code discards it to context compaction — so both read the
+transcript at `transcript_path` and retain the conversation's own prose, capped
+at 2,000 characters, rather than a pointer to the file. The header line carries
+the session id and the event's qualifier (`trigger` for `PreCompact`, `reason`
+for `SessionEnd`); a payload missing any field, or unreadable stdin, collapses to
+a no-op and still exits 0.
 
 `doctor` takes `--db` so it inspects the same file your server opened — pass the
 same value you gave `serve --db`, or the report describes a store the server
@@ -371,14 +385,27 @@ the port that answers 200 is reported `server down: unexpected health response`,
 which is what happened on this machine's 8888 during the sweep.
 
 The hooks read the bank's framing from the `GET /banks/:id/config` route, for
-**the bank the hook resolves from its own working directory** — the git
-worktree's top-level directory name, else `memory-wire`. That is usually not the
-`demo` bank of step 6, and `MEMORY_WIRE_BANK` does not change it. Put
-`{"background": "..."}` in *that* bank's config and `hook session-start` prints
-it instead of the built-in historian framing; with no config, or a 404, it falls
-back to the framing `reflect` synthesises with. Observed both ways: with the key
-set, the preamble body is `Project P: keep the rail thin.` in place of the
-historian text.
+**the bank the hook resolves from its own working directory**. That is
+`--bank <id>` if you pass one, else `$MEMORY_WIRE_BANK`, else `owner/repo` from
+the repository's `origin` remote (read from `.git/config` — no `git` process is
+spawned), else the git worktree's top-level directory name, else `memory-wire`.
+So a checkout of `https://github.com/acme/api.git` uses bank `acme-api`, and
+two unrelated projects named `api` no longer share one namespace. That is
+usually still not the `demo` bank of step 6 — put `{"background": "..."}` in
+*that* bank's config and `hook session-start` prints it instead of the built-in
+historian framing; with no config, or a 404, it falls back to the framing
+`reflect` synthesises with. Observed both ways: with the key set, the preamble
+body is `Project P: keep the rail thin.` in place of the historian text.
+
+**If `doctor` prints a `warning` line about a legacy bank, read it before your
+next session.** A bank derived from a remote is a different id from the old
+basename-derived one, so memories written before the switch are still under the
+old name and nothing has been moved. The warning names both. To keep using the
+old bank, pass `--bank <old-name>` or set `MEMORY_WIRE_BANK=<old-name>`; the
+flag wins, and both beat any derivation. `doctor` reports this and never repairs
+it — it stays read-only, and no automatic migration exists, because guessing
+wrong moves memories between namespaces silently. Full order and the recovery
+recipe: `docs/BANK_IDENTITY.md`.
 
 #### MCP (stdio)
 

@@ -12,6 +12,20 @@ token budget, **reflect** is top-hit citation prefixed with the memory id (not L
 isolated namespaces — `demo` and `other` cannot see each other — so use one bank per project or client
 and stick to the name.
 
+**Which bank the hooks pick, and how to change it.** A hook run with no arguments resolves its bank in
+this order, first hit wins: `--bank <id>`, then `$MEMORY_WIRE_BANK`, then `owner/repo` from the
+repository's `origin` remote (read from `.git/config`, no `git` process spawned — a checkout of
+`https://github.com/acme/api.git` uses bank `acme-api`, whether or not the directory is called `api`),
+then the git worktree's top-level directory name, then the literal `memory-wire`. A repo with no remote,
+or a remote naming no `owner/repo`, falls back to the directory name.
+
+**If you are answering "where did my memories go":** a remote-derived bank id differs from the old
+directory-name one, so memories written before the switch are still under the old name and nothing was
+moved. `memory-wire doctor` prints a `warning` line naming both when it sees this. To read the old
+ones, either pass `--bank <old-name>` to the hook or set `MEMORY_WIRE_BANK=<old-name>`, or just address
+that bank directly over HTTP (`GET /banks/<old-name>/memories`). No automatic migration exists and
+none is planned — a wrong guess moves memories between namespaces silently. See `docs/BANK_IDENTITY.md`.
+
 ## Quick start
 
 ```bash
@@ -64,7 +78,8 @@ Two keys change behavior. `recallMaxTokens` is the bank's default recall budget 
 bank, after the request's own tags, so a bank-wide default can never displace a tag you named. Tags also
 work with no config at all: `retain` accepts `{"content","tags"}` and `recall` accepts `{"query","tags"}`
 to restrict the search to memories carrying **any** of them (capped at 20, head kept).
-`memory-wire connect` installs three lifecycle hooks (`SessionStart`, `UserPromptSubmit`, `Stop`) into
+`memory-wire connect` installs five lifecycle hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `PreCompact`,
+`SessionEnd`) into
 every host it detects — claude-code, codex, copilot-cli, cursor, opencode. Idempotent, and it never
 rewrites a hook it did not write; `--uninstall` prunes only its own entries and is refused alongside
 `--guidelines`. `memory-wire doctor` is a read-only health screen (`--strict` exits nonzero if the server

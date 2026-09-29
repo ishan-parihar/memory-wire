@@ -357,7 +357,10 @@ fn seed_from_transcript(path: &Path) -> Option<Seed> {
 }
 
 /// The prose one JSONL line carries, or `None` when it carries none.
-fn turn_text(line: &str) -> Option<String> {
+///
+/// Shared with the `pre-compact` / `session-end` hooks, which read the same
+/// host transcripts at the moment a session is compacted away.
+pub(crate) fn turn_text(line: &str) -> Option<String> {
     let value: Value = serde_json::from_str(line).ok()?;
     let role = value
         .get("type")

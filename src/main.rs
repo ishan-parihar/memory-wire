@@ -74,6 +74,16 @@ enum Cmd {
     Hook {
         #[command(subcommand)]
         lifecycle: hooks::Lifecycle,
+        /// Bank to use, overriding the resolved one. Mostly for hosts that
+        /// cannot pass an environment variable to the hook they launch.
+        ///
+        /// `global` so it is accepted on either side of the lifecycle name —
+        /// `hook --bank x prompt` and `hook prompt --bank x` both work. A
+        /// non-global arg on a command that only dispatches to subcommands is
+        /// accepted *before* the name and rejected after it, which is a trap
+        /// worth not shipping.
+        #[arg(long, global = true)]
+        bank: Option<String>,
     },
     /// Report endpoint, bank, store, and server health.
     ///
@@ -178,8 +188,8 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Cmd::Hook { lifecycle } => {
-            std::process::exit(hooks::run(lifecycle));
+        Cmd::Hook { lifecycle, bank } => {
+            std::process::exit(hooks::run(lifecycle, bank.as_deref()));
         }
         Cmd::Doctor { db, strict } => {
             // No `--db`: `doctor::run` is the original path, untouched. With one,

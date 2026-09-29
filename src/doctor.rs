@@ -66,13 +66,17 @@ pub struct Report {
     pub memories: Option<i64>,
     /// Server health.
     pub server: ServerState,
+    /// The bank a pre-0.4.0 build derived here, when it differs from `bank` and
+    /// a bank of that name exists in the store. Carries the memories a user
+    /// upgrading this build would otherwise appear to have lost.
+    pub legacy_bank: Option<String>,
 }
 
 impl Report {
     /// The screen.
     pub fn render(&self) -> String {
         let count = |v: Option<i64>| v.map_or_else(|| "-".to_string(), |n| n.to_string());
-        format!(
+        let mut out = format!(
             "memory-wire doctor\n  \
 endpoint   {}\n  \
 bank       {}\n  \
@@ -88,7 +92,23 @@ server     {}",
             count(self.banks),
             count(self.memories),
             self.server.label()
-        )
+        );
+        if let Some(legacy) = &self.legacy_bank {
+            out.push_str(&format!(
+                "\n  \
+warning    this directory now resolves to bank `{}`, but a bank `{}` already \
+exists here\n  \
+           and is where memories written before the switch were kept. Nothing \
+was moved:\n  \
+           keep using `--bank {legacy}` (or set MEMORY_WIRE_BANK={legacy}) to \
+reach them,\n  \
+           or read them back out of bank `{legacy}` and retain them into `{0}` \
+yourself.\n  \
+           See docs/BANK_IDENTITY.md.",
+                self.bank, legacy
+            ));
+        }
+        out
     }
 
     /// The reason `--strict` should exit nonzero, if any.
@@ -146,7 +166,37 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         banks,
         memories,
         server,
+        legacy_bank: legacy_bank_at(store, bank),
     }
+}
+
+/// The bank name this directory used to resolve to, when that differs from the
+/// bank it resolves to now **and** a bank of the old name exists in the store.
+///
+/// Read-only, like everything else here: it is one `SELECT` on the same
+/// read-only handle the counts use, and it answers a question rather than
+/// repairing anything. Both conditions matter. A different name with no bank
+/// behind it is not an orphaned memory, it is just a fresh project; and an old
+/// bank that happens to still be the name this directory resolves to is not a
+/// migration at all.
+fn legacy_bank_at(store: &Path, bank: &str) -> Option<String> {
+    let legacy = paths::legacy_bank_in(&std::env::current_dir().ok()?);
+    if legacy == bank || !store.exists() {
+        return None;
+    }
+    let conn = rusqlite::Connection::open_with_flags(
+        store,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .ok()?;
+    let found: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM banks WHERE id = ?1",
+            [&legacy],
+            |r| r.get(0),
+        )
+        .ok()?;
+    (found > 0).then_some(legacy)
 }
 
 /// On-disk size of the store, SQLite sidecars included.
@@ -433,7 +483,6 @@ mod tests {
 
     #[test]
     fn render_should_align_every_field() {
-
         let r = Report {
             endpoint: "http://127.0.0.1:8888".to_string(),
             bank: "demo".to_string(),
@@ -443,6 +492,7 @@ mod tests {
             banks: Some(3),
             memories: Some(42),
             server: ServerState::Up,
+            legacy_bank: None,
         };
         assert_eq!(
             r.render(),
@@ -465,5 +515,65 @@ server     up"
         let mut unreadable = only_store;
         unreadable.store_state = StoreState::Unreadable("no banks table".to_string());
         assert!(unreadable.strict_failure().unwrap().contains("unreadable"));
+    }
+
+    /// A directory whose bank is now derived from its git remote, where the
+    /// basename bank still exists: exactly the upgrade case, and the only one
+    /// worth a warning. `collect_at` is pointed at a store that holds the old
+    /// bank, and the ambient cwd is this repository — whose remote derives
+    /// `memory-wire` while its basename is also `memory-wire`, so the two
+    /// collide. A temp directory is used for the *store* and the legacy name is
+    /// checked against the real cwd, which is why this asserts on the helper
+    /// rather than trying to fake a repository.
+    #[test]
+    fn a_legacy_bank_under_a_different_name_should_warn_and_change_nothing() {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-legacy-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let store = dir.join("memory.db");
+        let legacy = paths::legacy_bank_in(&std::env::current_dir().expect("cwd"));
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        svc.store.put_bank(&bank(&legacy)).expect("bank");
+        svc.retain(&legacy, "auth uses jose", None).expect("retain");
+
+        // A different current bank, so the rename is the thing being reported.
+        let r = collect_at("http://127.0.0.1:1", "derived-name", &store);
+        assert_eq!(r.legacy_bank.as_deref(), Some(legacy.as_str()), "{r:?}");
+        let text = r.render();
+        assert!(text.contains("warning"), "{text}");
+        assert!(text.contains("derived-name"), "{text}");
+        assert!(text.contains(&format!("`{legacy}`")), "{text}");
+        assert!(text.contains("--bank"), "must name the way out: {text}");
+        assert!(text.contains("MEMORY_WIRE_BANK"), "{text}");
+
+        // Read-only: the warning is a report, not a repair. Both banks stand.
+        let after = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        assert_eq!(
+            after
+                .bank_stats("derived-name")
+                .expect("new bank")
+                .memories,
+            0,
+            "doctor must not move memories"
+        );
+        assert_eq!(after.bank_stats(&legacy).expect("legacy bank").memories, 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// No legacy bank in the store, and the resolved name unchanged: nothing to
+    /// warn about, so the screen stays a screen.
+    #[test]
+    fn no_legacy_bank_should_leave_the_screen_quiet() {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-nowarn-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let store = dir.join("memory.db");
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        svc.store.put_bank(&bank("unrelated")).expect("bank");
+
+        let r = collect_at("http://127.0.0.1:1", "derived-name", &store);
+        assert_eq!(r.legacy_bank, None, "{r:?}");
+        assert!(!r.render().contains("warning"), "{}", r.render());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

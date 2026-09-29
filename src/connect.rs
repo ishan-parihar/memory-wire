@@ -62,10 +62,16 @@ struct Event {
     lifecycle: &'static str,
 }
 
-const EVENTS: [Event; 3] = [
+const EVENTS: [Event; 5] = [
     Event { name: "SessionStart", lifecycle: "session-start" },
     Event { name: "UserPromptSubmit", lifecycle: "prompt" },
     Event { name: "Stop", lifecycle: "stop" },
+    // The two moments a session's words stop being available. `PreCompact`
+    // fires immediately before compaction discards the conversation;
+    // `SessionEnd` fires once, at the end. agentmemory registers the first and
+    // hindsight the second — see `docs/INTEGRATION_GAPS.md` §G2.
+    Event { name: "PreCompact", lifecycle: "pre-compact" },
+    Event { name: "SessionEnd", lifecycle: "session-end" },
 ];
 
 /// The JSON shape a host expects for one hook entry.
@@ -471,7 +477,7 @@ fn apply(
     }
 }
 
-/// Add or remove our three hook entries under `hooks`.
+/// Add or remove our five hook entries under `hooks`.
 fn edit_hooks(root: &mut Value, style: Style, exe: &str, uninstall: bool) -> Result<Edit, Refusal> {
     match root.get("hooks") {
         Some(v) if v.is_object() => {}
@@ -655,7 +661,7 @@ mod tests {
 
         let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
         assert!(matches!(first, Outcome::Wired { .. }), "{:?}", first);
-        assert_eq!(count_ours(&home, &rel), 3, "exactly one entry per event");
+        assert_eq!(count_ours(&home, &rel), 5, "exactly one entry per event");
         let doc = read_config(&home, &rel);
         let entries = doc["hooks"]["SessionStart"].as_array().expect("array");
         assert_eq!(entries.len(), 2, "foreign hook kept, ours added");
@@ -663,7 +669,7 @@ mod tests {
 
         let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
         assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
-        assert_eq!(count_ours(&home, &rel), 3, "re-install must not stack entries");
+        assert_eq!(count_ours(&home, &rel), 5, "re-install must not stack entries");
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -681,7 +687,7 @@ mod tests {
             panic!("{out:?}");
         };
         assert!(events.iter().any(|e| e.contains("replaced stale")), "{events:?}");
-        assert_eq!(count_ours(&home, &rel), 3);
+        assert_eq!(count_ours(&home, &rel), 5);
         assert!(std::fs::read_to_string(home.join(&rel))
             .expect("read")
             .contains("/new/dir/memory-wire"));
@@ -960,6 +966,71 @@ mod tests {
         std::fs::remove_dir_all(&home).ok();
     }
 
+    // G2 — the two events that were missing. Every hook-writing host gets all
+    // five, each in that host's own entry shape, and a second install changes
+    // nothing. One host per style: Claude and Codex share the matcher-group
+    // shape, Copilot the flat `bash` one.
+    #[test]
+    fn install_should_write_five_events_per_host_and_stay_idempotent() {
+        for host in [Host::ClaudeCode, Host::Codex, Host::CopilotCli] {
+            let home = tmp_home(&format!("five-{}", host.id()));
+            let rel = host.config_rel();
+            std::fs::create_dir_all(home.join(host.detect_rel())).expect("mkdir");
+            let data = home.join("data");
+
+            let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            assert!(matches!(first, Outcome::Wired { .. }), "{}: {first:?}", host.id());
+            let doc = read_config(&home, &rel);
+            for ev in EVENTS {
+                let slot = doc["hooks"][ev.name]
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{}: no `{}` slot in {doc}", host.id(), ev.name));
+                assert_eq!(
+                    slot.iter().filter(|v| is_ours(v)).count(),
+                    1,
+                    "{}: exactly one {} entry",
+                    host.id(),
+                    ev.name
+                );
+            }
+            // The wire name is what a host actually executes, so it is asserted,
+            // not assumed: `PreCompact` must not be a `precompact` or a
+            // `preCompact` that no host would ever fire.
+            for ev in EVENTS {
+                let cmd = doc["hooks"][ev.name].to_string();
+                assert!(
+                    cmd.contains(&format!("hook {}", ev.lifecycle)),
+                    "{}: {} must run `hook {}`",
+                    host.id(),
+                    ev.name,
+                    ev.lifecycle
+                );
+            }
+            assert_eq!(count_ours(&home, &rel), 5, "{}: five entries", host.id());
+
+            let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            assert!(matches!(second, Outcome::Already { .. }), "{}: {second:?}", host.id());
+            assert_eq!(
+                count_ours(&home, &rel),
+                5,
+                "{}: a re-install must not stack the new events",
+                host.id()
+            );
+
+            let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data);
+            assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
+            // This config held nothing but our five entries, so pruning them
+            // leaves no residue to write: the file is removed rather than
+            // emptied.
+            assert!(
+                !home.join(&rel).exists(),
+                "{}: an empty residue file must be deleted",
+                host.id()
+            );
+            std::fs::remove_dir_all(&home).ok();
+        }
+    }
+
     #[test]
     fn render_should_align_verbs() {
         let wired = Outcome::Wired {
@@ -994,7 +1065,15 @@ mod tests {
         let Outcome::Wired { events, notes, .. } = &first else {
             panic!("{first:?}");
         };
-        assert_eq!(events, &["UserPromptSubmit".to_string(), "Stop".to_string()]);
+        assert_eq!(
+            events,
+            &[
+                "UserPromptSubmit".to_string(),
+                "Stop".to_string(),
+                "PreCompact".to_string(),
+                "SessionEnd".to_string(),
+            ]
+        );
         assert_eq!(notes, &["SessionStart (existing value is not a hook list)".to_string()]);
         let after_first = std::fs::read_to_string(home.join(&rel)).expect("read");
         let backups = data.join("backups");

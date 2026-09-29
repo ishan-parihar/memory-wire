@@ -77,13 +77,21 @@ that would most improve the experience of every existing user.
 
 ## G2 — We capture nothing at the two moments worth capturing
 
-Our hook surface is `SessionStart`, `UserPromptSubmit`, `Stop`
-(`src/hooks.rs:47-55`). Both competitors reach moments we do not.
+**Status: resolved.** `PreCompact` and `SessionEnd` ship as `hook pre-compact` and
+`hook session-end` (`src/hooks.rs`, wired in the per-host list at
+`src/connect.rs:65-75`); `connect` now writes five events per host. Both read
+the transcript at `transcript_path` and retain the conversation's own prose,
+capped at 2,000 characters, because the transcript is a file this process can
+read — so the moment does not have to be reduced to a pointer. Everything below
+is the audit that motivated it and stays as the record.
+
+Our hook surface was `SessionStart`, `UserPromptSubmit`, `Stop`
+(`src/hooks.rs:47-55`). Both competitors reached moments we did not.
 
 | Moment | agentmemory | hindsight | us |
 |---|---|---|---|
-| `PreCompact` | **yes** — in the 12-event Claude Code set (`plugin/hooks/hooks.json`) | no | **no** |
-| `SessionEnd` | yes (camelCase `sessionEnd`) | **yes** — the only one of its 18 harnesses that has it (`claude-code/hooks/hooks.json:1-49`) | **no** |
+| `PreCompact` | **yes** — in the 12-event Claude Code set (`plugin/hooks/hooks.json`) | no | **yes** — `hook pre-compact` |
+| `SessionEnd` | yes (camelCase `sessionEnd`) | **yes** — the only one of its 18 harnesses that has it (`claude-code/hooks/hooks.json:1-49`) | **yes** — `hook session-end` |
 | `PostToolUse` / `PreToolUse` | yes | yes (Cursor CLI, Copilot CLI) | no |
 | `on_pre_compress` (plugin-native) | hermes plugin (`integrations/hermes/plugin.yaml:6-12`) | — | no |
 | `system_prompt_block` | hermes plugin | — | no |
@@ -99,7 +107,17 @@ once, with a known-conversation state, and is registered on this machine
 `PreToolUse`, `PostToolUse` — we use three).
 
 **Cost:** two enum variants, two match arms, two entries in the per-host event
-list. agentmemory spends 12; hindsight spends 4 on Claude Code. We spend 3.
+list. agentmemory spends 12; hindsight spends 4 on Claude Code. We spent 3, and
+now spend 5.
+
+**Still open, and it is the more interesting half of this gap.** `stop` retains
+a transcript *path* and its size on disk, not the conversation
+(`src/hooks.rs`, `stop_at`). Nothing in this crate can read that row back into
+content: `recall` returns the string "session ended; transcript /home/…/abc.jsonl
+(1.2 MB)" and no way to reach what the session said. The two new events do not
+copy that shape — they read the file, because the file is right there and
+readable — but `stop` itself was left byte-for-byte as it was, since changing it
+was out of scope. It is now the weakest of the five and the obvious next cut.
 
 ---
 
@@ -129,6 +147,22 @@ does not reach it.
 ---
 
 ## G4 — Bank isolation is name-based, and two different repos can collide
+
+**Status: resolved.** The hook bank is derived from the `origin` remote in
+`.git/config`, parsed as text — `git` is never spawned, which also removed the
+pre-existing `git rev-parse --show-toplevel` subprocess that the note below
+warns about. The order is `--bank` → `MEMORY_WIRE_BANK` → remote `owner/repo` →
+worktree basename → `memory-wire`, documented in `docs/BANK_IDENTITY.md`, with
+`doctor` warning when a legacy-named bank still holds memories. The collision
+test `same_basename_under_different_parents_should_not_share_a_bank` is the bug
+in one line and fails against the old derivation.
+
+**One caveat that does not go away:** sanitisation is lossy, so `acme/api` and
+`acme.api` both become `acme-api`. A large improvement on basename, not a
+uniqueness proof. The explicit and env steps are the escape hatches when an id
+must never collide.
+
+The audit below is the record of why it was done.
 
 This one is a correctness issue, not a feature gap.
 
@@ -239,8 +273,9 @@ Cheapest and highest-value first. Each is independently shippable.
    with the same directory name currently share a bank, and a cloned repo can
    read your memory. Reuse hindsight's approach: resolve identity from the git
    filesystem layout rather than the basename, and make opt-in explicit.
-2. **G2 — `PreCompact` and `SessionEnd` hooks.** Two enum variants and two match
-   arms; captures memory at the only two moments that are currently lost.
+2. ~~**G2 — `PreCompact` and `SessionEnd` hooks.**~~ **Done.** Both ship, and
+   they persist the conversation rather than a pointer to it. Carried forward:
+   make `stop` read the transcript too, so no retained memory is a bare path.
 3. **G1 — `memory-wire daemon {start,stop,status}`** with a pidfile. The largest
    single improvement to every existing user's experience, and the one that makes
    our never-fail hooks safe rather than merely quiet.

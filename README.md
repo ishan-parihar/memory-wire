@@ -365,7 +365,7 @@ weights survive LTO:
 | `info` | Audit + plan pointers (the default when no command is given) |
 | `serve` | Start the HTTP server — `--addr` (default `127.0.0.1:8899`), `--db`. Stops accepting and drains in-flight requests on SIGINT/SIGTERM |
 | `connect` | Wire the hooks into agent hosts — optional `<agent>`, `--uninstall`, `--guidelines` |
-| `hook` | Lifecycle hook the hosts invoke — `session-start`, `prompt`, `stop` |
+| `hook` | Lifecycle hook the hosts invoke — `session-start`, `prompt`, `stop`, `pre-compact`, `session-end` |
 | `doctor` | Endpoint, bank, store, and server health — `--db`, `--strict` |
 | `mcp` | Serve MCP over stdio — `--bank`, `--db` |
 | `sweep` | Delete memories past their bank's `ttl_days` — `--dry-run`, `--db` |
@@ -382,7 +382,7 @@ client at that port; `GET /health` on it must return exactly `ok`. There is no
 
 ## Connect, hooks, doctor
 
-`memory-wire connect` installs the three lifecycle hooks into every agent host it
+`memory-wire connect` installs the five lifecycle hooks into every agent host it
 detects (claude-code, codex, copilot-cli) and the MCP server entry into the two
 that speak it (cursor, opencode); pass a host to wire just that one, `--uninstall`
 to prune, `--guidelines` to write the rules block into this project's agent files
@@ -393,18 +393,43 @@ intact, and whenever there was a file to copy, a timestamped backup of it is kep
 under `$XDG_DATA_HOME/memory-wire/backups/` and its path is printed.)
 
 ```bash
-memory-wire connect claude-code     # -> claude-code  wired         SessionStart, UserPromptSubmit, Stop
+memory-wire connect claude-code     # -> claude-code  wired         SessionStart, UserPromptSubmit, Stop, PreCompact, SessionEnd
 memory-wire doctor --db /path/to/agents.db
 ```
 
-`hook session-start|prompt|stop` is what those host entries invoke: a bank preamble
-plus a recall, the recall lines for a submitted prompt, and one compacted retained
-line at session end. All three are best-effort by contract — a down server prints
-the local framing and exits 0, never an error in front of the model. The preamble
+`hook session-start|prompt|stop|pre-compact|session-end` is what those host
+entries invoke. The first two print: a bank preamble plus a recall, and the
+recall lines for a submitted prompt. The last three print **nothing** — their
+value is entirely in what they retain. `stop` retains one compacted line naming
+the transcript; `pre-compact` and `session-end` fire at the two moments a
+conversation stops being available (`PreCompact` runs immediately before Claude
+Code discards it to context compaction), so both read the transcript at
+`transcript_path` and retain the conversation's own prose, capped at 2,000
+characters, rather than a pointer to the file. All five are best-effort by
+contract — a down server prints the local framing and exits 0, never an error in
+front of the model. The preamble
 reads the bank's `background`/`preamble`/`system_prompt` from
 `GET /banks/:id/config` when that key exists — for the bank the hook resolves
-from its own working directory (the git worktree's top-level name, else
-`memory-wire`), which `MEMORY_WIRE_BANK` does not override.
+from its own working directory. That bank is resolved in a fixed order:
+`--bank <id>`, then `MEMORY_WIRE_BANK`, then `owner/repo` from the repository's
+`origin` remote, then the git work tree's top-level name, then `memory-wire`.
+The remote is read straight out of `.git/config` with no `git` process spawned;
+`https://github.com/acme/api.git`, `git@github.com:acme/api.git` and
+`ssh://git@host/acme/api.git` all resolve to bank `acme-api`. A repository with
+no remote, or one whose remote names no `owner/repo`, falls back to the old
+basename rule. Full order, and the `.git`-as-a-file handling for worktrees and
+submodules: [`docs/BANK_IDENTITY.md`](docs/BANK_IDENTITY.md).
+
+**Upgrading moves your bank name, and nothing migrates for you.** A remote-derived
+id is a different id from the basename that produced the same memories before,
+so an existing bank stays where it is and new sessions write to the new name.
+`doctor` warns when it sees that case — the derived name differs from the old
+one *and* a bank of the old name exists — and names both, but it stays
+read-only and moves nothing. Keep reaching the old memories with
+`memory-wire hook session-start --bank <old>` or `MEMORY_WIRE_BANK=<old>`. There
+is deliberately no automatic migration and no alias: a wrong guess moves
+memories between namespaces on the strength of a directory name, silently, and
+that is worse than a name you have to type.
 
 `doctor` is one screen: endpoint, bank, store size and health, bank/memory row
 counts, server state. `server up` means `/health` answered 2xx **and** the body
