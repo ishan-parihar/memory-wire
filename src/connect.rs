@@ -528,44 +528,103 @@ pub(crate) fn apply(
         Ok(e) => e,
         Err(why) => return Outcome::Failed(format!("{}: {why}", path.display())),
     };
-
-    // A note is not a change: re-serialising an untouched config would churn
-    // the user's file and take a pointless backup on every run.
-    if events.is_empty() {
-        if already == 0 {
-            return Outcome::Skipped(if notes.is_empty() {
-                "no writable hook slot in this config".to_string()
-            } else {
-                notes.join(", ")
-            });
+    // The JSON pass as one value, so it can be merged with the codex pass below.
+    // Its tail is unchanged from the single-file version of this function; the
+    // closure only gives those `return`s somewhere to land.
+    let mut outcome = (|| -> Outcome {
+        // A note is not a change: re-serialising an untouched config would churn
+        // the user's file and take a pointless backup on every run.
+        if events.is_empty() {
+            if already == 0 {
+                return Outcome::Skipped(if notes.is_empty() {
+                    "no writable hook slot in this config".to_string()
+                } else {
+                    notes.join(", ")
+                });
+            }
+            return Outcome::Already { notes };
         }
+
+        let ts = timestamp();
+        let backup = match backup(data_root, home, host, &ts, &rel) {
+            Ok(b) => b,
+            Err(e) => return Outcome::Failed(e),
+        };
+        // An uninstall that leaves nothing behind removes the file rather than
+        // writing `{}` into it: on a first install we created this file, so an
+        // empty object is our own residue, not the user's config. Any foreign
+        // content keeps the file alive, untouched by this branch.
+        if uninstall && root.as_object().is_some_and(|o| o.is_empty()) {
+            return match std::fs::remove_file(&path) {
+                Ok(()) => Outcome::Unwired { backup, events, notes },
+                Err(e) => Outcome::Failed(format!("{}: {e}", path.display())),
+            };
+        }
+        let mut text = serde_json::to_string_pretty(&root).unwrap_or_default();
+        text.push('\n');
+        if let Err(e) = paths::write_atomic(&path, &text) {
+            return Outcome::Failed(e);
+        }
+        if uninstall {
+            Outcome::Unwired { backup, events, notes }
+        } else {
+            Outcome::Wired { backup, events, notes }
+        }
+    })();
+
+    // Codex is the one host with a second file in a second format. Its hooks live
+    // in `hooks.json`, above, and its MCP servers in `config.toml` — a TOML
+    // document this crate has no parser for, so it is a surgical text edit in
+    // `connect_codex`. Additive rather than a replacement: a Codex session needs
+    // both the hooks and the tools, and the HTTP MCP endpoint is the only
+    // transport Codex can reach.
+    if host == Host::Codex {
+        outcome = merge(outcome, crate::connect_codex::apply(home, uninstall, data_root));
+    }
+    outcome
+}
+
+/// Two passes over two files are one report line.
+///
+/// The pass that changed something decides the verb; a pass that was refused or
+/// had nothing to do contributes its reason as a note rather than swallowing the
+/// other file's work. `Failed` wins outright, because a refused edit is a
+/// refusal the user has to see rather than a change quietly reported as done.
+fn merge(a: Outcome, b: Outcome) -> Outcome {
+    if matches!(b, Outcome::Failed(_)) {
+        return b;
+    }
+    let (a_changed, a_unwired, a_backup, a_events, a_notes) = parts(a);
+    let (b_changed, b_unwired, b_backup, b_events, b_notes) = parts(b);
+    let mut events = a_events;
+    events.extend(b_events);
+    let mut notes = a_notes;
+    notes.extend(b_notes);
+    if !a_changed && !b_changed {
         return Outcome::Already { notes };
     }
-
-    let ts = timestamp();
-    let backup = match backup(data_root, home, host, &ts, &rel) {
-        Ok(b) => b,
-        Err(e) => return Outcome::Failed(e),
-    };
-    // An uninstall that leaves nothing behind removes the file rather than
-    // writing `{}` into it: on a first install we created this file, so an
-    // empty object is our own residue, not the user's config. Any foreign
-    // content keeps the file alive, untouched by this branch.
-    if uninstall && root.as_object().is_some_and(|o| o.is_empty()) {
-        return match std::fs::remove_file(&path) {
-            Ok(()) => Outcome::Unwired { backup, events, notes },
-            Err(e) => Outcome::Failed(format!("{}: {e}", path.display())),
-        };
-    }
-    let mut text = serde_json::to_string_pretty(&root).unwrap_or_default();
-    text.push('\n');
-    if let Err(e) = paths::write_atomic(&path, &text) {
-        return Outcome::Failed(e);
-    }
-    if uninstall {
-        Outcome::Unwired { backup, events, notes }
+    // Both passes run under the same `--uninstall`, so they cannot disagree
+    // about the verb; the second clause only covers the case where the pass
+    // carrying the verb is the one that was already in place.
+    if a_unwired || (!a_changed && b_unwired) {
+        Outcome::Unwired { backup: a_backup.or(b_backup), events, notes }
     } else {
-        Outcome::Wired { backup, events, notes }
+        Outcome::Wired { backup: a_backup.or(b_backup), events, notes }
+    }
+}
+
+/// One outcome as `(changed, unwired, backup, events, notes)`.
+///
+/// A `Skipped` reason becomes a note rather than a verb: the other file's work
+/// still happened, and "left alone: no writable hook slot" says more about what
+/// the user is looking at than a bare `wired`.
+fn parts(o: Outcome) -> (bool, bool, Option<PathBuf>, Vec<String>, Vec<String>) {
+    match o {
+        Outcome::Wired { backup, events, notes } => (true, false, backup, events, notes),
+        Outcome::Unwired { backup, events, notes } => (true, true, backup, events, notes),
+        Outcome::Already { notes } => (false, false, None, Vec::new(), notes),
+        Outcome::Skipped(why) => (false, false, None, Vec::new(), vec![why]),
+        Outcome::Failed(_) => (false, false, None, Vec::new(), Vec::new()),
     }
 }
 

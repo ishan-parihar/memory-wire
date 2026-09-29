@@ -2461,3 +2461,125 @@ figure lives.
 **Not re-measured:** idle RSS. The daemon was not re-measured for the same reason, and
 the box was loaded throughout. The 10.7 MiB headline is unchanged and unverified since it
 was last measured.
+
+## 21. G5: MCP over HTTP, and what it cost
+
+Closes G5 from `docs/INTEGRATION_GAPS.md`. Gate on my own runs: **388 tests passed, 0
+failed, clippy `--all-features -D warnings` exit 0, `cargo doc` 0 warnings** — up from 360
+at §20, and **all twelve pre-existing `mcp::tests` pass unedited**, which was the
+condition I set for stdio being untouched.
+
+### 21.1 Why, given I said I would question it
+
+Codex on this machine configures MCP by `url` (`~/.codex/config.toml`,
+`[mcp_servers.browseros-neo] url = "http://127.0.0.1:9010/mcp"`). We gave Codex hooks
+only, so a Codex user had context injected and **could not call a single tool** — no
+`memory_recall`, no `memory_retain`. That is a capability gap, not a nicety, and HTTP
+MCP is the only path to closing it. Hermes also speaks `url`-based MCP.
+
+### 21.2 Zero new dependencies, which I did not expect
+
+I told the builder a new crate might be needed: giving a `StreamableHttpService`
+factory the `{bank}` path segment needs a `Service` in scope, `axum::ServiceExt`
+deliberately has no `oneshot`, and `tower` was only reachable transitively. The
+solution needs no new crate at all — rmcp injects the `http::request::Parts` into the
+handler's `RequestContext` extensions, so the bank is read from the request URI at
+call time:
+
+- `/mcp` → no path segment → identical resolution to stdio, argument then server default.
+- `/mcp/{bank}` → the URL pins the bank. A call supplying a *different* `bank` is
+  **rejected** with a tool error, not silently honoured. The reasoning: silently
+  preferring the URL would make the caller's `bank` argument a no-op that appears to
+  have worked, landing the write in a bank they did not name — the exact failure
+  `Server::call` already refuses for a blank bank.
+- A deeper path (`/mcp/a/b`) pins nothing, so an unaddressable bank name can never be
+  minted from a URL.
+
+`Server::call_scoped` is additive; `call` delegates with `None`, which is why the
+existing tests needed no edit.
+
+Two crates appeared in `Cargo.lock` as a consequence of enabling rmcp's
+`transport-streamable-http-server` feature — `tokio-stream 0.2.6` and
+`sse-stream 0.1.19`. Neither was added to `Cargo.toml` as a dependency.
+
+### 21.3 The cost, over the line I set
+
+| | before | after | delta |
+|---|---|---|---|
+| binary | 9,059,312 B (8.6 MiB) | **10,144,032 B (9.67 MiB)** | **+1,084,720 B, +12.0%** |
+| `tar.gz` download | 3,696,627 B (3.5 MiB) | **4,039,811 B (3.9 MiB)** | +343,184 B |
+| `DT_NEEDED` | 3 | **3** | unchanged |
+| shared libraries | 3 | 3 | unchanged |
+
+I set "+1 MiB is the line where I want this reported loudly." It is over, by 84 KB. The
+substance of the competitive claim is untouched — 9.7 MiB against Hindsight's
+0.8–1.0 GB is still roughly 80–100× lighter, and the shared-library count, which is
+the figure nobody can argue with, did not move. But the download a user actually pays
+went from 3.5 to 3.9 MiB and that is a real cost, not a rounding question.
+
+**The alternative, stated rather than taken silently:** this could sit behind a cargo
+feature the way `embed` does, keeping the default at 8.6 MiB. The price would be exact
+— no release-binary Codex user would get HTTP MCP, which is the entire reason the
+change exists. It stays on.
+
+### 21.4 Codex config is TOML, and `connect` did not grow a parser
+
+`~/.codex/config.toml` under `[mcp_servers.memory-wire]` with a `url` key, edited
+surgically by `src/connect_codex.rs`, following the shape `connect_plugin.rs` already
+set for YAML: we write only what we own, we never clobber a value we did not write, a
+malformed or ambiguous file is **refused and left byte-identical**, and `--uninstall`
+restores rather than deletes. No TOML crate was added.
+
+Verified live — the pre-existing `[tui]` section survived:
+
+```toml
+[tui]
+
+[mcp_servers.memory-wire]
+url = "http://127.0.0.1:8888/mcp"
+```
+
+### 21.5 A security fact that strengthens the posture, found by reading the vendor
+
+rmcp's streamable-HTTP server validates the **`Host` header** against an allowlist that
+defaults to loopback, independently of the path. So binding beyond `127.0.0.1` is not
+by itself enough to expose `/mcp` — a request arriving with a non-loopback `Host` is
+refused. That is in addition to `serve`'s existing once-on-stderr warning. Neither
+check is authentication; both are accidents of good defaults, and both are documented
+as such rather than relied on.
+
+### 21.6 What the builder reported and I am recording rather than burying
+
+**`tests/daemon.rs` is load-sensitive and is the one target in the suite that will
+flake under heavy load.** One run at loadavg 213.15 on 24 cores failed 3 of its 4 tests;
+the same binary and tree then passed 4/4 three consecutive times at load 178, and the
+full suite returned to 388/0 at load 148. The mechanism is in the test, not the code:
+those tests spawn a real detached `serve` and allow **5 seconds** for `/health`, and at
+~9× oversubscription a spawn, bind and first answer exceeds that. The tell was
+`serve.log wrote nothing` — the child never got scheduled.
+
+**It was not retuned.** Shrinking a real wall-clock assertion to make a gate green on a
+loaded box is the failure `AGENTS.md` exists to prevent, and I told the builder not to
+weaken a test. This is pre-existing, not introduced by G5. It is a genuine flake with a
+known trigger and a known fix (raise the budget, or gate on a readiness signal rather
+than a deadline) that I have not applied.
+
+Also recorded: port **8888 is held by a foreign listener** on this machine, so the live
+roundtrip ran on 8899. The builder did not kill it, correctly. The remaining link was
+closed rather than assumed: the mount is per-listener via `nest_service` so it is
+port-agnostic, and "the default is 8888" is asserted by a **pre-existing, unmodified**
+test that reads the default back out of the built clap `Command`.
+
+### 21.7 Deliberately not done
+
+- **The hermes plugin still talks REST, not MCP.** It reimplements the four tools in
+  Python against the HTTP API. HTTP MCP would let it delegate to the real server
+  instead, which is a genuine simplification — but the plugin is verified working
+  through Hermes' own loader, and switching a working integration to a new transport in
+  the same change is how you break something. It is a separate, separately verifiable
+  step.
+- **The tool count is still four.** The gap was 4 against 8, 39 and 54, and it is still
+  4. What changed is that the four are now reachable from hosts that could not reach
+  them, which was the part of G5 that was a real capability gap. Adding tools to close a
+  count is the thing `docs/INTEGRATION_GAPS.md` recommends against, and nothing here
+  changed that.

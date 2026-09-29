@@ -31,7 +31,18 @@ sha2 = "0.10"
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-rmcp = { version = "1.8", default-features = false, features = ["server", "transport-io"] }
+# `transport-streamable-http-server` is what puts MCP on the existing axum server
+# (gap G5: `/mcp` and `/mcp/{bank}`). It is a feature of this same dependency, not
+# a new one. It genuinely adds crates — `tokio-stream`, `sse-stream`,
+# `http-body-util` — so the default binary's byte count moves; the measured
+# before/after is reported with the change rather than guessed at here. The
+# transport is additive: `memory-wire mcp` on stdio is the same `Server` over a
+# different transport, and the four tools are defined once in `src/mcp.rs`.
+rmcp = { version = "1.8", default-features = false, features = [
+    "server",
+    "transport-io",
+    "transport-streamable-http-server",
+] }
 
 # `setsid()` and `kill(pid, 0)`, for `daemon start`/`daemon stop`
 # (`src/daemon.rs`). Already in the tree transitively through tokio -> errno and
@@ -108,3 +119,13 @@ perf = "deny"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# Debug builds were 38.7 GiB (2026-09-29) — no [profile.dev] meant Cargo's
+# default `debug = 2` (full debuginfo) for every dependency, re-emitted on each
+# rebuild. Same fix as sourcehound; matches parent-projects/oh-my-pi.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+debug = false

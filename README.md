@@ -1,14 +1,14 @@
 # memory-wire
 
-**Agent memory in one 8.6 MiB binary, three shared libraries, 10.7 MiB of RSS and
+**Agent memory in one 9.7 MiB binary, three shared libraries, 10.7 MiB of RSS and
 no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
 language runtime, no database server, no install step: retain/recall/reflect with
 bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
-an MCP stdio server. `memory-wire daemon start` runs that server in the background
+an MCP server over stdio, and over HTTP at `/mcp` on any running server. `memory-wire daemon start` runs that server in the background
 if you want it to outlive your terminal — one process, the same binary, no
 supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **8.6 MiB** binary · **3.5 MiB** download · **0** background processes until you ask for one
+- **10.7 MiB** idle RSS · **9.7 MiB** binary · **3.9 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
@@ -178,7 +178,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.6 MiB** binary — 9,059,312 B (LTO, incl. the MCP SDK, the daemon and the embedded hermes plugin); **3.5 MiB** gzipped (3,696,627 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **9.7 MiB** binary — 10,144,032 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.9 MiB** gzipped (4,039,811 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
@@ -232,7 +232,7 @@ again. Every footprint number in this section is still the **default** build and
 is unaffected: `default = []`, so `src/vector.rs` and the weights compile only
 under `--features embed`. The growth itself is the MCP SDK — `rmcp` + `schemars`
 landed between those two measurements and cost more than `fastembed` ever did. The
-binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.6 MiB and not
+binary was 6.4 MB before MCP; MCP is the reason the artifact is 9.7 MiB and not
 smaller, and it is code, not a resident dependency, so idle RSS does not move
 with it.
 
@@ -582,10 +582,22 @@ version opens, reads, and sweeps exactly as it was.
 
 ## MCP
 
-`memory-wire mcp` serves MCP over stdio — JSON-RPC 2.0, newline-delimited, stdout
-only for protocol, logs to stderr. `--bank` sets the default bank, falling back to
-`$MEMORY_WIRE_BANK` and then to `memory-wire`; a per-call `bank` argument
-overrides both.
+The same four tools are served two ways. `memory-wire mcp` is stdio —
+JSON-RPC 2.0, newline-delimited, stdout only for protocol, logs to stderr.
+`--bank` sets the default bank, falling back to `$MEMORY_WIRE_BANK` and then
+to `memory-wire`; a per-call `bank` argument overrides both.
+
+A running `memory-wire serve` also answers MCP over HTTP at **`/mcp`** and at
+**`/mcp/{bank}`**, which is what hosts that speak `url`-based MCP need — Codex
+among them. On `/mcp` the bank comes from the tool argument exactly as on
+stdio. On `/mcp/{bank}` the URL **pins** it: a call that also supplies a
+different `bank` is rejected with a tool error rather than quietly landing in
+the bank the caller did not name. `memory-wire connect codex` writes the
+`[mcp_servers.memory-wire]` entry with a `url`.
+
+The HTTP endpoint is as unauthenticated as the rest of the server, and rmcp
+additionally refuses any request whose `Host` header is not loopback — so
+binding beyond `127.0.0.1` is not enough on its own to expose it.
 
 | Tool | Writes? | Arguments |
 |---|---|---|
@@ -850,7 +862,7 @@ the lifecycle responses (they serve `{content, created_at, id[, context]}`; tag
 filtering stays on `recall`) · `document_id` visible in any response · a `backup`
 subcommand (the `sqlite3 .backup` recipe is the interface) · Postgres/
 pgvector backend · LLM-backed `reflect` synthesis · bank-in-path scoping for MCP
-over HTTP (`/mcp/:bank`; stdio only today) · `connect` for hosts outside the five
+over HTTP (`/mcp` and `/mcp/{bank}`; stdio too) · `connect` for hosts outside the five
 detected (claude-code, codex, copilot-cli, cursor, opencode). Gaps that need live
 LLMs/providers (Hindsight system-evals, agentmemory quality/real-embeddings) are
 tracked in `docs/BENCHMARK.md`.

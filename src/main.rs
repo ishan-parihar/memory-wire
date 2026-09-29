@@ -1,4 +1,5 @@
 mod connect;
+mod connect_codex;
 mod connect_plugin;
 mod daemon;
 mod doctor;
@@ -6,6 +7,7 @@ mod guidelines;
 mod hooks;
 mod http;
 mod mcp;
+mod mcp_http;
 mod paths;
 mod seed;
 mod sweep;
@@ -495,6 +497,11 @@ async fn shutdown_signal() {
 /// refused: refusing would break the deployment an operator asked for, and
 /// staying silent is what turns it into a surprise.
 ///
+/// `/mcp` is named in the text because it is the route a user is likelier to
+/// expose on purpose — an MCP endpoint exists to be pointed at by another tool —
+/// and a warning that only named the REST surface would understate what a bind
+/// actually hands over. There is still no authentication on either.
+///
 /// An address that does not parse as a socket address (`localhost:8899`, a
 /// hostname, a Unix path) is unproven rather than proven-open, and is reported on
 /// the same reasoning: warn unless loopback can be shown.
@@ -504,7 +511,8 @@ fn exposure_warning(addr: &str) -> Option<String> {
     }
     Some(format!(
         "serving on {addr} is reachable from outside this machine and memory-wire has no \
-         authentication: anything that can reach the port can read and delete these banks"
+         authentication: anything that can reach the port can read and delete these banks, and \
+         can drive the same four tools over /mcp"
     ))
 }
 
@@ -522,9 +530,12 @@ fn open_store(path: &std::path::Path) -> anyhow::Result<SqliteStore> {
     Ok(store)
 }
 
-/// The whole HTTP surface: health, the three operations, bank config, and the
-/// memory lifecycle.
+/// The whole HTTP surface: health, the three operations, bank config, the
+/// memory lifecycle, and MCP on `/mcp` and `/mcp/<bank>`.
 fn router(svc: Svc) -> Router {
+    // Same service, same store, a second transport. Built before `with_state`
+    // so both halves are state-free and merge as peers.
+    let mcp = mcp_http::routes(svc.clone());
     Router::new()
         .route("/health", get(health))
         .route("/banks/:id/retain", post(retain))
@@ -540,6 +551,9 @@ fn router(svc: Svc) -> Router {
         // `GET .../config` preamble probe. The handlers live next to the service
         // so their validation cannot drift from it.
         .merge(bank_config_routes::<SqliteStore>())
+        // MCP over the same port. `/mcp` resolves the bank from the call, and
+        // `/mcp/<bank>` pins it to the path.
+        .merge(mcp)
         .with_state(svc)
 }
 

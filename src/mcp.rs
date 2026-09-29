@@ -16,11 +16,13 @@
 //!
 //! # Bank scoping
 //!
-//! This build serves stdio only. A future HTTP mode would scope the bank into
-//! the path (`POST /mcp/:bank/tools/call`, with the per-call `bank` argument
-//! still allowed to override it) so a proxy can pin one bank per mount point;
-//! the argument-resolution rule below — call argument, else server default — is
-//! already the one that mode needs, so nothing here changes when it lands.
+//! Two transports, one resolution rule. Over stdio (`memory-wire mcp`) and over
+//! the bare `POST /mcp`, the bank is the call's `bank` argument, else the server
+//! default — the rule below, unchanged. `POST /mcp/<bank>` pins the bank to the
+//! path segment so a proxy can hand out one bank per mount point; there the
+//! argument may agree or be absent, and a disagreement is refused rather than
+//! overridden (`Server::resolve_bank` says why). `crate::mcp_http` owns the
+//! mount; nothing in this file knows there is an HTTP at all.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -101,6 +103,22 @@ impl Server {
         Ok(Self { svc, bank })
     }
 
+    /// The same MCP surface over a store this process already has open.
+    ///
+    /// The HTTP mount in `crate::mcp_http` holds one service for the whole
+    /// process and hands every MCP session a share of it, rather than opening a
+    /// second SQLite connection per session. A session is not a database, and a
+    /// connection per session is both a per-session cost and a way for the MCP
+    /// surface and the REST surface to hold different views of what is
+    /// committed. The share is the `Arc` the service already keeps internally, so
+    /// this clones a pointer rather than a store.
+    pub(crate) fn over(svc: Arc<MemoryService<SqliteStore>>, bank: String) -> Self {
+        Self {
+            svc: MemoryService { store: svc.store.clone() },
+            bank,
+        }
+    }
+
     /// The four tool definitions, in listing order.
     pub fn tools() -> Vec<Tool> {
         [
@@ -175,18 +193,34 @@ impl Server {
         .collect()
     }
 
-    /// Run one tool, returning the JSON body it answers with.
+    /// Run one tool with no URL pin — the stdio and bare-`/mcp` resolution rule.
+    ///
+    /// Test-only, and deliberately so: this module's tests call it directly,
+    /// which is what pins the unpinned rule without editing a single one of them
+    /// when `/mcp/<bank>` arrived. Production reaches the same rule through
+    /// `Self::call_scoped` with `None`.
+    #[cfg(test)]
+    fn call(&self, name: &str, args: &Value) -> Result<Value, CallError> {
+        self.call_scoped(name, args, None)
+    }
+
+    /// Run one tool, optionally with the bank pinned by the URL.
+    ///
+    /// `url_bank` is `Some` only for a mount that names its bank in the path
+    /// (`/mcp/<bank>`, see `crate::mcp_http`); stdio and the bare `/mcp` pass
+    /// `None` and are byte-identical to before this argument existed.
     ///
     /// Argument resolution is uniform: an explicit `bank` wins, else the
     /// server's default. A present-but-blank `bank` is a caller error, not a
     /// fallback — silently serving the default bank instead would write the
     /// memory somewhere the caller did not name.
-    fn call(&self, name: &str, args: &Value) -> Result<Value, CallError> {
-        let bank = match args.get("bank") {
-            None | Some(Value::Null) => self.bank.clone(),
-            Some(Value::String(s)) => s.clone(),
-            Some(_) => return Err(CallError::Failed("invalid bank id".to_string())),
-        };
+    fn call_scoped(
+        &self,
+        name: &str,
+        args: &Value,
+        url_bank: Option<&str>,
+    ) -> Result<Value, CallError> {
+        let bank = self.resolve_bank(args, url_bank)?;
         let tags = arg_tags(args);
         match name {
             RETAIN => {
@@ -238,6 +272,41 @@ impl Server {
             other => Err(CallError::UnknownTool(other.to_string())),
         }
     }
+
+    /// The bank one call touches, from the URL pin and the call's own argument.
+    ///
+    /// Unpinned, this is the rule that has always applied: the `bank` argument
+    /// wins, else the server's default, and a wrong-typed or blank `bank` is a
+    /// caller error rather than a silent fallback.
+    ///
+    /// # Why a mismatched argument is refused rather than overridden
+    ///
+    /// `/mcp/<bank>` exists so a proxy or a second mount can hand out one bank
+    /// per endpoint. "Pinned" has to mean the argument cannot talk it out of
+    /// that: if the URL won silently, a client that asked for bank `other`
+    /// would get a successful `retain` into `demo` and a successful `recall`
+    /// that could not see what it had just written — the exact
+    /// wrote-it-somewhere-the-caller-did-not-name failure the blank-bank rule
+    /// above already refuses. An error the caller reads beats a success that
+    /// quietly lands in a different namespace, and `CallError::Failed` is this
+    /// server's normal tool-level failure channel (`isError: true` with the
+    /// message), not a JSON-RPC fault: the tool exists, is routable, and ran.
+    fn resolve_bank(&self, args: &Value, url_bank: Option<&str>) -> Result<String, CallError> {
+        let asked = match args.get("bank") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) => Some(s.as_str()),
+            Some(_) => return Err(CallError::Failed("invalid bank id".to_string())),
+        };
+        match (url_bank, asked) {
+            (Some(pinned), None) => Ok(pinned.to_string()),
+            (Some(pinned), Some(s)) if s == pinned => Ok(pinned.to_string()),
+            (Some(pinned), Some(s)) => Err(CallError::Failed(format!(
+                "`bank` is pinned to `{pinned}` by this endpoint; refusing `{s}`"
+            ))),
+            (None, Some(s)) => Ok(s.to_string()),
+            (None, None) => Ok(self.bank.clone()),
+        }
+    }
 }
 
 impl ServerHandler for Server {
@@ -272,10 +341,13 @@ impl ServerHandler for Server {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let args = request.arguments.map(Value::Object).unwrap_or(Value::Null);
-        match self.call(&request.name, &args) {
+        // `None` on stdio, which never puts an HTTP request in the context, so
+        // the stdio path is this module's pre-existing resolution rule verbatim.
+        let pinned = crate::mcp_http::url_bank(&context);
+        match self.call_scoped(&request.name, &args, pinned.as_deref()) {
             Ok(v) => Ok(CallToolResult::success(vec![Content::text(v.to_string())])),
             // Unroutable: a JSON-RPC error the client surfaces opaquely.
             Err(CallError::UnknownTool(name)) => Err(ErrorData::new(

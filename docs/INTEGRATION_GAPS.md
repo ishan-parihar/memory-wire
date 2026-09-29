@@ -253,6 +253,18 @@ read and write your memory by having the same directory name.
 
 ## G5 — 4 MCP tools against 8, 39 and 54, and stdio only
 
+> **Transport half RESOLVED 2026-09-29. Tool count deliberately unchanged.**
+> `memory-wire serve` now answers MCP over HTTP at `/mcp` and `/mcp/{bank}` — the
+> second pins the bank, and a call naming a different one is rejected rather than
+> silently honoured. `connect codex` writes a `[mcp_servers.memory-wire]` `url`
+> entry, so Codex can finally call the tools; previously it got hooks and no tool
+> access at all. Zero new dependencies. Cost: **+1,084,720 B (+12.0%)**, 8.6 → 9.7
+> MiB, download 3.5 → 3.9 MiB, `DT_NEEDED` still 3. Full detail, including why
+> the tool count is still four, in `docs/CONSISTENCY.md` §21.
+>
+> Still open: four tools against their 8/39/54, and rmcp's default loopback-only
+> `Host` allowlist, which is a good default but is not authentication.
+
 Our surface: `memory_retain`, `memory_recall`, `memory_reflect`,
 `memory_bank_config_get` (`src/mcp.rs:105-176`). Transport is stdio only
 (`src/mcp.rs:297`); `INSTALL_FOR_AGENTS.md:448` states plainly that
@@ -360,7 +372,7 @@ G1, G2, G3, G4 (collision), G6.1–G6.4 and G6.6 are **closed**. What remains:
 | **G6.5** | ~~port default~~ | Closed — one literal, `8888`. |
 | **G7** | `stop` retains a pointer | Highest-churn writer of a useless row. Reads the transcript the way the two new events do; out of scope when they landed. |
 | **G8** | pre-compact and session-end store the same prose | Inherited from a shared `flush_at`. Collapsing via `document_id` is one line and would also collapse genuinely different tails. |
-| **G5** | 4 MCP tools, stdio only | Not started. A new transport for no measured gain; three of four hosts already get tools over stdio. |
+| **G5** | HTTP MCP transport | **Done** — stdio is still the default path; HTTP adds Codex tool access. +12.0% binary, 3 shared libraries unchanged. Tool count still 4, and rmcp's `Host` allowlist is a default, not auth. |
 
 Two things recorded in `docs/CONSISTENCY.md` §20.6 rather than here, because they are
 small and already written down: `$HOME/.hermes` is hardcoded so a `HERMES_HOME` profile
