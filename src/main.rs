@@ -1,4 +1,5 @@
 mod connect;
+mod connect_plugin;
 mod daemon;
 mod doctor;
 mod guidelines;
@@ -54,7 +55,7 @@ enum Cmd {
     /// Start the HTTP server (retain/recall/reflect + health).
     Serve {
         /// Bind address. Loopback by default; there is no authentication.
-        #[arg(long, default_value = "127.0.0.1:8899")]
+        #[arg(long, default_value = paths::DEFAULT_ADDR)]
         addr: String,
         /// SQLite database path (default: $XDG_DATA_HOME/memory-wire/memory.db).
         #[arg(long)]
@@ -278,13 +279,20 @@ fn wire(agent: Option<connect::Host>, uninstall: bool) -> bool {
         .unwrap_or_else(|_| "memory-wire".to_string());
     let selected: Vec<connect::Host> = match agent {
         Some(h) => vec![h],
-        None => connect::ALL.to_vec(),
+        // Not `connect::ALL`: see `IMPLICIT`. Hermes is reachable by name only.
+        None => connect::IMPLICIT.to_vec(),
     };
     let mut failed = false;
     for host in selected {
         let outcome = connect::run(host, &exe, &home, uninstall);
         failed |= outcome.is_failure();
         println!("{}", outcome.render(host));
+    }
+    if agent.is_none() {
+        println!(
+            "note       hermes is not wired by a bare `connect` — it takes over the single\n            \
+             memory.provider slot. Run `memory-wire connect hermes` to switch to us."
+        );
     }
     failed
 }
@@ -1570,6 +1578,58 @@ mod tests {
         assert!(!wide.contains('\n'), "one line, or it is a paragraph: {wide}");
         assert!(exposure_warning("192.168.1.5:8899").is_some());
         assert!(exposure_warning("localhost:8899").is_some());
+    }
+
+    // The bind default and the client default are one value, pinned.
+    //
+    // `serve --addr` and `daemon start --addr` each carried their own literal,
+    // and both said 8899 while `paths::endpoint()` said 8888 — so a server
+    // started with no arguments sat on a port no hook, no `doctor` and no
+    // documented client ever looked for. The default is read back out of the
+    // built clap command rather than off the source text, so this fails if
+    // either command's default is edited away from `paths::DEFAULT_ADDR` again.
+    #[test]
+    fn the_addr_default_should_be_the_port_every_client_looks_for() {
+        use clap::CommandFactory;
+
+        /// The `--addr` default clap would apply along `path`, from the real command.
+        fn addr_default(path: &[&str]) -> String {
+            let mut cmd = Cli::command();
+            for name in path {
+                cmd = cmd
+                    .find_subcommand_mut(name)
+                    .unwrap_or_else(|| panic!("no `{name}` subcommand"))
+                    .clone();
+            }
+            // Bound to a local: the iterator borrows `cmd`, and naming it in the
+            // chain leaves a temporary that outlives the value it borrows from.
+            let arg = cmd
+                .get_arguments()
+                .find(|a| a.get_id() == "addr")
+                .cloned();
+            let found = arg
+                .and_then(|a| a.get_default_values().first().map(|v| v.to_string_lossy().into_owned()));
+            found.unwrap_or_else(|| panic!("`{}` has no --addr default", path.join(" ")))
+        }
+
+        assert_eq!(addr_default(&["serve"]), paths::DEFAULT_ADDR);
+        assert_eq!(addr_default(&["daemon", "start"]), paths::DEFAULT_ADDR);
+
+        // Pinned to the port the docs, the installer and every client already
+        // assume. 8888 is the choice that breaks the least, so it is the one
+        // that stays.
+        assert_eq!(paths::DEFAULT_ADDR, "127.0.0.1:8888");
+
+        // And the URL a client resolves to with no override must be that same
+        // address. Guarded on the override being absent, because that is the one
+        // input `endpoint()` reads and the test must not depend on the ambient
+        // environment.
+        let overridden = std::env::var("MEMORY_WIRE_URL")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        if !overridden {
+            assert_eq!(paths::endpoint(), format!("http://{}", paths::DEFAULT_ADDR));
+        }
     }
 
     // The drain, driven directly instead of by signalling a real process.

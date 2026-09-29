@@ -7,8 +7,16 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Endpoint used when `MEMORY_WIRE_URL` is unset.
-pub const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:8888";
+/// Bind address `serve` and `daemon start` default to, and the port every
+/// client resolves to when `MEMORY_WIRE_URL` is unset.
+///
+/// This is the tree's only port literal. `--addr` defaults to it on both
+/// commands and [`endpoint`] returns it as a URL, so `memory-wire serve` with no
+/// arguments is reachable by the hooks, by `doctor`, and by every documented
+/// client. They used to disagree — `serve` bound `127.0.0.1:8899` while every
+/// client looked for `8888` — and a server on a port nothing looks for is a
+/// server no hook can ever reach.
+pub const DEFAULT_ADDR: &str = "127.0.0.1:8888";
 
 /// Bank used when the working directory is not inside a git work tree.
 pub const DEFAULT_BANK: &str = "memory-wire";
@@ -35,13 +43,13 @@ pub fn home() -> Result<PathBuf, String> {
         .ok_or_else(|| "neither HOME nor USERPROFILE is set".to_string())
 }
 
-/// Server endpoint: `MEMORY_WIRE_URL` when set, else [`DEFAULT_ENDPOINT`].
+/// Server endpoint: `MEMORY_WIRE_URL` when set, else [`DEFAULT_ADDR`] as a URL.
 pub fn endpoint() -> String {
     std::env::var("MEMORY_WIRE_URL")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string())
+        .unwrap_or_else(|| format!("http://{DEFAULT_ADDR}"))
 }
 
 /// XDG data directory: `$XDG_DATA_HOME/memory-wire`, else

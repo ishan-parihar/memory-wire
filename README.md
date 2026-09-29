@@ -1,6 +1,6 @@
 # memory-wire
 
-**Agent memory in one 8.4 MiB binary, three shared libraries, 10.7 MiB of RSS and
+**Agent memory in one 8.5 MiB binary, three shared libraries, 10.7 MiB of RSS and
 no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
 language runtime, no database server, no install step: retain/recall/reflect with
 bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
@@ -8,13 +8,14 @@ an MCP stdio server. `memory-wire daemon start` runs that server in the backgrou
 if you want it to outlive your terminal — one process, the same binary, no
 supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **8.5 MiB** binary · **3.4 MiB** download · **0** background processes until you ask for one
+- **10.7 MiB** idle RSS · **8.5 MiB** binary · **3.5 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
   the fitted weight is accounted for. Both numbers are in
   [Benchmarks](#benchmarks); the reason is one sweep on one dataset.
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook)
+- Agent skill: [`plugin/skills/memory-wire/SKILL.md`](plugin/skills/memory-wire/SKILL.md) — the one file here written for a model to read rather than a person. It is a standard `name`/`description`-front-matter skill: copy it into a host's skills directory (`~/.claude/skills/`, and the equivalents for codex, cursor and opencode) and the agent picks up the retain/recall workflow, the bank rules and the error contract without being told them. `connect` does **not** install it — that command wires hooks and MCP entries only, so this is a deliberate copy.
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `docs/BENCHMARK.md`
 
 **Contents** — [Benchmarks](#benchmarks) · [Footprint](#footprint-vs-competitors) · [Quick start](#quick-start) · [CLI](#cli) · [The daemon](#the-daemon) · [Install](#install) · [How it works](#how-it-works) · [Reproduce](#reproduce) · [Roadmap](#roadmap)
@@ -177,7 +178,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.5 MiB** binary — 8,964,464 B (LTO, incl. the MCP SDK and the daemon); **3.4 MiB** gzipped, which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **8.5 MiB** binary — 8,964,464 B (LTO, incl. the MCP SDK and the daemon); **3.5 MiB** gzipped (3,660,179 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
@@ -200,7 +201,10 @@ summary is that memory-wire is far below both on any large-bank comparison and
 above agentmemory's smallest published number.
 
 **How the memory-wire rows were measured, 2026-09-28, on this tree.** Binary by
-`stat -c %s` after `cargo build --release --locked`, cross-checked by
+`stat -c %s` after `cargo build --release --locked` — re-measured 2026-09-29 at
+`v0.4.0` / `75928a2` and byte-identical at 8,964,464 B, so only this one figure was
+re-taken and every RSS and latency number in this section still dates from the
+09-28 session. Cross-checked by
 `eval/BENCH_FOOTPRINT.md` (which reads the binary next to the harness's own path,
 so it cannot read a debug build or a stale artifact). Both RSS rows by `ps -o
 rss` — really `VmRSS` from `/proc/<pid>/status` — against a `serve` on a scratch
@@ -375,7 +379,7 @@ weights survive LTO:
 |---|---|
 | `info` | Audit + plan pointers (the default when no command is given) |
 | `daemon` | `start` / `stop` / `status` for a backgrounded server — see below |
-| `serve` | Start the HTTP server in the foreground — `--addr` (default `127.0.0.1:8899`), `--db`. Stops accepting and drains in-flight requests on SIGINT/SIGTERM |
+| `serve` | Start the HTTP server in the foreground — `--addr` (default `127.0.0.1:8888`), `--db`. Stops accepting and drains in-flight requests on SIGINT/SIGTERM |
 | `connect` | Wire the hooks into agent hosts — optional `<agent>`, `--uninstall`, `--guidelines` |
 | `hook` | Lifecycle hook the hosts invoke — `session-start`, `prompt`, `stop`, `pre-compact`, `session-end` |
 | `doctor` | Endpoint, bank, store, and server health — `--db`, `--strict` |
@@ -387,7 +391,7 @@ weights survive LTO:
 can reach the port can read and delete every bank. A non-loopback address still
 binds, and says so once on stderr before it does.
 
-If 8899 is already taken, `serve --addr 127.0.0.1:<free port>` and point your
+If 8888 is already taken, `serve --addr 127.0.0.1:<free port>` and point your
 client at that port; `GET /health` on it must return exactly `ok`. There is no
 `backup` subcommand — a SQLite store is backed up with `sqlite3 "$DB" ".backup
 '$DB.bak'"`, recipe and caveats in `INSTALL_FOR_AGENTS.md`.
@@ -441,9 +445,13 @@ parse — its path is named and `start` says so before replacing it); and a
 recycled pid, which reads as `not running` with the reason attached. Logs go to
 `$XDG_DATA_HOME/memory-wire/serve.log`; state to `serve.json` beside it.
 
-Note that `daemon start --addr` defaults to `127.0.0.1:8899`, the same default
-`serve` has, while every client defaults to `8888` — that mismatch is
-[documented as a bug](#cli) rather than fixed here, so pass `--addr` explicitly.
+Both `serve --addr` and `daemon start --addr` default to `127.0.0.1:8888`, and
+that is the one port in the tree: `paths::DEFAULT_ADDR` holds the only literal,
+the hooks and `doctor` resolve to it through `paths::endpoint()`, and a test reads
+the `--addr` default back out of the built clap command so the two cannot drift
+apart again. They used to disagree — both commands bound `8899` while every client
+looked for `8888`, so a server started with no arguments sat on a port nothing
+looked for.
 
 ## Connect, hooks, doctor
 
@@ -538,7 +546,7 @@ wants to forget says so in its own config, and `memory-wire sweep` is what carri
 that out:
 
 ```bash
-curl -sS -X PUT localhost:8899/banks/scratch/config -H 'Content-Type: application/json' \
+curl -sS -X PUT localhost:8888/banks/scratch/config -H 'Content-Type: application/json' \
   -d '{"ttl_days":30}'
 
 memory-wire sweep --dry-run   # what would go, and how much
@@ -850,3 +858,9 @@ tracked in `docs/BENCHMARK.md`.
 ## Subagents
 
 Project rule: delegate only with the `space-bunny` model.
+
+**The agent-facing surface is [`plugin/skills/memory-wire/SKILL.md`](plugin/skills/memory-wire/SKILL.md).**
+It is the only file in this repo addressed to a model rather than a reader: where the README argues
+the benchmark is worth believing, the skill just says when to retain, when to recall, what `budget`
+means and which errors are worth acting on. Copy it into a host's skills directory to install it;
+nothing in this crate writes it for you.

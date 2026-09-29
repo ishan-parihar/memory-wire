@@ -1,0 +1,16 @@
+name: memory-wire
+version: 0.4.0
+description: "Agent memory for Hermes Agent via memory-wire. Banks of retained prose, recalled over HTTP with FTS5 BM25 + token-overlap RRF fusion. No LLM in the recall path, no mandatory daemon, no language runtime on the client side."
+author: "memory-wire"
+homepage: "https://github.com/ishan-parihar/memory-wire"
+# The five lifecycle events this provider implements as methods on the
+# MemoryProvider subclass. The loader activates them by duck-typing the class --
+# nothing reads this list -- so it is documentation, and it is kept to exactly
+# what is implemented. `on_memory_write` is deliberately absent; see README.md
+# "The sixth event".
+hooks:
+  - prefetch
+  - sync_turn
+  - on_session_end
+  - on_pre_compress
+  - system_prompt_block

@@ -43,10 +43,29 @@ pub enum Host {
     Cursor,
     /// opencode (`~/.config/opencode/opencode.json`).
     Opencode,
+    /// hermes-agent (`~/.hermes/config.yaml` plus `~/.hermes/plugins/`).
+    Hermes,
 }
 
 /// Every host, in report order.
 pub const ALL: &[Host] = &[
+    Host::ClaudeCode,
+    Host::Codex,
+    Host::CopilotCli,
+    Host::Cursor,
+    Host::Opencode,
+    Host::Hermes,
+];
+
+/// The hosts a bare `memory-wire connect` wires without being asked.
+///
+/// Deliberately not [`ALL`]. The other five are additive: a hook entry or an MCP key
+/// added to a JSON file, leaving whatever was already there working. Hermes activates
+/// exactly one memory provider, so wiring it moves a single global slot — from
+/// `agentmemory` to us, on this machine, unasked. A bare `connect` should not trade
+/// one memory system for another; `connect hermes` is one word longer and says what
+/// it does.
+pub const IMPLICIT: &[Host] = &[
     Host::ClaudeCode,
     Host::Codex,
     Host::CopilotCli,
@@ -83,7 +102,13 @@ enum Style {
     Copilot,
     /// The host's only integration surface is an MCP server list — it fires no
     /// lifecycle command, so `memory-wire mcp` is what gets registered.
-    McpOnly,
+    Mcp,
+    /// The host loads a **plugin directory** and activates it with one key in a
+    /// YAML config. It has no JSON document and no per-event command entry, so
+    /// neither [`Style::entry`] nor [`Host::mcp_spec`] can express it: the
+    /// install is a copy of an embedded tree plus one scalar edit, which is what
+    /// [`crate::connect_plugin`] is for.
+    Plugin,
 }
 
 impl Host {
@@ -95,6 +120,7 @@ impl Host {
             Host::CopilotCli => "copilot-cli",
             Host::Cursor => "cursor",
             Host::Opencode => "opencode",
+            Host::Hermes => "hermes",
         }
     }
 
@@ -106,6 +132,11 @@ impl Host {
             Host::CopilotCli => ".copilot/settings.json",
             Host::Cursor => ".cursor/mcp.json",
             Host::Opencode => ".config/opencode/opencode.json",
+            // YAML, not JSON, and edited by hand rather than re-serialised.
+            // `config_rel` is still the right answer for two reasons: it is the
+            // file `backup` must preserve before the first write, and it is what
+            // the report line names.
+            Host::Hermes => ".hermes/config.yaml",
         };
         PathBuf::from(s)
     }
@@ -118,6 +149,7 @@ impl Host {
             Host::CopilotCli => ".copilot",
             Host::Cursor => ".cursor",
             Host::Opencode => ".config/opencode",
+            Host::Hermes => ".hermes",
         }
     }
 
@@ -129,6 +161,7 @@ impl Host {
             Host::CopilotCli => "copilot",
             Host::Cursor => "cursor-agent",
             Host::Opencode => "opencode",
+            Host::Hermes => "hermes",
         }
     }
 
@@ -137,7 +170,8 @@ impl Host {
         match self {
             Host::ClaudeCode | Host::Codex => Style::Claude,
             Host::CopilotCli => Style::Copilot,
-            Host::Cursor | Host::Opencode => Style::McpOnly,
+            Host::Cursor | Host::Opencode => Style::Mcp,
+            Host::Hermes => Style::Plugin,
         }
     }
 
@@ -181,7 +215,7 @@ impl Style {
                 "bash": format!("{} hook {lifecycle}", shell_quote(exe)),
                 "timeoutSec": HOOK_TIMEOUT,
             })),
-            Style::McpOnly => None,
+            Style::Mcp | Style::Plugin => None,
         }
     }
 }
@@ -341,8 +375,10 @@ pub fn timestamp() -> String {
 
 /// Copy `home/rel` to `<data_root>/backups/<host>-<ts>/rel`.
 ///
-/// Returns the backup directory, or `None` when there was no file to preserve
-/// (a first install that creates the config).
+/// Returns the backup directory, or `None` when there was nothing to preserve
+/// (a first install that creates the config, or a host with no plugin directory
+/// yet). A directory is copied whole: the Hermes install overwrites a plugin
+/// tree, and a backup that kept only its files would be no backup at all.
 pub fn backup(
     data_root: &Path,
     home: &Path,
@@ -351,6 +387,9 @@ pub fn backup(
     rel: &Path,
 ) -> Result<Option<PathBuf>, String> {
     let src = home.join(rel);
+    if src.is_dir() {
+        return copy_tree(&src, &data_root.join("backups").join(format!("{}-{ts}", host.id())), rel);
+    }
     if !src.is_file() {
         return Ok(None);
     }
@@ -363,6 +402,44 @@ pub fn backup(
         .ok_or_else(|| format!("{} has no parent", dst.display()))?;
     std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     std::fs::copy(&src, &dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+    Ok(Some(dir))
+}
+
+/// Copy a directory tree, rooted at `dst_root/rel`.
+///
+/// Recursive by hand rather than by crate: the only caller is the Hermes plugin
+/// directory, which is a flat handful of files, and a recursive walk over an
+/// unbounded tree is a way to wedge `connect` on a symlink loop.
+fn copy_tree(src: &Path, dst_root: &Path, rel: &Path) -> Result<Option<PathBuf>, String> {
+    let dir = dst_root.to_path_buf();
+    let root = dir.join(rel);
+    let mut queue = vec![(src.to_path_buf(), root.clone())];
+    while let Some((from, to)) = queue.pop() {
+        let entries = std::fs::read_dir(&from).map_err(|e| format!("{}: {e}", from.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("{}: {e}", from.display()))?;
+            let file_type = entry
+                .file_type()
+                .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+            // A symlink is skipped, not followed: preserving one would need its
+            // target's contents, and following one can leave this directory.
+            if file_type.is_symlink() {
+                continue;
+            }
+            let dest = to.join(entry.file_name());
+            if file_type.is_dir() {
+                std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+                queue.push((entry.path(), dest));
+            } else {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("{}: {e}", parent.display()))?;
+                }
+                std::fs::copy(entry.path(), &dest)
+                    .map_err(|e| format!("{}: {e}", dest.display()))?;
+            }
+        }
+    }
     Ok(Some(dir))
 }
 
@@ -382,7 +459,12 @@ pub fn run(host: Host, exe: &str, home: &Path, uninstall: bool) -> Outcome {
 // `#[expect]` cannot replace one, because an unfulfilled expectation is itself a
 // warning under `-D warnings`. Raise `too-many-arguments-threshold` before
 // re-adding either, or the parameter list will need to actually grow past 7.
-fn apply(
+//
+// `pub(crate)` rather than private: `connect_plugin` is a sibling module and its
+// tests need to reach this with an injected data root. `connect::run` is not a
+// substitute — it resolves the data root through `paths::data_dir`, which reads
+// the process environment, so a test using it would write into the real XDG dir.
+pub(crate) fn apply(
     host: Host,
     exe: &str,
     home: &Path,
@@ -394,6 +476,16 @@ fn apply(
         return Outcome::Skipped("not detected on this machine".to_string());
     }
     let style = host.style();
+
+    // One enum, two install surfaces. `Style::Plugin` is not a JSON edit at all —
+    // it copies a directory and moves one scalar in a YAML document — so it
+    // branches before the read below, which has nothing to parse for that host.
+    // Keying the split on `Style` rather than on `host == Host::Hermes` is the
+    // point: every other arm of the enum stays on the shared JSON path, and a
+    // future plugin-shaped host is a new variant rather than a new side door.
+    if style == Style::Plugin {
+        return crate::connect_plugin::apply(host, home, uninstall, data_root);
+    }
 
     let rel = host.config_rel();
     let path = home.join(&rel);
@@ -424,7 +516,7 @@ fn apply(
     // One edit pass, whichever surface this host exposes: hook entries for the
     // three hosts that fire commands, an MCP server entry for the two that
     // only know how to launch a server.
-    let edit = if style == Style::McpOnly {
+    let edit = if style == Style::Mcp {
         let Some((key, entry)) = host.mcp_spec() else {
             return Outcome::Skipped(MCP_ONLY_REASON.to_string());
         };
@@ -652,6 +744,19 @@ mod tests {
 
     /// A pre-existing foreign hook that must survive every operation.
     const FOREIGN: &str = r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"/opt/other/hook.sh","timeout":9}]}]}}"#;
+
+    #[test]
+    fn implicit_connect_set_should_exclude_hermes() {
+        // Hermes moves a one-slot global (`memory.provider`), so a bare `connect`
+        // must not take it. Pinned because the two lists are adjacent and merging
+        // them back would be a one-character change.
+        assert!(
+            !IMPLICIT.contains(&Host::Hermes),
+            "a bare `connect` must not activate a memory provider over another"
+        );
+        assert!(ALL.contains(&Host::Hermes), "hermes is still reachable by name");
+        assert_eq!(ALL.len(), IMPLICIT.len() + 1, "every other host stays implicit");
+    }
 
     #[test]
     fn install_should_be_idempotent_and_preserve_foreign_hooks() {

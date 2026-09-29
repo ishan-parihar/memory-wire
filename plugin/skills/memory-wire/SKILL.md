@@ -5,7 +5,7 @@ description: Persist and retrieve agent memory across sessions with memory-wire 
 
 # memory-wire
 
-Agent memory over HTTP or MCP stdio. One 8.4 MiB binary, three shared libraries, no language
+Agent memory over HTTP or MCP stdio. One 8.5 MiB binary (8,964,464 B), three shared libraries, no language
 runtime, no database server, and no background process until you ask for one with
 `memory-wire daemon start`. **retain** stores a
 fact/decision (redacted before it touches disk), **recall** is ranked bank-isolated retrieval under a
@@ -186,3 +186,10 @@ JWT, `Bearer`, Slack, Google API keys, emails, phones, `<private>` blocks), not 
       and stored one fact — not a paragraph
 - [ ] Recall returned a JSON array of strings; any `…[truncated]` tail read as "raise `budget`", not "the
       rest is lost"; an empty array means a wrong bank, or a budget too small to hold the marker
+
+---
+
+*Size provenance: 8,964,464 B (8.549 MiB, rounds to 8.5) is `stat -c %s` of the default-feature release
+binary after `cargo build --release --locked` on this tree, `v0.4.0` at commit `75928a2`, re-measured
+2026-09-29 and byte-identical to the figure recorded in `docs/CONSISTENCY.md` §19.5. Default features only
+(`default = []`, so no `embed` weights); the gzipped download is a separate figure, see `README.md`.*

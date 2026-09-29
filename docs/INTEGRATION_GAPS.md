@@ -172,6 +172,15 @@ was out of scope. It is now the weakest of the five and the obvious next cut.
 
 ## G3 — No hermes-agent integration, and the competitor is installed there
 
+> **Resolved 2026-09-29.** `memory-wire connect hermes` installs a `MemoryProvider`
+> plugin at `~/.hermes/plugins/memory-wire/` and sets `memory.provider` in
+> `config.yaml`. Five of the six events ship; `on_memory_write` is refused with a
+> visible one-line warning rather than faked. Verified through Hermes' own
+> `load_memory_provider()`, including a byte-identical uninstall against a
+> pristine 31 KB `config.yaml`. The audit below is kept because the loader findings
+> are the interesting part — four of them are places the *installed competitor*
+> violates Hermes' own contract. Full detail in `docs/CONSISTENCY.md` §20.3.
+
 `~/.hermes/plugins/agentmemory/` **exists on this machine** (`plugin.yaml`,
 `__init__.py`, `README.md`). It declares six hook events — `prefetch`,
 `sync_turn`, `on_session_end`, `on_pre_compress`, `on_memory_write`,
@@ -275,9 +284,9 @@ Consequences a user can observe:
 | G6.2 | **`/health` verifies nothing** — `async fn health() -> &'static str { "ok" }` (`src/main.rs:500-503`), no store access. | hindsight splits liveness/readiness by design (`worker/main.py:107-123`) | `doctor` compensates (`src/doctor.rs:134-139`) and this is a **strength**, not a gap |
 | G6.3 | **Guidelines have no uninstall.** `--uninstall --guidelines` is refused (`src/main.rs:236-238`). | both competitors fully reverse every write | the block is marker-delimited so removal is easy to add |
 | G6.4 | **No `--endpoint` flag on the hook path.** Only `MEMORY_WIRE_URL` (`src/paths.rs:38-45`). | agentmemory threads `--api-url` through re-resolution with a `tokenProvider` (`host-client.ts:68-72`) | minor |
-| G6.5 | **Port default mismatch: `serve` binds 8899, every client defaults to 8888.** | `src/main.rs:56` vs `src/paths.rs:11`; bridged by docs telling users to pass `--addr 127.0.0.1:8888` (`install/get-memory-wire.sh:102-104`) | **our bug**, undocumented as intentional |
+| G6.5 | **Port default mismatch: `serve` binds 8899, every client defaults to 8888.** **RESOLVED** — `paths::DEFAULT_ADDR` is now the only port literal in the tree; both clap defaults (`serve`, `daemon start`) read from it; a test reads the default back out of the built clap `Command` and has teeth. Binary byte-identical. See `docs/CONSISTENCY.md` §20.2. | `src/main.rs:57`, `src/daemon.rs:175` vs `src/paths.rs` | **our bug**, fixed |
 | G6.6 | **SKILL.md is not referenced from the README.** A search for `plugin`/`SKILL`/`marketplace` in `README.md` returns nothing. | hindsight publishes 2 plugins to a marketplace (`.claude-plugin/marketplace.json:1-21`); agentmemory 5 marketplaces | our agent skill is undiscoverable |
-| G6.7 | **SKILL.md is internally inconsistent**: front matter says 8.5 MiB, body says 8.4 MiB, and the real figure is 8,872,000 B = **8.46 MiB** | `plugin/skills/memory-wire/SKILL.md:3` vs `:8-9` | ships to agents; should be exact or rounded once |
+| G6.7 | **SKILL.md is internally inconsistent**: front matter says 8.5 MiB, body says 8.4 MiB. Fixed to 8.5 MiB; the byte count is now 8,964,464 B (8.55 MiB), not the 8,872,000 B (8.46 MiB) this row originally quoted — that was the pre-daemon build. | `plugin/skills/memory-wire/SKILL.md:3` vs `:8-9` | ships to agents; corrected |
 | G6.8 | **No `system_prompt_block` injection.** We inject at `UserPromptSubmit`; hermes wants a block in the system prompt. | `~/.hermes/plugins/agentmemory/plugin.yaml:6-12` | different mechanism, not strictly missing |
 | G6.9 | **No health check in `doctor` that the *installed hook* still points at a live binary.** `doctor` checks the store and the server, not whether `~/.claude/settings.json` references an existing path. | hindsight's installer refuses to write when a foreign `hindsight` server exists (`installer.ts:1766-1775`) | would catch a moved or deleted binary |
 
@@ -318,10 +327,12 @@ Not padding. These are mechanisms neither competitor has, verified in our tree.
 
 Cheapest and highest-value first. Each is independently shippable.
 
-1. **G4 — bank collision + a fail-closed opt-in.** A correctness issue: two repos
-   with the same directory name currently share a bank, and a cloned repo can
-   read your memory. Reuse hindsight's approach: resolve identity from the git
-   filesystem layout rather than the basename, and make opt-in explicit.
+1. ~~**G4 — bank collision + a fail-closed opt-in.**~~ **Done** for the collision; the
+   opt-in policy is not. Identity now resolves from the `origin` remote in
+   `.git/config` — `git` is never spawned — so `/home/x/api` and `/home/y/api` no
+   longer share a bank. Whether a repo must *opt in* to memory is a product policy
+   question and was deliberately not bundled into a correctness fix. See §20.3 and
+   `docs/BANK_IDENTITY.md`.
 2. ~~**G2 — `PreCompact` and `SessionEnd` hooks.**~~ **Done.** Both ship, and
    they persist the conversation rather than a pointer to it. Carried forward:
    make `stop` read the transcript too, so no retained memory is a bare path.
@@ -332,9 +343,28 @@ Cheapest and highest-value first. Each is independently shippable.
    safe rather than merely quiet. Also closes G6.1's `stop`.
 4. **G6.5, G6.6, G6.7 — the three small corrections.** Port default, README
    cross-reference to the skill, exact binary size.
-5. **G3 — hermes integration**, when there is appetite for a plugin-shaped host
+5. ~~**G3 — hermes integration.**~~ **Done**, as a plugin rather than a config edit.
+   A bare `connect` deliberately does **not** wire it: the other five hosts are
+   additive, while Hermes activates exactly one memory provider, so wiring it moves a
+   single global slot. `connect hermes` says what it does. See §20.3.
    rather than a config-file one.
 6. **G5 — HTTP MCP transport**, which also unlocks `/mcp/{bank_id}` scoping.
+
+## What is left
+
+G1, G2, G3, G4 (collision), G6.1–G6.4 and G6.6 are **closed**. What remains:
+
+| | gap | why it is still open |
+|---|---|---|
+| **G4** | bank opt-in | A policy decision, not a bug: should a repo have to opt in to memory? Both parents fail closed; we do not. Not bundled into the collision fix. |
+| **G6.5** | ~~port default~~ | Closed — one literal, `8888`. |
+| **G7** | `stop` retains a pointer | Highest-churn writer of a useless row. Reads the transcript the way the two new events do; out of scope when they landed. |
+| **G8** | pre-compact and session-end store the same prose | Inherited from a shared `flush_at`. Collapsing via `document_id` is one line and would also collapse genuinely different tails. |
+| **G5** | 4 MCP tools, stdio only | Not started. A new transport for no measured gain; three of four hosts already get tools over stdio. |
+
+Two things recorded in `docs/CONSISTENCY.md` §20.6 rather than here, because they are
+small and already written down: `$HOME/.hermes` is hardcoded so a `HERMES_HOME` profile
+override is missed, and `on_memory_write` is refused rather than implemented.
 
 ## Explicitly not recommended
 

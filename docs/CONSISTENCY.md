@@ -2301,3 +2301,137 @@ numbers are not read as simultaneous.
 
 No RSS claim is made for the daemon. It is the same process doing the same work, but
 it was not re-measured, and the box was at loadavg 22 on 24 cores for this work.
+
+## 20. Hermes, one port literal, and three claims this section supersedes
+
+Closes G3 and G6.5 from `docs/INTEGRATION_GAPS.md`. Two agents, then me; the gate is
+**360 tests passed, 0 failed, clippy `--all-features -D warnings` exit 0, `cargo doc` 0
+warnings**, all on my own runs. Binary unchanged at 8,964,464 B by the port work (a
+constant costs nothing); the hermes work added the `connect_plugin` module and the
+plugin directory, not a release-visible claim I have re-measured.
+
+### 20.1 Superseded claims, stated rather than quietly edited
+
+`docs/CONSISTENCY.md` is append-only, so the three false statements below stay where
+they are and are corrected here. The first two are mine; the third was in my own brief.
+
+1. **The `3.4 MiB` gzipped download is false.** Stated at §18 (line 2117) and asserted
+   to "still hold" at §19.5 (line 2297). Measured on the `v0.4.0` release binary:
+   `gzip -9` of the binary is **3,641,380 B (3.473 MiB)**; the `tar.gz` the installer
+   actually downloads is **3,660,179 B (3.491 MiB)**. Both round to **3.5**, not 3.4.
+   README:11 and README:181 are corrected to 3.5 with the byte count. The figure was
+   measured before the daemon added 92,464 B and was re-checked after; it did not hold
+   either before or after that change, so §19.5's "both still hold" was not a
+   consequence of the daemon.
+2. **Index row 3 (line 557) is stale.** It records `serve --addr` defaulting to
+   `127.0.0.1:8899`. There is now one port literal in the tree and it is `8888`.
+3. **`docs/INTEGRATION_GAPS.md` G6.7 quotes 8,872,000 B = 8.46 MiB** as "the real
+   figure". That was the pre-daemon build. 8,964,464 B (8.55 MiB) is current. Row
+   corrected, and the G6.5 row marked resolved.
+
+### 20.2 G6.5: the port is one constant now
+
+`paths::DEFAULT_ADDR` is the only port literal in the tree; `DEFAULT_ENDPOINT` is gone
+and `endpoint()` returns `format!("http://{DEFAULT_ADDR}")`. There were **two** clap
+defaults to fix, not one — `serve` in `src/main.rs:57` and `daemon start` in
+`src/daemon.rs:175` both carried their own `8899`.
+
+The test reads the default back out of the **built clap `Command`** rather than off the
+source, so it fails if either side moves. It has teeth: flipping the const to 8899 was
+verified to make it fail. Binary byte-identical before and after.
+
+### 20.3 G3: Hermes, as a plugin, not a config edit
+
+`~/.hermes/plugins/agentmemory/` is installed on this machine — the competitor, wired
+into the user's Hermes, while we had no Hermes integration at all. The contract was
+read from the real loader (`~/.hermes/hermes-agent/plugins/memory/__init__.py` and
+`agent/memory_provider.py`), not inferred.
+
+**Four places the installed competitor violates that contract**, found by reading the
+loader rather than the competitor:
+
+- `on_pre_compress` **must return a string** — it becomes the compressor's
+  `memory_context`. The competitor returns `None` and mutates the `messages` list in
+  place, which is at best a no-op and at worst writes a synthetic user turn into the
+  transcript being summarised. We return the string.
+- `prefetch` and `sync_turn` are **keyword-only**; `on_session_end` is
+  **positional-only**. The competitor's `**kwargs` tolerates all of it but does not
+  document it.
+- A second `.py` file in the plugin directory is **not safely importable**: the module
+  is registered as `_hermes_user_memory.memory-wire`, and a hyphen is not a valid
+  Python identifier, so `from . import wire` is unreliable even though the loader
+  supports sibling submodules. One file it is.
+- The `hooks:` list in `plugin.yaml` is **decorative** — neither loader reads it. The
+  real key is `provides_hooks`, and that is for the generic hook registry, not memory
+  providers. The manifest lists five honest entries as documentation of what exists.
+
+`system_prompt_block` **is** implementable — the brief expected otherwise. It is
+assembled inline while the system prompt is built, so ours returns the static historian
+preamble with **no network call**. The competitor does an HTTP round trip on the
+system-prompt path.
+
+**Five of six events, and the sixth is refused rather than faked.** `on_memory_write`
+cannot be done honestly: `action='remove'` has no counterpart (delete is by id, and a
+repeat retain is a content-hash no-op, not a handle we were handed), and `target` is
+`'memory'`/`'user'` — two files — while memory-wire has banks. So it is absent from the
+manifest, the method exists, and it prints **one line to stderr the first time it fires**
+rather than inheriting a silent no-op.
+
+**Verified through the real loader**, not a hand-rolled import: `load_memory_provider()`
+returned `MemoryWireProvider`, `is_memory_provider_dir` true, `is_available()` true with
+no network call, five events exercised, a real retain→recall round trip (5 memories, 7
+tags), idempotent reinstall, and an uninstall that left `config.yaml` **byte-identical**
+to a pristine 31 KB copy taken beforehand with `find_provider_dir: None`. The real
+`~/.hermes` was left with 46 plugins, no `memory-wire`, and `provider: agentmemory`.
+
+**A bare `connect` no longer wires Hermes.** The other five hosts are additive — a hook
+entry or an MCP key added to a JSON file. Hermes activates exactly one memory provider,
+so wiring it moves a single global slot, from `agentmemory` to us, on this machine,
+unasked. `connect::IMPLICIT` is the bare-connect set and excludes it; `connect hermes`
+is one word longer and says what it does. Pinned by a test, because the two lists are
+adjacent and merging them back would be a one-character change.
+
+### 20.4 The one process failure worth recording
+
+**Both agents independently hit the same red gate at HEAD `75928a2`**: `src/main.rs`
+test code did not compile (`E0597`, a borrow of a temporary `Command`). It was
+`#[cfg(test)]`-only, so the shipped binary was never affected, and it came from the
+port-default test landed in the previous wave. Three-line fix. Neither agent caused it;
+both reported it rather than quietly working around it, which is the behaviour I want.
+
+**A flake I did not explain.** In one full-suite run, 3 of the 4 `tests/daemon.rs`
+integration tests failed; the same 4 passed 12/12 in isolation and passed in the next
+full-suite run. My first hypothesis — the port-default change colliding with the
+`uvicorn` server already on `127.0.0.1:8888` on this box — was **wrong**: the fixture
+reserves an ephemeral port with `bind("127.0.0.1:0")`, which I confirmed rather than
+assumed. So: one unexplained occurrence in roughly four full-suite runs, cause unknown.
+Recorded rather than dismissed.
+
+### 20.5 What I got wrong, in this wave
+
+- I read the port collision as the cause of the daemon test failures. I had the fixture
+  in front of me and did not read it.
+- I reported "clippy issues: 2" from a `grep -c` that counted the summary lines, not
+  diagnostics. Clippy is clean; the count was an artifact of my own command.
+- I expected `daemon status` to be broken on a non-default port, having seen that it
+  has no `--addr`. It reads the endpoint from the state file and correctly reported
+  8971/"serving"; rejecting `--addr` is right, since there is one daemon per data dir.
+- My brief told the port agent the gzip figure was "about 3.4 MiB". That was wrong and
+  it is why the false claim survived a round of review.
+
+### 20.6 Still open, in this area
+
+- `stop` retains a **pointer** (`session s-42 ended; transcript /tmp/… (295 B)`), not
+  prose. It fires every turn, so it is the highest-churn writer of a useless row. Both
+  new hook events read the transcript; `stop` was left alone as out of scope.
+- `on_pre_compress` and `on_session_end` retain the **same prose** when both fire in one
+  session — visible in the live recall as two rows with the same 743 characters.
+  Inherited from the shared `flush_at` in `hooks.rs`; collapsing them via `document_id`
+  is one line but would also collapse genuinely different tails from a mid-session
+  compaction followed by more work.
+- `$HOME/.hermes` is hardcoded, so a `HERMES_HOME` profile override is not honoured.
+  Consistent with the other four hosts, and `get_hermes_home()` does read it.
+- `on_memory_write` is refused, not implemented (§20.3).
+- G5, HTTP MCP transport and `/mcp/{bank}` scoping, is not started. With the daemon it
+  would be natural, but three of four hosts already get tools over stdio and it is a
+  new transport for no measured gain.

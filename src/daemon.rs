@@ -172,7 +172,7 @@ pub enum Action {
     Start {
         /// Bind address, passed to `serve --addr` unchanged. Loopback by
         /// default, because there is no authentication.
-        #[arg(long, default_value = "127.0.0.1:8899")]
+        #[arg(long, default_value = paths::DEFAULT_ADDR)]
         addr: String,
         /// SQLite database path, passed to `serve --db` (default:
         /// $XDG_DATA_HOME/memory-wire/memory.db).
