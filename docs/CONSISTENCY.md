@@ -2435,3 +2435,29 @@ Recorded rather than dismissed.
 - G5, HTTP MCP transport and `/mcp/{bank}` scoping, is not started. With the daemon it
   would be natural, but three of four hosts already get tools over stdio and it is a
   new transport for no measured gain.
+
+### 20.7 The final size, after the hermes plugin landed
+
+The port work cost **zero bytes** — it is a constant. The hermes work is what moved the
+artifact, because the plugin templates are embedded in the binary so `connect hermes`
+works from an installed binary with no repo checkout and no interpreter.
+
+| | bytes | MiB | rounded |
+|---|---|---|---|
+| binary, default features | 9,059,312 | 8.64 | **8.6 MiB** |
+| `gzip -9` of the binary | 3,677,114 | 3.51 | — |
+| `tar.gz` the installer ships | 3,696,627 | 3.53 | **3.5 MiB** |
+| `DT_NEEDED` entries | 3 | | unchanged |
+
+So 8,964,464 → 9,059,312 B is **+94,848 B (+1.06%)** for the plugin. The rounded download
+figure did not move, and neither did the shared-library count — which is the pair that
+actually matters against Hindsight's 0.8–1.0 GB.
+
+README:3, :11, :181 and :235 and `SKILL.md:3`, `:8`, `:192` are corrected to 8.6 MiB /
+9,059,312 B. §20's opening line ("Binary unchanged at 8,964,464 B by the port work") stays:
+it is a true statement about the port work in isolation, and §20.7 is where the current
+figure lives.
+
+**Not re-measured:** idle RSS. The daemon was not re-measured for the same reason, and
+the box was loaded throughout. The 10.7 MiB headline is unchanged and unverified since it
+was last measured.

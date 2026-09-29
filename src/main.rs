@@ -289,10 +289,21 @@ fn wire(agent: Option<connect::Host>, uninstall: bool) -> bool {
         println!("{}", outcome.render(host));
     }
     if agent.is_none() {
-        println!(
-            "note       hermes is not wired by a bare `connect` — it takes over the single\n            \
-             memory.provider slot. Run `memory-wire connect hermes` to switch to us."
-        );
+        // Built from `ALL - IMPLICIT` rather than written out, so a host added to
+        // one list and not the other cannot leave a stale name in this sentence.
+        let skipped: Vec<&str> = connect::ALL
+            .iter()
+            .filter(|h| !connect::IMPLICIT.contains(h))
+            .map(|h| h.id())
+            .collect();
+        if !skipped.is_empty() {
+            println!(
+                "note       {} not wired by a bare `connect` — it takes over the single\n            \
+                 memory.provider slot. Run `memory-wire connect {}` to switch to us.",
+                skipped.join(", "),
+                skipped.join("` / `connect ")
+            );
+        }
     }
     failed
 }
