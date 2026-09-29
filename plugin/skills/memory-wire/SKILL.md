@@ -1,12 +1,13 @@
 ---
 name: memory-wire
-description: Persist and retrieve agent memory across sessions with memory-wire — one 8.5 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a running `memory-wire serve`, or over MCP stdio with `memory-wire mcp`.
+description: Persist and retrieve agent memory across sessions with memory-wire — one 8.5 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a memory-wire server (`memory-wire daemon start` to run one in the background, `memory-wire daemon status` to check), or over MCP stdio with `memory-wire mcp`.
 ---
 
 # memory-wire
 
 Agent memory over HTTP or MCP stdio. One 8.4 MiB binary, three shared libraries, no language
-runtime, no daemon. **retain** stores a
+runtime, no database server, and no background process until you ask for one with
+`memory-wire daemon start`. **retain** stores a
 fact/decision (redacted before it touches disk), **recall** is ranked bank-isolated retrieval under a
 token budget, **reflect** is top-hit citation prefixed with the memory id (not LLM synthesis). Banks are
 isolated namespaces — `demo` and `other` cannot see each other — so use one bank per project or client
@@ -31,17 +32,62 @@ none is planned — a wrong guess moves memories between namespaces silently. Se
 ```bash
 MW=http://127.0.0.1:8888
 DB="$HOME/.local/share/memory-wire/agents.db"    # or pass --db /tmp/scratch.db
-# nohup memory-wire serve --addr 127.0.0.1:8888 --db "$DB" >/tmp/memory-wire.log 2>&1 &
+memory-wire daemon start --addr 127.0.0.1:8888 --db "$DB"   # returns once /health answers `ok`
+memory-wire daemon status                           # pid, uptime, endpoint, and whether it answers
 curl -sS -X POST "$MW/banks/demo/retain" -H 'Content-Type: application/json' -d '{"content":"auth uses jose middleware; key sk-abcDEF123456"}'   # -> {"id":"<uuid>"}
 curl -sS -X POST "$MW/banks/demo/recall" -H 'Content-Type: application/json' -d '{"query":"how does auth work","budget":2000}'   # -> ["auth uses jose … [REDACTED:api_key]"]
 ```
+
+## Running the server
+
+`memory-wire daemon start|stop|status` is the whole lifecycle. `start` returns
+immediately — it re-runs `serve` detached in its own session, records the child in
+`$XDG_DATA_HOME/memory-wire/serve.json`, and returns only after `/health` has
+actually answered `ok`, so a start that prints success is a start that worked.
+Its stdout and stderr go to `$XDG_DATA_HOME/memory-wire/serve.log`.
+
+```bash
+memory-wire daemon status    # exit 0 only when a server is really answering
+memory-wire daemon stop      # SIGTERM, waits for the drain, exit 0 if nothing ran
+```
+
+Four things about it are worth knowing, because each is a case where the obvious
+assumption is wrong:
+
+- **Starting twice refuses.** `start` tries the bind itself first, so a second
+  attempt exits nonzero with the reason on your terminal instead of spawning a
+  server that dies on bind. There is no lockfile to go stale; the port is the lock.
+- **`status` is the only honest answer about liveness.** The hooks this tool
+  installs are never-fail by contract — a down server prints local framing and
+  exits 0 — so a stopped server is invisible from the model's side. `daemon status`
+  is how you tell "not running" from "running, nothing to say". It exits nonzero
+  when no server is answering, which makes it scriptable.
+- **A pid is not an identity.** If the recorded process is gone, the state file is
+  reported stale and the next `start` clears it. If the pid is alive but the
+  endpoint does not answer, the report says `pid alive, not serving` with both
+  facts and `stop` will **not** signal it — the pid may have been reused by an
+  unrelated process. Kill it yourself (`kill <pid>`) if you need the address back.
+- **A state file that does not parse is reported, not silently replaced.** Its
+  path is named; `start` says so out loud before overwriting it.
+
+The no-daemon form is still supported and is the right one when you want the
+server in the foreground, under your own supervisor, or attached to a terminal:
+
+```bash
+memory-wire serve --addr 127.0.0.1:8888 --db "$DB"          # foreground, Ctrl-C to stop
+nohup memory-wire serve --addr 127.0.0.1:8888 --db "$DB" >/tmp/memory-wire.log 2>&1 &
+```
+
+`serve` is byte-for-byte the same server either way: it drains in-flight requests
+on SIGINT/SIGTERM, and `daemon stop` sends exactly that signal.
 
 Eight routes: `GET /health` (body exactly `ok`, plain text), `POST /banks/:id/{retain,recall,reflect}`,
 `GET`/`PUT /banks/:id/config`, and the lifecycle half — `GET /banks/:id/memories?limit=&offset=`,
 `GET`/`DELETE /banks/:id/memories/:mid`, `GET /banks/:id/stats`. Lifecycle responses serve
 `{id, content, created_at}` (plus `context` when the memory has one), so every served memory carries an
 RFC 3339 UTC timestamp. Omit `--db` for the `$XDG_DATA_HOME/memory-wire/memory.db` default; if 8888 is
-taken, serve on a free `--addr 127.0.0.1:<port>` and point `$MW` at it.
+taken, `daemon start` refuses with the reason and exits nonzero rather than picking another port — serve
+on a free `--addr 127.0.0.1:<port>` and point `$MW` at it.
 
 ## MCP
 
@@ -83,7 +129,8 @@ to restrict the search to memories carrying **any** of them (capped at 20, head 
 every host it detects — claude-code, codex, copilot-cli, cursor, opencode. Idempotent, and it never
 rewrites a hook it did not write; `--uninstall` prunes only its own entries and is refused alongside
 `--guidelines`. `memory-wire doctor` is a read-only health screen (`--strict` exits nonzero if the server
-or store is unusable).
+or store is unusable), and `memory-wire daemon {start,stop,status}` is the lifecycle — it runs the
+server in the background and is the only command that can say whether one is running.
 
 ## Workflow
 
@@ -131,8 +178,9 @@ JWT, `Bearer`, Slack, Google API keys, emails, phones, `<private>` blocks), not 
 
 ## Checklist
 
-- [ ] Server up — `curl -s "$MW/health"` returns exactly `ok` (plain text), and the bank name is
-      non-empty (blank/whitespace is a `400`)
+- [ ] Server up — `memory-wire daemon status` exits 0, and `curl -s "$MW/health"` returns exactly `ok`
+      (plain text); the bank name is non-empty (blank/whitespace is a `400`). A `status` that says
+      `pid alive, not serving` is a server you have to fix, not one that is merely quiet.
 - [ ] Query is a concept, not a pasted identifier, and `budget` is at the default unless you have a reason
 - [ ] Retain returned `{"id":"<uuid>"}`, carried nothing sensitive (redaction is a net, not a licence),
       and stored one fact — not a paragraph

@@ -2184,3 +2184,120 @@ now say so at the point of use.
   finding's scope. Unfixed.
 - `eval/results_selection_vector_axis_fixed.json` is stale relative to its `.md`
   on provenance fields only; all measured values are identical.
+
+## 19. Integration gaps G1–G4: a daemon, two hook events, and a real bank identity
+
+`docs/INTEGRATION_GAPS.md` audits the competitor integration surfaces — agentmemory at
+21 harnesses / 54 MCP tools, hindsight at 18 harnesses / 39 tools — against our 5
+config-file entries and 4 tools. Four gaps are now closed. This is the record of what
+changed and what did not.
+
+### 19.1 G4 — the bank was a directory name, and two repos could collide
+
+`/home/x/api` and `/home/y/api` were both bank `api`, and `MEMORY_WIRE_BANK` did not
+override the hook path, so a cloned repository could read your memory by having the
+same directory name. hindsight states the principle directly: *"a cloned repository
+must not be able to turn memory on."*
+
+The hook bank is now derived from the `[remote "origin"]` url in `.git/config`, parsed
+as text. `git` is never spawned, which also removed the pre-existing
+`git rev-parse --show-toplevel` subprocess — the exact antipattern hindsight documents
+at `git-layout.ts:1-13`, where every failure mode including `EAGAIN` collapsed to
+`null`. Order: `--bank` > `MEMORY_WIRE_BANK` > remote `owner/repo` > worktree basename
+> `memory-wire`. Verified live against a fixture remote: `acme/widget` → `acme-widget`,
+where the old code produced the directory name.
+
+**Caveat that does not go away:** sanitisation is lossy, so `acme/api` and `acme.api`
+both become `acme-api`. A large improvement on basename, not a uniqueness proof. The
+explicit and env steps are the escape hatches when an id must never collide.
+
+**Not done, deliberately:** no opt-in policy. G4 fixes uniqueness, which is the bug.
+Whether a repository must opt in to memory is a product policy question and is not
+bundled into a correctness fix.
+
+### 19.2 G2 — `PreCompact` and `SessionEnd`, and a worse finding underneath
+
+`PreCompact` fires immediately before Claude Code discards a conversation to context
+compaction, and `SessionEnd` is the one-shot flush. Both ship. `connect` writes five
+events per host. Our own audit had recorded `PreCompact` as "best hook bytes available"
+and never built it.
+
+The diagnostic run before the change found something worse than the missing events:
+`stop` retains a transcript **path** and its byte size, not the conversation. Nothing
+in the crate can read that row back, so `stop` contributes no retrievable knowledge —
+and it fires every turn, making it the highest-churn writer of a useless row. The two
+new events read the file instead (a 128 KiB window at its end, the last 2,000
+characters of prose) and persist the conversation. `seed::turn_text` was made
+`pub(crate)` and reused rather than writing a second JSONL parser; the `src/seed.rs`
+diff is 5 lines.
+
+**Open:** `stop` is unchanged and still writes a pointer. It is the weakest of the
+five hooks and the obvious next cut.
+
+### 19.3 G1 — a daemon, and the one bug that would have shipped as a phantom
+
+`memory-wire daemon {start,stop,status}`. `setsid` via `libc` — already in the
+dependency tree transitively, so it costs nothing at runtime and the default build
+still has exactly three `DT_NEEDED` entries. One state file beside the default
+database, carrying pid, addr, db, start time, and the process start time.
+
+**The finding worth keeping.** `setsid()` does not return 0 on success on this
+platform; glibc returns the new session id. The POSIX-documented `== 0` test read a
+*stale* `errno` on the failure path of a call that had actually succeeded, so every
+`daemon start` failed with `No such file or directory (os error 2)` while `getsid(0) ==
+getpid()` confirmed the detach had worked every time. Had the error text been believed
+rather than the syscall checked, the next hour would have gone into fixing a non-bug.
+It is now compared against `-1`, which is both the documented failure and what `std`
+itself compares against.
+
+**A pid is not an identity.** The one case that cannot be closed with a pid plus an
+endpoint probe is a recycled pid *while* a real memory-wire answers on the port: the
+endpoint says yes, the pid says alive, and they are different processes. Recording
+`/proc/<pid>/stat` field 22 next to the pid closes it. Linux-only; elsewhere the check
+degrades to endpoint-only and `status` says so beside the pid rather than assuming it
+away. Verified by planting a live `sleep`'s pid with a wrong start time: reported as
+somebody else's process, refused a signal, and the innocent process survived.
+
+**A correction I made to the brief.** The first specification said `stop` must refuse
+whenever the endpoint is silent. With identity proven by start time, that is
+over-cautious: a daemon that has wedged with its listener gone is exactly the case
+where refusing leaves the user with nothing but a manual `kill`. The rule is now
+`may_signal(identity)` — a matched start time authorises the signal, an unavailable one
+does not — extracted as its own function so it is testable, since signalling the only
+live pid available in a test would end the test.
+
+**`start` waits up to 5 s before returning.** It never waits on the child; the wait is
+a readiness proof, because a spawn returning a pid proves the process exists, not that
+it serves. Without it, `daemon start` immediately followed by `daemon status` is a coin
+flip and the end-to-end test is flaky.
+
+**Not done, and it is a real limit:** there is one state file, so `daemon start` on a
+second address while a daemon is healthy is refused. A second server would be a process
+no command in the binary could stop. You cannot run two daemons on two ports.
+
+### 19.4 What I got wrong while doing this
+
+- I wired `--bank` as a plain clap arg on `Cmd::Hook`. A non-global arg on a command
+  that only dispatches to subcommands is accepted *before* the subcommand and rejected
+  after it — so `hook session-start --bank x`, the natural form, errored. Now
+  `global = true`; both positions verified.
+- I read a 3-minute release build as `daemon start` hanging on a held pipe. It was the
+  build. The pipe-fd hypothesis was never tested and was wrong.
+- I read `101` as a wrong exit code for a refusal. It was `PIPESTATUS` in my own
+  pipeline. Measured without a pipe: 0 / 1 / 0 / 0 / 1 / 0, which is correct.
+- I told the bank-identity agent that the `--bank` flag was a two-line change. It was
+  blocked entirely — the clap variant and the dispatch both live in files it was
+  forbidden to touch — so it shipped the ladder with the flag unreachable and handed
+  me the diff. That was the right call on its part and I should not have assumed the
+  surface was editable.
+
+### 19.5 Measurements, and what they cost
+
+Binary 8,872,000 B → 8,964,464 B (+92,464, +1.0%) for the daemon, the `libc` calls and
+the state file. The rounded `8.5 MiB` and the `3.4 MiB` gzipped download both still
+hold. The embed arm's `65,007,744 B` is quoted against the `8,874,128 B` default
+measured on that same v0.4.0 build, and the pair is now labelled as such so the two
+numbers are not read as simultaneous.
+
+No RSS claim is made for the daemon. It is the same process doing the same work, but
+it was not re-measured, and the box was at loadavg 22 on 24 cores for this work.

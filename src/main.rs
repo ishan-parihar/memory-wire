@@ -1,4 +1,5 @@
 mod connect;
+mod daemon;
 mod doctor;
 mod guidelines;
 mod hooks;
@@ -58,6 +59,18 @@ enum Cmd {
         /// SQLite database path (default: $XDG_DATA_HOME/memory-wire/memory.db).
         #[arg(long)]
         db: Option<PathBuf>,
+    },
+    /// Run the server in the background, and manage its lifetime.
+    ///
+    /// Additive to `serve`, which is untouched: `daemon start` re-execs this
+    /// binary with `serve --addr … [--db …]`, detached into its own session, and
+    /// records the child in `$XDG_DATA_HOME/memory-wire/serve.json`. It exists
+    /// because the hooks are never-fail by contract, which means a stopped server
+    /// is invisible to a model — `daemon status` is what tells the two apart.
+    Daemon {
+        /// Which lifecycle step to take.
+        #[command(subcommand)]
+        action: daemon::Action,
     },
     /// Wire memory-wire into agent hosts (default: every detected host).
     Connect {
@@ -167,12 +180,16 @@ async fn main() -> anyhow::Result<()> {
             println!("      GET|PUT /banks/:id/config · GET .../memories[/:mid] · DELETE .../memories/:mid");
             println!("      GET /banks/:id/stats · GET /health");
             println!("MCP   `memory-wire mcp` on stdio — retain / recall / reflect / bank config");
-            println!("CLI   connect (hooks + MCP entries) · hook <lifecycle> · doctor [--strict]");
+            println!("CLI   daemon start|stop|status — run the server in the background");
+            println!("      connect (hooks + MCP entries) · hook <lifecycle> · doctor [--strict]");
             println!("      sweep [--dry-run] [--db PATH] — forget expired memories (per-bank, opt-in)");
             println!("      seed [--commits N] [--transcripts] — one-shot bank seeding");
         }
         Cmd::Serve { addr, db } => {
             serve(&addr, db).await?;
+        }
+        Cmd::Daemon { action } => {
+            std::process::exit(daemon::run(action));
         }
         Cmd::Connect { agent, uninstall, guidelines } => {
             if let Some(why) = connect_conflict(uninstall, guidelines) {

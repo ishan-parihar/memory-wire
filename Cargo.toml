@@ -33,6 +33,13 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 rmcp = { version = "1.8", default-features = false, features = ["server", "transport-io"] }
 
+# `setsid()` and `kill(pid, 0)`, for `daemon start`/`daemon stop`
+# (`src/daemon.rs`). Already in the tree transitively through tokio -> errno and
+# uuid -> getrandom, so promoting it to a direct dependency adds no crate, no
+# code, and no shared library: the default binary's `DT_NEEDED` count is
+# unchanged at three, which `readelf -d` is what actually confirms.
+libc = "0.2"
+
 # The dense-vector retrieval arm (`src/vector.rs`). OFF by default so the shipped
 # build stays a single small binary with no ONNX runtime in it.
 #

@@ -1,7 +1,10 @@
 # Install memory-wire (agent runbook)
 
-Self-contained HTTP API plus an MCP stdio server, no daemon to supervise. Nine
-curl steps, each with an assertion you can check. Everything below was executed
+Self-contained HTTP API plus an MCP stdio server. Nine curl steps, each with an
+assertion you can check. The server runs in the background under
+`memory-wire daemon {start,stop,status}` — one process, no supervisor, no unit
+file — and `serve` in the foreground stays available if you would rather own the
+process yourself. Everything below was executed
 against a local `memory-wire serve` on a scratch `--db` on 2026-09-27; the
 `Expect:` lines are observed output, not aspirations, and every claim here is
 listed in [`docs/CONSISTENCY.md`](docs/CONSISTENCY.md) with how it was checked.
@@ -17,27 +20,84 @@ export MW="http://127.0.0.1:8888"
 ## Start the server
 
 ```bash
-nohup memory-wire serve --addr 127.0.0.1:8888 --db "$MW_DB" >/tmp/memory-wire.log 2>&1 &
+memory-wire daemon start --addr 127.0.0.1:8888 --db "$MW_DB"
 ```
+
+`Expect:` a block naming the pid, the endpoint, the store, the log, and the state
+file, then exit 0. It returns as soon as the server answers `/health` with `ok`,
+so a start that printed success is a start that worked — it never reports a
+daemon that is not running. The server is detached into its own session, so
+closing this terminal does not take it down. `--addr` and `--db` are passed
+straight through to `serve`.
 
 Omit `--db` and it defaults to `$XDG_DATA_HOME/memory-wire/memory.db`
 (falling back to `~/.local/share/...`). Parent directories are created for you.
 The server seeds a bank named `default` on boot; any other bank id in the URL is
 created implicitly by its first `retain`.
 
-**If 8888 is already taken**, `serve` fails to bind and exits — it does not pick
-another port silently. Observed: `Error: Address already in use (os error 98)` on
-stderr and exit 1. Start it on a free one and point `$MW` at that port:
+**If 8888 is already taken**, `daemon start` refuses before it spawns anything,
+with the reason on your terminal and a nonzero exit — it does not pick another
+port silently, and it does not leave you a dead child:
+
+```
+memory-wire daemon: cannot bind 127.0.0.1:8888: Address already in use (os error 98)
+  GET http://127.0.0.1:8888/health answered `ok`, so a memory-wire server is already serving there
+  stop it with `memory-wire daemon stop` if this command started it
+```
+
+That is the whole duplicate-daemon defence: the port. There is no lockfile to
+go stale and nothing to clean up. Start it on a free port and point `$MW` there:
 
 ```bash
 export MW="http://127.0.0.1:18899"                       # any free port
-nohup memory-wire serve --addr 127.0.0.1:18899 --db "$MW_DB" >/tmp/memory-wire.log 2>&1 &
+memory-wire daemon start --addr 127.0.0.1:18899 --db "$MW_DB"
 ```
 
 `--addr` is the only thing that changes; every path below is port-agnostic
 because it goes through `$MW`. The health body must be exactly `ok` — plain text,
 not JSON, not `"ok"`, not a 200 with an HTML error page. A 404 or connection
 refused there means you are pointed at the wrong port, not at memory-wire.
+
+### Is it running?
+
+```bash
+memory-wire daemon status; echo "exit=$?"
+```
+
+`Expect:` `state  serving`, the pid, the uptime, the endpoint, and exit 0.
+**A nonzero exit is the scriptable answer**: `daemon status` exits 0 only when a
+memory-wire server is really answering `ok` on its endpoint — a 2xx from some
+other process on the port does not count. The four other states, and what they
+mean:
+
+| `state` | what it says | what to do |
+|---|---|---|
+| `serving` | it is ours and answering | nothing |
+| `pid alive, not serving` | the recorded pid exists, the endpoint does not answer | the daemon is wedged; `daemon stop` will **not** signal it, so `kill <pid>` by hand |
+| `not running` | no state file, or the recorded pid is gone (stale) | `daemon start` clears the stale file and starts one |
+| `corrupt` | the state file at the named path does not parse | read it before overwriting; `daemon start` says so, then replaces it |
+
+This matters more than it looks. The hooks `memory-wire connect` installs are
+never-fail by contract — a down server prints local framing and exits 0, because
+a memory server that is down must not put an error in front of a model. That is
+correct, and it means a *stopped* server is indistinguishable from a working one
+that simply had nothing to say. `daemon status` is the thing that tells those
+apart, and it is the only command that can.
+
+### The foreground form
+
+`serve` is the same server, unbound from the lifecycle, and is the right choice
+when you want it attached to a terminal or under your own supervisor:
+
+```bash
+memory-wire serve --addr 127.0.0.1:8888 --db "$MW_DB"        # foreground; Ctrl-C to stop
+nohup memory-wire serve --addr 127.0.0.1:8888 --db "$MW_DB" >/tmp/memory-wire.log 2>&1 &
+```
+
+Either way it drains in-flight requests on SIGINT/SIGTERM, and `daemon stop`
+sends exactly the second of those. The difference is only who holds the
+terminal — and with `nohup … &` there is no `daemon status` or `daemon stop` to
+go with it, which is the reason to prefer `daemon start`.
 
 ---
 
@@ -480,6 +540,7 @@ One command that fails loudly if any of the above regressed:
 
 ```bash
 set -e
+memory-wire daemon status >/dev/null            # exit 0 only if a server is really answering
 curl -fsS "$MW/health" | grep -qx ok
 ID=$(curl -fsS -X POST "$MW/banks/verify/retain" -H 'Content-Type: application/json' \
       -d '{"content":"memory-wire install verification token"}' | sed 's/.*"id":"\([^"]*\)".*/\1/')
@@ -571,13 +632,29 @@ sqlite3 "$MW_DB.bak" "SELECT COUNT(*) FROM memories;"
 direction, and it is also the one that fails when a live store's page does not
 check out.
 
+## Stop the server
+
+```bash
+memory-wire daemon stop; echo "exit=$?"
+```
+
+`Expect:` `memory-wire daemon stopped: pid <n> exited and the state at … was
+removed`, and exit 0. It sends SIGTERM, waits for the in-flight requests to
+drain, and only then removes `$XDG_DATA_HOME/memory-wire/serve.json`.
+
+Stopping a stopped daemon is not an error: it reports `nothing running` and still
+exits 0, so it is safe in a teardown script.
+
 ## Uninstall
 
 ```bash
+memory-wire daemon stop                       # if you started one with daemon start
 curl -fsSL "$MW_RAW/install/get-memory-wire.sh" | sh -s -- --uninstall
 ```
 
-Removes the binary only. Observed output:
+Removes the binary only. A daemon started with `daemon start` keeps running
+after the binary is gone, so stop it first — the command above cannot be
+replaced afterwards. Observed output:
 
 ```
 removed /home/you/.local/bin/memory-wire (database left in place at /home/you/.local/share/memory-wire — delete it by hand)

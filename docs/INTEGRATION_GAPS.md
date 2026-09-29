@@ -45,6 +45,55 @@ container. The only documented way to get background survival is the user typing
 
 ## G1 — No persistent service, and our hooks fail silently without one
 
+**Status: resolved.** `memory-wire daemon {start,stop,status}` ships
+(`src/daemon.rs`, wired in `src/main.rs`). `start` re-execs the binary with
+`serve --addr … [--db …]` — the same flags `serve` already took, passed straight
+through — detached into its own session with `libc::setsid()` in
+`Command::pre_exec`, and returns only after `/health` has answered `ok`, so a
+start that printed success is a start that worked. State lives in one file,
+`$XDG_DATA_HOME/memory-wire/serve.json` (the directory is the parent of
+`default_db_path`, not a second reading of `XDG_DATA_HOME`), beside the store and
+the `serve.log` the child's stdio is redirected to. `stop` sends SIGTERM — the
+signal `serve` already drains on — waits for exit, and removes the state file.
+`serve` itself, the store schema, the HTTP routes and MCP are untouched; the
+dependency delta is `libc` promoted from transitive to direct, which
+`cargo tree --edges normal` already showed in the tree, so the default build's
+`DT_NEEDED` count is still three.
+
+Everything below is the audit that motivated it and stays as the record. Three
+decisions inside it are worth naming, because each is a place the obvious
+implementation is wrong:
+
+**The port is the lock, and the check is in the parent.** `start` attempts the
+bind itself before spawning anything, so a second `start` refuses with the reason
+on the terminal and a nonzero exit instead of leaving a child that dies on bind.
+No lockfile, so there is nothing to go stale — hindsight's arrangement, quoted
+below, and the reason it is better than the alternative.
+
+**A pid is not an identity, so the state file carries a start time.** The audit
+did not ask for this and the design is better for it. The brief's staleness rule
+was "pid alive but the endpoint does not answer → report both facts, do not kill
+it", which is safe but leaves one case unresolved: a pid that was reused by an
+unrelated process *while a memory-wire server is also answering on the port*
+would pass an endpoint-only check, and `stop` would signal a stranger. The state
+file therefore records `/proc/<pid>/stat` field 22 next to the pid, and
+`daemon status` reports a mismatch as a recycled pid — `not running`, with the
+reason attached. Off Linux there is no such field, the check degrades to
+endpoint-only, and `status` says that in the line next to the pid rather than
+assuming it away. This closes G6.1 (`stop`/`restart`) at the same time;
+`restart` is still `stop` then `start`.
+
+**`setsid` does not return 0 on success here, and the difference is a silent
+no-op daemon.** The first implementation tested `setsid() == 0`, which is what
+POSIX documents. On this platform (glibc, Linux 6.x, rustc 1.98) it returns the
+new session id instead, so every `daemon start` reported
+`could not spawn the detached server: No such file or directory (os error 2)` and
+exited 1 — with the detach never happening. `-1` is the documented failure *and*
+is what the standard library itself compares against, so the test is now on `-1`.
+This is recorded here rather than only in the code comment because it is the kind
+of thing that silently reintroduces itself the next time someone tidies the
+comparison.
+
 **The gap.** Every host we integrate with needs a running server. We never
 start one, never keep one alive, and never report one.
 
@@ -276,9 +325,11 @@ Cheapest and highest-value first. Each is independently shippable.
 2. ~~**G2 — `PreCompact` and `SessionEnd` hooks.**~~ **Done.** Both ship, and
    they persist the conversation rather than a pointer to it. Carried forward:
    make `stop` read the transcript too, so no retained memory is a bare path.
-3. **G1 — `memory-wire daemon {start,stop,status}`** with a pidfile. The largest
-   single improvement to every existing user's experience, and the one that makes
-   our never-fail hooks safe rather than merely quiet.
+3. ~~**G1 — `memory-wire daemon {start,stop,status}`.**~~ **Done.** A detached
+   `serve`, a state file with a pid *and* a start time, and a `status` that exits
+   nonzero unless a server is really answering. The largest single improvement to
+   every existing user's experience, and the one that makes our never-fail hooks
+   safe rather than merely quiet. Also closes G6.1's `stop`.
 4. **G6.5, G6.6, G6.7 — the three small corrections.** Port default, README
    cross-reference to the skill, exact binary size.
 5. **G3 — hermes integration**, when there is appetite for a plugin-shaped host

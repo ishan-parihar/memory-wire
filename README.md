@@ -1,12 +1,14 @@
 # memory-wire
 
 **Agent memory in one 8.4 MiB binary, three shared libraries, 10.7 MiB of RSS and
-zero daemons** — roughly 1% of Hindsight's documented idle floor. No language
-runtime, no database server, no install step: retain/recall/reflect with bank
-isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as an
-MCP stdio server.
+no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
+language runtime, no database server, no install step: retain/recall/reflect with
+bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
+an MCP stdio server. `memory-wire daemon start` runs that server in the background
+if you want it to outlive your terminal — one process, the same binary, no
+supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **8.5 MiB** binary · **3.4 MiB** download · **0** background processes
+- **10.7 MiB** idle RSS · **8.5 MiB** binary · **3.4 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
@@ -15,7 +17,7 @@ MCP stdio server.
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook)
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `docs/BENCHMARK.md`
 
-**Contents** — [Benchmarks](#benchmarks) · [Footprint](#footprint-vs-competitors) · [Quick start](#quick-start) · [CLI](#cli) · [Install](#install) · [How it works](#how-it-works) · [Reproduce](#reproduce) · [Roadmap](#roadmap)
+**Contents** — [Benchmarks](#benchmarks) · [Footprint](#footprint-vs-competitors) · [Quick start](#quick-start) · [CLI](#cli) · [The daemon](#the-daemon) · [Install](#install) · [How it works](#how-it-works) · [Reproduce](#reproduce) · [Roadmap](#roadmap)
 
 ## Benchmarks
 
@@ -175,13 +177,13 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.5 MiB** binary — 8,872,000 B (LTO, incl. the MCP SDK); **3.4 MiB** gzipped, which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **8.5 MiB** binary — 8,964,464 B (LTO, incl. the MCP SDK and the daemon); **3.4 MiB** gzipped, which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
 | Minimum box | any glibc box — one file to copy. SQLite is **compiled in** (`rusqlite` with `features = ["bundled"]`), so there is no database to install and nothing to run | **1.5 GB** full / 512 MB slim + external providers + separate DB | Node + engine + 4 ports |
 | 10k-memories storage | **2.9 MiB** (SQLite+FTS5, 3,022,848 B settled main file — 7,237,496 B while the WAL is unflushed) | Postgres + pgvector (+ reranker) | **35.7 MB** (BM25+vector) |
-| Background processes | **0** | API + worker + UI + DB | REST + streams + viewer + worker WS |
+| Background processes | **0**, or **1** with `memory-wire daemon start` — same binary, same 10.7 MiB idle RSS, no supervisor | API + worker + UI + DB | REST + streams + viewer + worker WS |
 
 Hindsight rows: their `docs/developer/installation.md` (RAM table). agentmemory rows:
 their `benchmark/SCALE.md` (§1 heap + storage tables).
@@ -306,13 +308,22 @@ revisitable rather than buried.
 
 ```bash
 cargo build --release
-./target/release/memory-wire serve --addr 127.0.0.1:8888 --db ~/.local/share/memory-wire/agents.db
+./target/release/memory-wire daemon start --addr 127.0.0.1:8888 --db ~/.local/share/memory-wire/agents.db
+./target/release/memory-wire daemon status
 curl -sS -X POST localhost:8888/banks/demo/retain -H 'Content-Type: application/json' -d '{"content":"auth uses jose"}'
 curl -sS -X POST localhost:8888/banks/demo/recall -H 'Content-Type: application/json' -d '{"query":"how does auth work","budget":2000}'
+
+# in the foreground instead, or under your own supervisor:
+./target/release/memory-wire serve --addr 127.0.0.1:8888 --db ~/.local/share/memory-wire/agents.db
 
 # or, for an MCP client, over stdio:
 ./target/release/memory-wire mcp --bank my-project
 ```
+
+`daemon start` returns only after `/health` has answered `ok`, so a start that
+printed success is a start that worked. It detaches the server into its own
+session (`setsid`), so closing the terminal does not take it down, and records it
+in `$XDG_DATA_HOME/memory-wire/serve.json` for `daemon stop` and `daemon status`.
 
 `--db` is optional: without it the store lands at `$XDG_DATA_HOME/memory-wire/memory.db`,
 falling back to `~/.local/share/memory-wire/memory.db` when `XDG_DATA_HOME` is unset
@@ -355,15 +366,16 @@ API keys, emails, and phone numbers.
 
 ## CLI
 
-Eight subcommands in a default build, exactly as `--help` reports them (`help` is
-clap's own and is not one of them). An `--features embed` build has a ninth,
+Nine subcommands in a default build, exactly as `--help` reports them (`help` is
+clap's own and is not one of them). An `--features embed` build has a tenth,
 `embed <text>`, which prints one 384-d vector as JSON; it is the reason the
 weights survive LTO:
 
 | Command | What it does |
 |---|---|
 | `info` | Audit + plan pointers (the default when no command is given) |
-| `serve` | Start the HTTP server — `--addr` (default `127.0.0.1:8899`), `--db`. Stops accepting and drains in-flight requests on SIGINT/SIGTERM |
+| `daemon` | `start` / `stop` / `status` for a backgrounded server — see below |
+| `serve` | Start the HTTP server in the foreground — `--addr` (default `127.0.0.1:8899`), `--db`. Stops accepting and drains in-flight requests on SIGINT/SIGTERM |
 | `connect` | Wire the hooks into agent hosts — optional `<agent>`, `--uninstall`, `--guidelines` |
 | `hook` | Lifecycle hook the hosts invoke — `session-start`, `prompt`, `stop`, `pre-compact`, `session-end` |
 | `doctor` | Endpoint, bank, store, and server health — `--db`, `--strict` |
@@ -379,6 +391,59 @@ If 8899 is already taken, `serve --addr 127.0.0.1:<free port>` and point your
 client at that port; `GET /health` on it must return exactly `ok`. There is no
 `backup` subcommand — a SQLite store is backed up with `sqlite3 "$DB" ".backup
 '$DB.bak'"`, recipe and caveats in `INSTALL_FOR_AGENTS.md`.
+
+## The daemon
+
+`memory-wire daemon {start,stop,status}` runs `serve` in the background and
+reports on it. It is additive: `serve` is byte-for-byte unchanged, and `daemon
+start` re-execs this binary with `serve --addr … [--db …]`, detached.
+
+It exists because of something specific to this crate. The hooks `connect`
+installs are never-fail by contract — every failure path is silent and the
+process exits 0 — because a memory server that is down must not put an error in
+front of a model. That contract is right, and it has one consequence worth naming:
+**a stopped server is indistinguishable from a working server that had nothing to
+say.** Both look like silence. So the daemon is what makes the quiet hook safe
+rather than merely quiet, and `status` is what tells the two apart.
+
+```bash
+memory-wire daemon start --addr 127.0.0.1:8888 --db ~/.local/share/memory-wire/agents.db
+memory-wire daemon status          # exit 0 only when a server is really answering
+memory-wire daemon stop            # SIGTERM, wait for the drain, remove the state file
+```
+
+Four properties, each of them a place the obvious implementation is wrong:
+
+- **The bind is the lock.** `start` attempts the bind itself, in the foreground,
+  and refuses with the reason on your terminal and a nonzero exit *before*
+  spawning anything. There is no lockfile to go stale, and no child left dying on
+  a bind. (hindsight does the same: "No lockfile needed — port binding prevents
+  duplicate daemons", with the check in the parent so the error is visible.)
+- **`start` proves it.** It returns only after the endpoint has answered `ok`, and
+  a failure to spawn — including a failure to detach — is a nonzero exit with the
+  reason, never a success line for a daemon that is not running.
+- **`stop` reuses the signal `serve` already handles.** SIGTERM drains in-flight
+  requests, so `stop` sends it and waits; there is no second signal path. It
+  exits 0 when nothing was running, and it never signals a process it cannot
+  prove is its own.
+- **A pid is not an identity.** The state file records the process's start time
+  next to the pid, so a recycled pid is reported as somebody else's process
+  rather than as the daemon. The endpoint check is doctor's, reused rather than
+  reimplemented: 2xx *and* a body of exactly `ok`, because any process on the
+  port answers 200.
+
+`daemon status` distinguishes five states, and the middle one is the reason the
+command exists: `serving`; `not running` (no state file, or a stale one naming a
+pid that is gone — the next `start` clears it); `pid alive, not serving` (the pid
+exists, the endpoint does not answer — reported with both facts, **not** called
+healthy, and **not** signalled by `stop`); `corrupt` (the state file does not
+parse — its path is named and `start` says so before replacing it); and a
+recycled pid, which reads as `not running` with the reason attached. Logs go to
+`$XDG_DATA_HOME/memory-wire/serve.log`; state to `serve.json` beside it.
+
+Note that `daemon start --addr` defaults to `127.0.0.1:8899`, the same default
+`serve` has, while every client defaults to `8888` — that mismatch is
+[documented as a bug](#cli) rather than fixed here, so pass `--addr` explicitly.
 
 ## Connect, hooks, doctor
 
@@ -467,9 +532,10 @@ ordering).
 
 ## Forgetting (opt-in TTL)
 
-Memory-wire has no background process, so nothing is ever deleted on a timer.
-A bank that wants to forget says so in its own config, and
-`memory-wire sweep` is what carries that out:
+Memory-wire deletes nothing on a timer. There is no scheduler — with or without
+the daemon, no background process decides when a memory expires — so a bank that
+wants to forget says so in its own config, and `memory-wire sweep` is what carries
+that out:
 
 ```bash
 curl -sS -X PUT localhost:8899/banks/scratch/config -H 'Content-Type: application/json' \
@@ -577,7 +643,8 @@ write-side handle only, so keep it yourself.
 
 Library in `0.3.0`: `src/{api,store,recall,capture,embed,lib,memory}.rs` —
 `capture.rs` supplies the redaction filter. Binary-side modules (`connect`,
-`doctor`, `guidelines`, `hooks`, `http`, `mcp`, `paths`, `seed`, `sweep`) live in
+`daemon`, `doctor`, `guidelines`, `hooks`, `http`, `mcp`, `paths`, `seed`,
+`sweep`) live in
 `src/main.rs`; the HTTP surface is eight route groups (`/health`, and
 `/{retain,recall,reflect,config,memories,memories/:mid,stats}` under `/banks/:id`)
 plus four MCP tools.
@@ -625,7 +692,8 @@ genuine choice, not a stronger-vs-weaker version of one setting.
 
 **What the `embed` build costs, measured rather than estimated.** Building it
 (`cargo build --release --features embed`) produces a **65,007,536 B** binary
-against the default build's **8,874,128 B** — the vendored weights plus ONNX
+against the default build's **8,874,128 B** on that same v0.4.0 build — the
+vendored weights plus ONNX
 Runtime, and nothing else. Two facts about it are worth stating because both were
 assumed the other way:
 
@@ -670,7 +738,7 @@ pre-retain recall is normal, not exceptional: `GET .../memories` → `[]`,
 One corollary: **`PUT /banks/:id/config` requires an existing bank** and will not
 create one, so configure a bank after its first retain.
 
-`tests/{e2e,scale,backup}.rs` · `examples/{longmemeval,coding_life,scale_sweep,soak,bench_footprint,bench_write,bench_recall_curve,bench_concurrency,bench_coldstart,sweep_fusion,oracle_rerank}.rs`.
+`tests/{e2e,daemon,scale,backup,recall_budget}.rs` · `examples/{longmemeval,coding_life,scale_sweep,soak,bench_footprint,bench_write,bench_recall_curve,bench_concurrency,bench_coldstart,sweep_fusion,oracle_rerank}.rs`.
 
 ## Reproduce
 
@@ -758,7 +826,10 @@ append/replace split is untouched) · a bounded recall candidate window, so reca
 cost no longer grows with the bank · per-bank `ttl_days` plus the explicit
 `memory-wire sweep` that enforces it (off by default, no scheduler) · a loopback
 `--addr` default for `serve`, with a one-line stderr warning on any other bind ·
-graceful shutdown on SIGINT/SIGTERM, draining in-flight requests.
+graceful shutdown on SIGINT/SIGTERM, draining in-flight requests · the
+`daemon {start,stop,status}` lifecycle: a detached backgrounded server, the port
+as the duplicate-daemon defence, and a status that can tell a stopped server from
+a silent one.
 
 Not built yet: a 4-tier consolidation ladder (promote/evict/retention had no
 scheduler and no caller; the code was removed rather than left as a model of

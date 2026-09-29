@@ -149,14 +149,7 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
             None,
         ),
     };
-    // A 2xx is not proof: any process on this port answers 200, so the body has
-    // to be ours before `doctor` calls the server up.
-    let server = match http::get(&format!("{endpoint}/health"), IO_TIMEOUT) {
-        Ok(r) if !r.ok() => ServerState::Down(format!("GET {endpoint}/health -> {}", r.status)),
-        Ok(r) if r.body.trim() == "ok" => ServerState::Up,
-        Ok(_) => ServerState::Down("unexpected health response".to_string()),
-        Err(e) => ServerState::Down(e.to_string()),
-    };
+    let server = probe_server(endpoint);
     Report {
         endpoint: endpoint.to_string(),
         bank: bank.to_string(),
@@ -167,6 +160,24 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         memories,
         server,
         legacy_bank: legacy_bank_at(store, bank),
+    }
+}
+
+/// Ask `endpoint` whether a memory-wire server is answering, at the grade that
+/// counts: `/health` must answer **2xx** *and* a body of exactly `ok`.
+///
+/// A 2xx alone is not proof — any process on this port answers 200 — so the
+/// body is what separates our server from a foreign one squatting on the port.
+/// `doctor` and `daemon` both call this rather than each carrying a copy, so
+/// "is the server up" cannot mean two different things in one binary; that
+/// divergence is the bug `a_foreign_two_hundred_should_not_count_as_the_server`
+/// is named for.
+pub fn probe_server(endpoint: &str) -> ServerState {
+    match http::get(&format!("{endpoint}/health"), IO_TIMEOUT) {
+        Ok(r) if !r.ok() => ServerState::Down(format!("GET {endpoint}/health -> {}", r.status)),
+        Ok(r) if r.body.trim() == "ok" => ServerState::Up,
+        Ok(_) => ServerState::Down("unexpected health response".to_string()),
+        Err(e) => ServerState::Down(e.to_string()),
     }
 }
 
