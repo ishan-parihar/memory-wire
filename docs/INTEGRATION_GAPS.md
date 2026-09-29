@@ -1,0 +1,264 @@
+# Integration gap analysis — v0.4.0
+
+Written 2026-09-28, after `v0.4.0` shipped. Read-only audit of the three
+codebases plus the locally installed harnesses; no code changed.
+
+Sources: `_audit/agentmemory/` (rohitg00/agentmemory), `_audit/hindsight/`
+(vectorize-io/hindsight), and this tree at `eec026f`. Every claim below carries
+a `file:line` citation from those trees or a command run on this machine.
+
+---
+
+## 0. The shape of the field
+
+| | agentmemory | hindsight | memory-wire |
+|---|---|---|---|
+| Harness integrations | 21 adapters, 1 registry (`src/cli/connect/index.ts:28-50`) | 18 in one unified package (`coding-agents/src/harness/registry.ts:41-73`) + ~50 legacy dirs | **5** (`src/connect.rs:49-55`) |
+| MCP tools | **54** (`src/mcp/tools-registry.ts:957-968`) | 39 multi-bank / 36 single-bank (`hindsight_api/mcp_tools.py:36-78`) / 9 claude-plugin (`claude-code/scripts/mcp_server.py:87-196`) / 8 plugin (`coding-agents/src/core/knowledge-tools.ts:153-350`) | **4** (`src/mcp.rs:105-176`) |
+| Hook event vocabularies | **5** distinct sets | 3 shapes across 18 hosts | **1** (3 events) |
+| Long-lived process | detached engine + pidfiles | 4 daemonization paths | **none** |
+| `stop` / `status` | `stop` `status` `remove` (`src/cli.ts:4001-4013`) | `embed daemon {start,stop,status,logs}` (`hindsight_embed/cli.py:1549-1557`), `fs {start,stop,restart,status}` (`hindsight-cli/src/commands/fs/mod.rs:67-87`) | `doctor` only, no stop |
+| Harness uninstall | **none** — `remove-plan.ts` reads a `connect-manifest.json` nothing writes | full, all 18 (`installer.ts:2008-2021`) | marker-filter `--uninstall` |
+| MCP annotations | **zero** on 54 tools | all 75 registrations (`mcp_tools.py:562-569`) | all 4 (`src/mcp.rs:80-87`) |
+
+Two facts reframe everything below:
+
+**agentmemory's 95.2% ships behind a daemon.** `npx @agentmemory/agentmemory`
+spawns the engine `detached: true` then `unref()`s it
+(`src/cli.ts:1520-1542`) and the CLI exits. Lifetime is pidfile-based:
+`iii.pid` (`src/cli.ts:652-659`), `worker.pid` (`src/index.ts:111-118`),
+`engine-state.json` (`src/cli.ts:637-649`).
+
+**hindsight has four separate daemonization mechanisms** — Python
+`--daemon` re-exec with `start_new_session=True` (`daemon.py:94-126`), a TS
+plugin detached spawn (`coding-agents/src/core/daemon.ts:200-220`), a Rust
+`setsid()` (`hindsight-cli/src/commands/fs/daemon.rs:90-104`), and Claude-plugin
+`Popen(start_new_session=True)` (`claude-code/scripts/lib/daemon.py:305-313`).
+Neither ships a launchd plist or systemd unit; both delegate to Docker or to
+detachment.
+
+**We ship no daemon at all.** No `fork`, no `setsid`, no unit files, no
+container. The only documented way to get background survival is the user typing
+`nohup memory-wire serve … &` (`INSTALL_FOR_AGENTS.md:20,34`).
+
+---
+
+## G1 — No persistent service, and our hooks fail silently without one
+
+**The gap.** Every host we integrate with needs a running server. We never
+start one, never keep one alive, and never report one.
+
+**Why it is worse for us than for them.** Our hook contract is
+deliberately never-fail (`src/hooks.rs:3-7`): every failure path is silent, and
+`run` returns 0 unconditionally (`src/hooks.rs:58,76`). That is correct in
+isolation — a memory server that is down must not put an error in front of a
+model. But it converts "server not running" from a visible error into **silent
+memory loss with zero signal.** agentmemory's hooks can fail loudly; ours
+cannot. So they need a daemon more than we do, and we have less.
+
+**What exists instead.** `doctor` (`src/doctor.rs:73-92`) reports endpoint, bank,
+store path/size/integrity, and server state — and it is the *only* thing standing
+between a user and a silent no-op.
+
+**What the competitors do.** `agentmemory status` hits
+`health`/`sessions`/`graph/stats`/`config/flags` (`src/cli.ts:2112-2205`);
+`agentmemory stop` retires worker-then-engine in that order for a documented
+reason (`src/cli.ts:3538-3543`); `remove` is a double-confirmed destruction plan
+(`src/cli/remove-plan.ts:1-13`). hindsight exposes
+`hindsight-embed daemon {start,stop,status,logs}` — the fullest lifecycle
+surface — and `hindsight fs {start,stop,restart,status}`.
+
+**The honest size of this.** A `memory-wire daemon {start,stop,status}` that
+writes a pidfile and detaches is roughly the work agentmemory's
+`spawnEngineBackground` does. It is not exotic. It is also the single change
+that would most improve the experience of every existing user.
+
+---
+
+## G2 — We capture nothing at the two moments worth capturing
+
+Our hook surface is `SessionStart`, `UserPromptSubmit`, `Stop`
+(`src/hooks.rs:47-55`). Both competitors reach moments we do not.
+
+| Moment | agentmemory | hindsight | us |
+|---|---|---|---|
+| `PreCompact` | **yes** — in the 12-event Claude Code set (`plugin/hooks/hooks.json`) | no | **no** |
+| `SessionEnd` | yes (camelCase `sessionEnd`) | **yes** — the only one of its 18 harnesses that has it (`claude-code/hooks/hooks.json:1-49`) | **no** |
+| `PostToolUse` / `PreToolUse` | yes | yes (Cursor CLI, Copilot CLI) | no |
+| `on_pre_compress` (plugin-native) | hermes plugin (`integrations/hermes/plugin.yaml:6-12`) | — | no |
+| `system_prompt_block` | hermes plugin | — | no |
+
+`PreCompact` is the highest-value moment that exists in Claude Code: it fires
+immediately before context compaction discards the conversation. Memory written
+there survives; memory written afterwards does not. My own audit recorded this
+as item G11 — "best hook bytes available" — and it was never built.
+
+`SessionEnd` is the clean flush point. `Stop` fires per turn; `SessionEnd` fires
+once, with a known-conversation state, and is registered on this machine
+(`~/.claude/settings.json` has `SessionStart`, `UserPromptSubmit`, `SessionEnd`,
+`PreToolUse`, `PostToolUse` — we use three).
+
+**Cost:** two enum variants, two match arms, two entries in the per-host event
+list. agentmemory spends 12; hindsight spends 4 on Claude Code. We spend 3.
+
+---
+
+## G3 — No hermes-agent integration, and the competitor is installed there
+
+`~/.hermes/plugins/agentmemory/` **exists on this machine** (`plugin.yaml`,
+`__init__.py`, `README.md`). It declares six hook events — `prefetch`,
+`sync_turn`, `on_session_end`, `on_pre_compress`, `on_memory_write`,
+`system_prompt_block` — and implements a formal `MemoryProvider` interface:
+`is_available()`, `initialize(session_id)`, `get_tool_schemas()`,
+`handle_tool_call(name, args)`, `get_config_schema()`, `save_config()`.
+
+hindsight ships a hermes integration too
+(`hindsight-integrations/hermes/`, 6 events). agentmemory's own
+`connect hermes` adapter is a stub — it returns
+`{kind:"stub", reason:"yaml-merge-not-implemented"}`
+(`src/cli/connect/hermes.ts:44-45`) — and routes users to the plugin folder
+instead.
+
+**We have neither.** And hermes is not a JSON-config host: it has
+`~/.hermes/plugins/` (20+ installed), `~/.hermes/agent-hooks/` with a
+`pre_tool_call` protocol that returns `{"action":"block","message":…}` on
+stdin, `~/.hermes/skills/`, and HTTP MCP via `[mcp_servers.*] url = …` in
+`config.yaml`. Our `connect` model — write JSON into a host's config file —
+does not reach it.
+
+---
+
+## G4 — Bank isolation is name-based, and two different repos can collide
+
+This one is a correctness issue, not a feature gap.
+
+Our hook path derives the bank from the **git worktree top-level basename**
+(`src/paths.rs:80-94`, `src/paths.rs:61-78`). So `/home/x/api` and
+`/home/y/api` are both bank `api`. Two unrelated projects, one namespace.
+`README.md:406-407` documents that `MEMORY_WIRE_BANK` does *not* override the
+hook's bank, so there is no escape hatch on the hook path — only on
+`serve`/`mcp`.
+
+Both competitors solved this deliberately:
+
+- **agentmemory**: `AGENT_ID` env plus `AGENTMEMORY_AGENT_SCOPE=isolated`
+  (`src/config.ts:320-348`), and an explicit `agentId` parameter on save,
+  recall and search whose description warns that omitting it means shared memory
+  (`src/mcp/tools-registry.ts:81-86`).
+- **hindsight**: a template `coding-agent::{gitProject}`
+  (`coding-agents/src/core/bank.ts:53`) resolved against the git filesystem
+  layout — read **without spawning `git`**, because the old
+  `git rev-parse` path mapped every failure, including `EAGAIN`, to `null`
+  (`coding-agents/src/core/git-layout.ts:1-13`). Opt-in **fails closed**:
+  `isOptedIn` is off by default and a bare `bankId` does not approve
+  (`bank.ts:252-269`). There is deliberately no per-repo config file, because
+  "a cloned repository must not be able to turn memory on."
+
+**We have no opt-in at all and no collision resistance.** A repo you clone can
+read and write your memory by having the same directory name.
+
+---
+
+## G5 — 4 MCP tools against 8, 39 and 54, and stdio only
+
+Our surface: `memory_retain`, `memory_recall`, `memory_reflect`,
+`memory_bank_config_get` (`src/mcp.rs:105-176`). Transport is stdio only
+(`src/mcp.rs:297`); `INSTALL_FOR_AGENTS.md:448` states plainly that
+`/mcp/:bank` URL scoping "is not built."
+
+Consequences a user can observe:
+
+- **No HTTP MCP.** A host that can only reach an HTTP MCP server cannot use us.
+  hindsight is streamable-HTTP-first (`api/__init__.py:88-100`); hermes
+  configures MCP by `url`; agentmemory ships REST-emulated MCP endpoints
+  (`src/mcp/server.ts:72,1295,1348`).
+- **No per-bank URL scoping.** hindsight's `/mcp/{bank_id}` path segment swaps
+  the entire tool set and every schema (`api/mcp.py:499-504,518`). Our
+  resolution is a per-call argument with a server default
+  (`src/mcp.rs:184-189`) — which hindsight's comment says is the *right*
+  internal shape, so ours is compatible with that mode when it lands.
+- **No lifecycle tools over MCP.** `SKILL.md:49-50` admits list/get/delete/stats
+  are HTTP-only.
+- **4 tools is a thin surface.** hindsight's plugin ships 8 for the same job;
+  agentmemory ships 54.
+
+---
+
+## G6 — Smaller items, each cheap
+
+| # | Gap | Evidence | Note |
+|---|---|---|---|
+| G6.1 | **No `stop`/`restart` command.** Signals only (`src/main.rs:418-440`). | `agentmemory stop` `src/cli.ts:3445-3585`; `hindsight fs restart` `fs/mod.rs:150-153` | `doctor` covers *status*, not termination |
+| G6.2 | **`/health` verifies nothing** — `async fn health() -> &'static str { "ok" }` (`src/main.rs:500-503`), no store access. | hindsight splits liveness/readiness by design (`worker/main.py:107-123`) | `doctor` compensates (`src/doctor.rs:134-139`) and this is a **strength**, not a gap |
+| G6.3 | **Guidelines have no uninstall.** `--uninstall --guidelines` is refused (`src/main.rs:236-238`). | both competitors fully reverse every write | the block is marker-delimited so removal is easy to add |
+| G6.4 | **No `--endpoint` flag on the hook path.** Only `MEMORY_WIRE_URL` (`src/paths.rs:38-45`). | agentmemory threads `--api-url` through re-resolution with a `tokenProvider` (`host-client.ts:68-72`) | minor |
+| G6.5 | **Port default mismatch: `serve` binds 8899, every client defaults to 8888.** | `src/main.rs:56` vs `src/paths.rs:11`; bridged by docs telling users to pass `--addr 127.0.0.1:8888` (`install/get-memory-wire.sh:102-104`) | **our bug**, undocumented as intentional |
+| G6.6 | **SKILL.md is not referenced from the README.** A search for `plugin`/`SKILL`/`marketplace` in `README.md` returns nothing. | hindsight publishes 2 plugins to a marketplace (`.claude-plugin/marketplace.json:1-21`); agentmemory 5 marketplaces | our agent skill is undiscoverable |
+| G6.7 | **SKILL.md is internally inconsistent**: front matter says 8.5 MiB, body says 8.4 MiB, and the real figure is 8,872,000 B = **8.46 MiB** | `plugin/skills/memory-wire/SKILL.md:3` vs `:8-9` | ships to agents; should be exact or rounded once |
+| G6.8 | **No `system_prompt_block` injection.** We inject at `UserPromptSubmit`; hermes wants a block in the system prompt. | `~/.hermes/plugins/agentmemory/plugin.yaml:6-12` | different mechanism, not strictly missing |
+| G6.9 | **No health check in `doctor` that the *installed hook* still points at a live binary.** `doctor` checks the store and the server, not whether `~/.claude/settings.json` references an existing path. | hindsight's installer refuses to write when a foreign `hindsight` server exists (`installer.ts:1766-1775`) | would catch a moved or deleted binary |
+
+---
+
+## What we already do better
+
+Not padding. These are mechanisms neither competitor has, verified in our tree.
+
+1. **Atomic write with re-read verification.** `paths::write_atomic` is
+   temp-file + rename + read-back (`src/paths.rs:124-158`). agentmemory's
+   equivalent exists (`util.ts:96-101`) and hindsight's does not appear to.
+2. **Malformed host config is refused, not guessed.** Parse failure aborts that
+   host, leaves the file **byte-identical**, and the test asserts both the
+   byte-identity *and* that no backup directory was created
+   (`src/connect.rs:691-712`). Both competitors overwrite.
+3. **Stale-path self-heal.** Ownership is a substring match on the serialized
+   entry (`src/connect.rs:206-209`), so re-installing from a moved binary
+   *replaces* the stale path rather than stacking a duplicate
+   (`src/connect.rs:518-525`).
+4. **Guidelines refuse on unbalanced markers** rather than guessing where user
+   content resumes (`src/guidelines.rs:130-139`).
+5. **A published worst-case hook wall clock.** Three 2s caps, a derived ~6s
+   `session-start` ceiling (`src/paths.rs:22-26`), and a host-side `timeout: 5`
+   written into every entry (`src/connect.rs:28`).
+6. **MCP annotations on every tool** (`src/mcp.rs:80-87`) — agentmemory has
+   **zero** on 54, so no client can tell a read from a write there.
+7. **Opaque client-facing errors.** Unknown tool → `MethodNotFound`; tool failure
+   → `isError` with the same message HTTP returns, so no driver text or on-disk
+   path reaches a client (`src/mcp.rs:9-15`).
+8. **A doctor that refuses a foreign 200.** It requires 2xx *and* a body of
+   exactly `ok` (`src/doctor.rs:134-139`), with a regression test named for the
+   bug (`src/doctor.rs:284-286`).
+
+---
+
+## Recommended order
+
+Cheapest and highest-value first. Each is independently shippable.
+
+1. **G4 — bank collision + a fail-closed opt-in.** A correctness issue: two repos
+   with the same directory name currently share a bank, and a cloned repo can
+   read your memory. Reuse hindsight's approach: resolve identity from the git
+   filesystem layout rather than the basename, and make opt-in explicit.
+2. **G2 — `PreCompact` and `SessionEnd` hooks.** Two enum variants and two match
+   arms; captures memory at the only two moments that are currently lost.
+3. **G1 — `memory-wire daemon {start,stop,status}`** with a pidfile. The largest
+   single improvement to every existing user's experience, and the one that makes
+   our never-fail hooks safe rather than merely quiet.
+4. **G6.5, G6.6, G6.7 — the three small corrections.** Port default, README
+   cross-reference to the skill, exact binary size.
+5. **G3 — hermes integration**, when there is appetite for a plugin-shaped host
+   rather than a config-file one.
+6. **G5 — HTTP MCP transport**, which also unlocks `/mcp/{bank_id}` scoping.
+
+## Explicitly not recommended
+
+- **Matching their tool counts.** 54 tools exists because agentmemory carries
+  governance, audit, export and entity tooling. We would be adding surface we
+  do not have semantics for. Four tools that are correct beats thirty-nine that
+  are approximate.
+- **Copying the daemon design.** agentmemory's engine is a TypeScript runtime
+  with a WebSocket bus and a separate worker process. We need a pidfile and a
+  detach, not a runtime.
+- **A container or Helm chart.** Both competitors ship them; both also ship a
+  daemonless path. Ours is one binary and a SQLite file — adding an orchestrator
+  would cost the property that makes us worth using.
