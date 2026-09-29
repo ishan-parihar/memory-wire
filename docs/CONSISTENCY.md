@@ -2784,3 +2784,84 @@ I compared the installed binary against `target/release/memory-wire` (a stale
 looked like a fault; and I called `resources/list` on the wrong bank. Each was
 diagnosed before being reported, which is the only reason none of them became a
 false claim in a document.
+
+---
+
+## 24. omp added as a seventh host; two integration defects found by running things
+
+### 24.1 What landed
+
+`Host::Omp` in `src/connect.rs` — config `~/.omp/agent/mcp.json`, entry
+`{"type":"stdio","command":<abs path>,"args":["mcp"]}` under `mcpServers`, added to
+`IMPLICIT` because writing that key displaces nothing. Gate at the commit: 477 tests,
+clippy `--all-targets --all-features -D warnings` clean, `cargo doc` 0 warnings. The
+published `v0.5.0` predates this, so the binary installed on this machine
+(2026-09-30) is a **local build ahead of the tag**, not a released artifact.
+
+Verified live, not by fixture: `connect omp` wrote the entry while `$schema`,
+`enabledServers` and all four foreign servers stayed byte-identical; a second run
+reported `already-wired`; and `omp` was then run and asked to enumerate its tools, which
+returned `memory_wire_memory_retain`, `_recall`, `_reflect`, `_bank_config_get`. OMP
+namespaces MCP tools by server name — **no document mentioned this before**.
+
+`enabledServers` was investigated rather than assumed. OMP's own schema
+(`can1357/oh-my-pi/.../mcp-schema.json`) defines it as an allowlist that *overrides an
+`enabled: false` flag*, with the real denylist being the separate `disabledServers` — so
+an entry with no `enabled: false` is enabled by default. The tool listing is the proof.
+Leaving that key byte-identical was correct.
+
+### 24.2 UNRESOLVED: the published binary size is not reproducible
+
+| build | size | `DT_NEEDED` |
+|---|---|---|
+| published `v0.5.0` asset | 9,023,808 B | 3 |
+| `cargo build --release --locked --target x86_64-unknown-linux-gnu` (the documented command, per `scripts/build-release.sh:151`) | 10,604,776 B | 3 |
+| `cargo zigbuild --release --target x86_64-unknown-linux-gnu` | 8,609,792 B | 4 (`libpthread`, `libdl`) |
+
+The only source change since the `v0.5.0` tag is `src/connect.rs` — one enum variant and
+three tests, which cannot account for 1.5 MB. The release run printed
+`Finished in 0.34s`, i.e. it reused a cached artifact whose provenance I could not
+reconstruct. Rebuilding the tag in a clean worktree with the documented command is the
+next step and has **not** been done.
+
+**Consequence, stated plainly:** the README's "8.6 MiB binary" is a true claim about a
+specific downloadable artifact and a **false** claim about what our documented build
+command produces. It is left standing rather than corrected to 10.1 MiB because the
+correct answer is not yet known — averaging two unexplained numbers would be worse than
+naming one. §3 of `docs/INTEGRATION_PLAN.md` owns the diagnosis.
+
+### 24.3 Two defects in our own integration, both found by running rather than reading
+
+**The hook endpoint is a silent-misroute hazard.** `paths::endpoint()` is
+`$MEMORY_WIRE_URL` or `http://127.0.0.1:8888`, and the hooks call it over HTTP
+(`src/hooks.rs:92`). On this machine **8888 is the Hindsight HTTP API 0.10.2** on
+uvicorn, not memory-wire. A hook with no env var therefore POSTs to Hindsight, which
+404s `/banks/{bank}/recall`, and the never-fail contract swallows it: the hook returned
+the preamble and **no memories, and no error**. `memory-wire daemon` handles the same
+collision correctly — it distinguishes "busy and it is us" from "busy and it is a
+stranger" and refuses rather than clobbering — so the fix has a working model to copy.
+
+**The daemon and the hooks disagree about where the server is.** `daemon start --addr X`
+records X and `daemon status` reports it from the state file; the hooks read neither.
+Demonstrated: daemon healthy on 8899, `hook session-start` with no env var → preamble
+only. A user following the daemon's own advice gets a server their hooks cannot reach.
+
+Neither is fixed here. Both are Phase 0 in `docs/INTEGRATION_PLAN.md`, and the canonical
+port is a user decision — 8888 is Hindsight's on this machine and moving our default is a
+breaking change.
+
+### 24.4 Codex has context but no capability
+
+`~/.codex/config.toml` configures MCP by `url`; `connect` writes only `hooks.json`, and
+`Host::Codex` is `Style::Claude`. So a Codex user gets memory injected and cannot call a
+single tool. We now serve stateless HTTP MCP at `/mcp`, which is exactly that shape — this
+was recorded as "not recommended" in `INTEGRATION_GAPS.md` before HTTP MCP existed, so
+that verdict is stale.
+
+### 24.5 An unexplained hermes detail
+
+`~/.hermes/plugins/agentmemory/` exists while `config.yaml` reads
+`memory.provider: agentgateway`. A provider directory's name must equal
+`memory.provider`. These do not, and the discrepancy is unresolved. hermes stays out of
+the implicit set; the honest reason is that we do not understand what holds the slot, not
+only that it is a competitor.

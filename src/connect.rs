@@ -47,6 +47,24 @@ pub enum Host {
     Cursor,
     /// opencode (`~/.config/opencode/opencode.json`).
     Opencode,
+    /// oh-my-pi (`~/.omp/agent/mcp.json`).
+    ///
+    /// The MCP entry is the **whole** of what is written here, and it is deliberately
+    /// the whole of it. OMP also has a native memory-backend slot
+    /// (`~/.omp/agent/config.yml`, `memory.backend`) which on this machine names
+    /// `hindsight` — and that slot is closed to third parties: there is no
+    /// `registerMemoryBackend` symbol in the binary, the backends (`hindsight`,
+    /// `Mnemopi`, `Sharpshooter`, `local-backend`, `messages`, `off-backend`) are
+    /// bundled modules inside `@oh-my-pi/pi-coding-agent`, and an OMP extension is
+    /// `export default function (pi) {...}` and cannot register one. Adding a named
+    /// backend means patching OMP's own source.
+    ///
+    /// So: **do not** touch `config.yml`, **do not** displace or disable Hindsight,
+    /// and do not "helpfully" set `memory.backend` — moving another tool's single
+    /// global memory slot unasked is exactly the hazard that keeps `Hermes` out of
+    /// [`IMPLICIT`]. An MCP key under `mcpServers` is purely additive: it displaces
+    /// nothing, which is why OMP is in the implicit set and hermes is not.
+    Omp,
     /// hermes-agent (`~/.hermes/config.yaml` plus `~/.hermes/plugins/`).
     Hermes,
 }
@@ -58,23 +76,27 @@ pub const ALL: &[Host] = &[
     Host::CopilotCli,
     Host::Cursor,
     Host::Opencode,
+    Host::Omp,
     Host::Hermes,
 ];
 
 /// The hosts a bare `memory-wire connect` wires without being asked.
 ///
-/// Deliberately not [`ALL`]. The other five are additive: a hook entry or an MCP key
+/// Deliberately not [`ALL`]. The other six are additive: a hook entry or an MCP key
 /// added to a JSON file, leaving whatever was already there working. Hermes activates
 /// exactly one memory provider, so wiring it moves a single global slot — from
 /// `agentmemory` to us, on this machine, unasked. A bare `connect` should not trade
 /// one memory system for another; `connect hermes` is one word longer and says what
-/// it does.
+/// it does. OMP has the same single-slot `memory.backend` and the same reason for
+/// leaving it untouched; see the [`Host::Omp`] doc for why its MCP entry is still
+/// additive, and therefore implicit.
 pub const IMPLICIT: &[Host] = &[
     Host::ClaudeCode,
     Host::Codex,
     Host::CopilotCli,
     Host::Cursor,
     Host::Opencode,
+    Host::Omp,
 ];
 
 /// Resolve a host list: one name, several separated by commas or spaces, or the
@@ -160,6 +182,7 @@ impl Host {
             Host::CopilotCli => "copilot-cli",
             Host::Cursor => "cursor",
             Host::Opencode => "opencode",
+            Host::Omp => "omp",
             Host::Hermes => "hermes",
         }
     }
@@ -172,6 +195,7 @@ impl Host {
             Host::CopilotCli => ".copilot/settings.json",
             Host::Cursor => ".cursor/mcp.json",
             Host::Opencode => ".config/opencode/opencode.json",
+            Host::Omp => ".omp/agent/mcp.json",
             // YAML, not JSON, and edited by hand rather than re-serialised.
             // `config_rel` is still the right answer for two reasons: it is the
             // file `backup` must preserve before the first write, and it is what
@@ -189,6 +213,7 @@ impl Host {
             Host::CopilotCli => ".copilot",
             Host::Cursor => ".cursor",
             Host::Opencode => ".config/opencode",
+            Host::Omp => ".omp",
             Host::Hermes => ".hermes",
         }
     }
@@ -201,6 +226,7 @@ impl Host {
             Host::CopilotCli => "copilot",
             Host::Cursor => "cursor-agent",
             Host::Opencode => "opencode",
+            Host::Omp => "omp",
             Host::Hermes => "hermes",
         }
     }
@@ -210,17 +236,19 @@ impl Host {
         match self {
             Host::ClaudeCode | Host::Codex => Style::Claude,
             Host::CopilotCli => Style::Copilot,
-            Host::Cursor | Host::Opencode => Style::Mcp,
+            Host::Cursor | Host::Opencode | Host::Omp => Style::Mcp,
             Host::Hermes => Style::Plugin,
         }
     }
 
     /// Where this host keeps its MCP server map, and the entry shape it wants.
     ///
-    /// `None` for hosts that expose no MCP registration. The two shapes mirror
-    /// what each host's own config already uses: cursor's `mcpServers` takes
+    /// `None` for hosts that expose no MCP registration. The shapes mirror what
+    /// each host's own config already uses: cursor's `mcpServers` takes
     /// `command`/`args`, opencode's `mcp` takes `type: local` plus a `command`
-    /// array — an entry written in the other host's shape is silently ignored.
+    /// array, omp's `mcpServers` takes `type: stdio` with the same
+    /// `command`/`args` pair — an entry written in another host's shape is
+    /// silently ignored.
     fn mcp_spec(self) -> Option<McpSpec> {
         match self {
             Host::Cursor => Some((
@@ -230,6 +258,15 @@ impl Host {
             Host::Opencode => Some((
                 "mcp",
                 |exe: &str| json!({ "type": "local", "command": [exe, "mcp"], "enabled": true }),
+            )),
+            // `type` is what omp's own mcp-schema asks for (every live stdio entry
+            // carries it), and `command` is the absolute install path rather than a
+            // bare name: omp does not inherit memory-wire's install dir onto its
+            // PATH, so a bare `memory-wire` would fail to launch. The sibling
+            // `cloakctl` entry is spelled the same way.
+            Host::Omp => Some((
+                "mcpServers",
+                |exe: &str| json!({ "type": "stdio", "command": exe, "args": ["mcp"] }),
             )),
             _ => None,
         }
@@ -262,9 +299,9 @@ impl Style {
 
 /// Why a host takes no wiring at all.
 ///
-/// No host among [`ALL`] lands here any more — cursor and opencode both accept
-/// an MCP server entry, and the other three take hooks. The case is kept so a
-/// future MCP-only host with no known writable key reports why instead of
+/// No host among [`ALL`] lands here any more — cursor, opencode and omp all
+/// accept an MCP server entry, and the other three take hooks. The case is kept
+/// so a future MCP-only host with no known writable key reports why instead of
 /// silently doing nothing.
 const MCP_ONLY_REASON: &str =
     "mcp-config-only host: no writable MCP key is known for it";
@@ -1217,6 +1254,143 @@ mod tests {
         }
     }
 
+    // OMP is wired through the same MCP path as cursor and opencode, but its own
+    // config carries two sibling top-level keys (`$schema`, `enabledServers`) and
+    // every stdio entry declares `type`. So this is checked against a copy of a
+    // real `~/.omp/agent/mcp.json` shape rather than the one-key fixture the
+    // generic MCP test uses: write, idempotent re-run, uninstall, and the promise
+    // that only our key moved.
+    /// The `$schema` value from the OMP fixture, as the one key whose URL is
+    /// spelled out rather than pattern-matched.
+    const OMP_SCHEMA: &str = "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json";
+
+    #[test]
+    fn omp_should_write_one_stdio_entry_and_leave_the_rest_of_mcp_json_alone() {
+        let live_shape = format!(
+            r#"{{
+  "$schema": "{OMP_SCHEMA}",
+  "enabledServers": ["sourcehound", "cloakctl"],
+  "mcpServers": {{
+    "browseros-neo": {{ "type": "http", "url": "http://127.0.0.1:9211/mcp" }},
+    "sourcehound": {{ "type": "stdio", "command": "sourcehound", "args": ["mcp"] }},
+    "cloakctl": {{ "type": "stdio", "command": "/home/ishanp/.local/bin/cloakctl-mcp", "args": [] }}
+  }}
+}}
+"#
+        );
+        let live_shape = live_shape.as_str();
+
+        let home = tmp_home("omp");
+        let rel = Host::Omp.config_rel();
+        assert_eq!(rel, Path::new(".omp/agent/mcp.json"), "the documented path");
+        assert_eq!(Host::Omp.detect_rel(), ".omp");
+        assert_eq!(Host::Omp.binary(), "omp");
+        let data = home.join("data");
+        std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("mkdir");
+        write_config(&home, &rel, live_shape);
+
+        let first = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data);
+        assert!(matches!(first, Outcome::Wired { .. }), "{first:?}");
+        let doc = read_config(&home, &rel);
+        assert_eq!(
+            doc["mcpServers"][MARKER],
+            json!({ "type": "stdio", "command": "/opt/mw/memory-wire", "args": ["mcp"] }),
+            "omp wants `type: stdio`, an absolute command, and the `mcp` subcommand"
+        );
+        assert_eq!(
+            our_entries(&doc, "mcpServers"),
+            1,
+            "one server per file: {doc}"
+        );
+        // The two sibling keys are not ours to touch, and the three foreign
+        // servers keep their exact entry shape.
+        assert_eq!(doc["$schema"], json!(OMP_SCHEMA), "{doc}");
+        assert_eq!(doc["enabledServers"], json!(["sourcehound", "cloakctl"]), "{doc}");
+        assert_eq!(
+            doc["mcpServers"]["cloakctl"]["command"],
+            json!("/home/ishanp/.local/bin/cloakctl-mcp"),
+            "a foreign entry must survive intact: {doc}"
+        );
+        assert_eq!(
+            doc["mcpServers"]["browseros-neo"]["url"],
+            json!("http://127.0.0.1:9211/mcp"),
+            "an http entry must survive intact: {doc}"
+        );
+
+        let second = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data);
+        assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
+        assert_eq!(
+            our_entries(&read_config(&home, &rel), "mcpServers"),
+            1,
+            "a re-install must not stack"
+        );
+
+        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data);
+        assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
+        let doc = read_config(&home, &rel);
+        assert_eq!(our_entries(&doc, "mcpServers"), 0, "our key removed");
+        assert_eq!(
+            doc["mcpServers"].as_object().expect("map still there").len(),
+            3,
+            "foreign servers keep the map alive, so only our key goes: {doc}"
+        );
+        assert_eq!(doc["enabledServers"], json!(["sourcehound", "cloakctl"]), "{doc}");
+
+        let again = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data);
+        assert!(
+            matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }),
+            "{again:?}"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    // The project rule is that a malformed config is REFUSED untouched rather than
+    // overwritten — asserted per host, because the refusal is a property of the
+    // shared read path only for as long as nobody adds a host that bypasses it.
+    #[test]
+    fn a_malformed_omp_config_should_be_refused_without_a_backup() {
+        let home = tmp_home("ompbad");
+        let rel = Host::Omp.config_rel();
+        let broken = "{ \"mcpServers\": { \"memory-wire\": oops";
+        write_config(&home, &rel, broken);
+        std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("mkdir");
+        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &home.join("data"));
+        assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
+        assert!(out.is_failure());
+        assert_eq!(
+            std::fs::read_to_string(home.join(&rel)).expect("read"),
+            broken,
+            "refusal must leave the file byte-identical"
+        );
+        assert!(
+            !home.join("data/backups").exists(),
+            "a refused host must not create a backup"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    // The generated note about hosts a bare `connect` skips must not go stale: it
+    // is derived from `ALL - IMPLICIT`, and hermes is the only host on the wrong
+    // side of that line. OMP's additive MCP entry does not move it there.
+    #[test]
+    fn omp_should_be_implicit_because_its_mcp_entry_displaces_nothing() {
+        assert!(
+            IMPLICIT.contains(&Host::Omp),
+            "writing an MCP key adds a server; it does not take over a slot"
+        );
+        assert!(ALL.contains(&Host::Omp));
+        let skipped: Vec<&str> = ALL
+            .iter()
+            .filter(|h| !IMPLICIT.contains(h))
+            .map(|h| h.id())
+            .collect();
+        assert_eq!(
+            skipped,
+            vec!["hermes"],
+            "the only host a bare `connect` declines is the one that moves memory.provider"
+        );
+    }
+
     // A non-object map is a refusal, not something to reshape.
     #[test]
     fn a_non_object_mcp_key_should_be_refused_untouched() {
@@ -1239,7 +1413,7 @@ mod tests {
     // first install we created it, so the empty object is our own residue.
     #[test]
     fn uninstall_should_delete_a_config_it_created_and_leave_a_foreign_one() {
-        for host in [Host::Cursor, Host::Opencode] {
+        for host in [Host::Cursor, Host::Opencode, Host::Omp] {
             let home = tmp_home(&format!("empty-{}", host.id()));
             let rel = host.config_rel();
             let data = home.join("data");
