@@ -2865,3 +2865,120 @@ that verdict is stale.
 `memory.provider`. These do not, and the discrepancy is unresolved. hermes stays out of
 the implicit set; the honest reason is that we do not understand what holds the slot, not
 only that it is a competitor.
+
+## 25. The published Linux asset has a glibc floor, and the VPS install found it
+
+Section 16 recorded the toolchain as a reason to distrust toolchain-specific
+findings. This is the reverse: a claim that had held through every previous
+release, falsified by installing on a second machine.
+
+### 25.1 What failed
+
+`vps-ssh.ishanparihar.com` is Ubuntu 22.04.5 LTS, glibc **2.35**. The published
+`memory-wire-linux-x86_64.tar.gz` from v0.5.0 is 9,023,808 B, `DT_NEEDED` = 3,
+checksum verified by the installer — and refuses to start:
+
+```
+$ memory-wire --version
+/home/ishanp/.local/bin/memory-wire: /lib/x86_64-linux-gnu/libc.so.6:
+version `GLIBC_2.39' not found (required by /home/ishanp/.local/bin/memory-wire)
+```
+
+The build host runs glibc **2.44**. So the release assets have a hard floor of
+**glibc ≥ 2.39** — which excludes Ubuntu 22.04 LTS, still a supported release, and
+Debian 12. The README claimed "any glibc box"; that was false, and the three
+`NEEDED` entries are what made it look true: the *count* was always right, and
+the *version requirement* was never checked.
+
+This is the same failure shape as F1/F2 in `docs/INTEGRATION_AUDIT.md` — a
+plausible claim that only a second machine could disprove — and the same shape as
+the port-default defect: a single documented value nobody exercised.
+
+### 25.2 The remedy, measured
+
+`x86_64-unknown-linux-musl`, built with the already-installed musl target:
+
+| | `linux-x86_64` (published) | `x86_64-unknown-linux-musl` |
+|---|---|---|
+| Size | 9,023,808 B | 10,783,976 B (+19.5%) |
+| `DT_NEEDED` | 3 | **0** |
+| Link | dynamic, `pie` | `static-pie`, no interpreter |
+| Runs on glibc 2.35 | **no** | **yes** |
+| Test suite on that target | — | **477 passed, 0 failed** |
+
+Verified on the VPS itself, not inferred: `memory-wire 0.5.0`, `statically linked`,
+`serve` on 127.0.0.1:8899 answered `ok`, and a retain/recall round-trip returned
+the stored row. The full 477-test suite passes when compiled for the musl target,
+so this is a sound binary rather than one that merely starts.
+
+**Not yet published.** `scripts/build-release.sh` lists only
+`linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64`, so no musl asset exists
+in any release and the installer, which derives `ASSET="$BIN-$TARGET.tar.gz"` from
+the detected platform, will always fetch the gnu build and fail the same way on
+old glibc. Publishing a musl target and teaching the installer to prefer it below
+the floor is the fix, and it is a release decision rather than a code fix.
+
+### 25.3 The port, and the two questions it answered by measurement
+
+Hindsight's corpus came across with its shape intact, which the serving path cannot
+do and this proved rather than assumed:
+
+- **472 documents → 710 memories, 0 failures.** `created_at` spans **10 real
+  days** (2026-09-20 → 2026-09-29). Over HTTP this would have collapsed the whole
+  history onto one instant, silently, with nothing in the data to reveal it.
+- **Losslessness is proven, not asserted:** reconstructing all 472 documents from
+  their stored chunks is byte-identical to the export, **0 mismatches**, 18 of them
+  split at turn boundaries.
+- **Chunk granularity was decided against a measurement.** Per-turn splitting gives
+  **14,315** memories — the 18 oversized documents hold 13,863 turn bodies, ~370
+  characters each, mostly assistant mid-thought. Size-bounded groups of whole
+  turns give 710.
+
+One claim in the importer's own docs was wrong before it was committed: it reported
+sizes as "characters" when `str::len()` counts **bytes**. The corpus carries 44,342
+bytes of multi-byte UTF-8 across 6,355,408 code points, so the totals differed by
+exactly that. Slicing was always lossless; the label was not. Corrected in the
+tool and here, with the old wording named.
+
+### 25.4 Two premises that did not hold
+
+Stated because acting on either would have wasted the work:
+
+- **agent-memory had no data to migrate.** No `state_store.db`, `preferences.json`
+  read `lastAgent: null, lastAgents: []`, port 3111 answered 404 on every path, and
+  nothing agentmemory-owned had been written in 30 days. So the hermes half was
+  rewiring, not a port.
+- **The VPS had no agent-memory at all.** A system-wide `find / -xdev` for
+  `*agentmemory*` returned nothing and the npm global root was empty. That half
+  was a fresh install, not a replacement.
+
+### 25.5 What is now true on this machine
+
+`agentmemory` is gone: three processes stopped (the `npm exec` wrapper needed
+`SIGKILL` and left an orphan that needed a second signal), and
+`~/.hermes/plugins/agentmemory`, `~/.agentmemory` and
+`~/.local/share/agentmemory` removed. `hermes` resolves
+`memory.provider: memory-wire` and loads `MemoryWireProvider` from
+`~/.hermes/plugins/memory-wire`, implementing **6/6** of the loader's required
+methods — re-verified *after* the old plugin was deleted, so the cleanup did not
+break the replacement. `OMP`'s `memory.backend: hindsight` binding is removed from
+`~/.omp/agent/config.yml`; a fresh `omp -p` session reports the four
+`memory_wire_memory_*` tools and no longer opens a connection to 8888.
+
+Backups: `~/hermes-pre-memorywire-20260930/` (config, plugin, `~/.agentmemory`),
+`~/omp-pre-memorywire-20260930/` (config, mcp.json), and
+`~/hindsight-export-20260930/` (472/472 documents with `SHA256SUMS`).
+
+OMP keeps *tools* but loses *automatic injection*: its native `memory.backend` slot
+is closed to third parties, so memory-wire cannot occupy it. That is the honest
+trade, and it was the user's call to make — recorded here because the change is
+made, not because it was free.
+
+### 25.6 Still open
+
+Hindsight itself is still running: `ghcr.io/vectorize-io/hindsight:0.10.1` with
+Postgres in the `hindsight-data` docker volume, on 127.0.0.1:8888. Stopping it
+needs a sudo password I do not have, so removal is the user's command to run; the
+exact sequence is in the handoff. Nothing writes to it any more — both harnesses
+that referenced it have been rewired — so the port is now serving a corpus nobody
+will add to, and the export is verified complete.
