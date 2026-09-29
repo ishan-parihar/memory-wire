@@ -1,6 +1,6 @@
 # memory-wire
 
-**Agent memory in one 9.7 MiB binary, three shared libraries, 10.7 MiB of RSS and
+**Agent memory in one 8.6 MiB binary, three shared libraries, 10.7 MiB of RSS and
 no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
 language runtime, no database server, no install step: retain/recall/reflect with
 bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
@@ -8,7 +8,7 @@ an MCP server over stdio, and over HTTP at `/mcp` on any running server. `memory
 if you want it to outlive your terminal — one process, the same binary, no
 supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **9.7 MiB** binary · **3.9 MiB** download · **0** background processes until you ask for one
+- **10.7 MiB** idle RSS · **8.6 MiB** binary · **3.8 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
@@ -178,7 +178,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **9.7 MiB** binary — 10,144,032 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.9 MiB** gzipped (4,039,811 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **8.6 MiB** binary — 9,023,808 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.8 MiB** gzipped (3,978,654 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
@@ -232,7 +232,7 @@ again. Every footprint number in this section is still the **default** build and
 is unaffected: `default = []`, so `src/vector.rs` and the weights compile only
 under `--features embed`. The growth itself is the MCP SDK — `rmcp` + `schemars`
 landed between those two measurements and cost more than `fastembed` ever did. The
-binary was 6.4 MB before MCP; MCP is the reason the artifact is 9.7 MiB and not
+binary was 6.4 MB before MCP; MCP is the reason the artifact is 8.6 MiB and not
 smaller, and it is code, not a resident dependency, so idle RSS does not move
 with it.
 
@@ -821,7 +821,18 @@ curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/inst
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
 defaults, which resolve to this repo and its latest published release
-(`v0.4.0`, asset `memory-wire-linux-x86_64.tar.gz`).
+(`v0.5.0`, assets `memory-wire-linux-x86_64.tar.gz` and
+`memory-wire-linux-aarch64.tar.gz`; no macOS asset — `libsqlite3-sys` links
+CoreFoundation, so those must be built on a Mac).
+
+**The published release is `v0.5.0` and this tree is it.** `v0.5.0` was published
+2026-09-29T20:37:13Z from a local build on this machine, not by GitHub Actions.
+`Cargo.toml` says `0.5.0` and `HEAD` is the `v0.5.0` tag, so the version string
+and the tree agree — check `git log v0.5.0..HEAD --oneline | wc -l` for any
+distance. Nothing described in this README's `embed` paragraphs is in any
+published release: those shipped the lexical arm only, with the `embed` feature
+absent, and the dense arm still ships at weight 0.0. The tree-versus-release
+position is in `docs/CONSISTENCY.md` §15.2 and `docs/VERSIONS.md` §0.
 
 **The installer wires your agent hosts for you, and lets you choose which.** It
 first runs `memory-wire connect --list`, which reports every supported host with
@@ -848,31 +859,24 @@ survives a `cargo clean` of a development checkout.
 Downloads are verified against the `.sha256` the release publishes next to each
 asset; a mismatch aborts the install rather than installing a corrupt binary.
 
-**The published release is `v0.4.0`; the working tree is ahead of it.** `v0.4.0`
-is a real, published GitHub release (2026-09-28) and `Cargo.toml` says `0.4.0`, so
-the version string describes the release and *not* necessarily the tree — check
-`git log v0.4.0..HEAD --oneline | wc -l` for the current distance. Nothing
-described in this README's `embed` paragraphs is in any published release: those
-shipped the lexical arm only, with the `embed` feature absent. So: what
-`curl … | sh` gives you is the latest tag; what this file describes may be later
-work. The tree-versus-release position is in `docs/CONSISTENCY.md` §15.2 and
-`docs/VERSIONS.md` §0.
-
 **Release assets are cut by `scripts/build-release.sh`, not by CI.** GitHub
 Actions minutes are metered and exhaustible, and a release you cannot cut because
-the quota is spent is a release blocker. The script builds all four targets
-(`linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`) on one machine
-using `cargo-zigbuild` for the cross targets, writes a `.sha256` beside each
-asset, and publishes with `gh release` — a REST call that consumes **no Actions
-minutes**:
+the quota is spent is a release blocker. The script builds the Linux targets
+(`linux-x86_64`, `linux-aarch64`) on one machine using `cargo-zigbuild` for the
+cross target, writes a `.sha256` beside each asset, and publishes with
+`gh release` — a REST call that consumes **no Actions minutes**. It **skips the
+macOS targets and says why**: `libsqlite3-sys` links CoreFoundation, so a macOS
+binary needs Apple's SDK and cannot be produced from Linux. Rather than publish
+a partial set silently it refuses, and `--only` makes a deliberate subset an
+explicit choice:
 
 ```bash
-rustup target add aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin
+rustup target add aarch64-unknown-linux-gnu
 cargo install cargo-zigbuild            # supplies libc headers per target
 
 ./scripts/build-release.sh --check              # build + verify, publish nothing
-./scripts/build-release.sh --upload v0.4.1      # build, then create/update the release
-./scripts/build-release.sh --only linux-aarch64 # one target
+./scripts/build-release.sh --upload v0.5.0      # build, then create/update the release
+./scripts/build-release.sh --only "linux-x86_64 linux-aarch64"   # deliberate subset
 ```
 
 It refuses to upload a partial set, and refuses to upload from a dirty tree

@@ -2685,3 +2685,102 @@ them. Two hundred-plus lines of measured rationale live on public fields where
 `docs/RERANKING_PLAN.md` and `docs/EXCEED_PLAN.md` would hold them, and the
 disagreement between the two fields is the evidence that the channel is where this
 content goes stale. A doc comment is documentation of *what*; that material is *why*.
+
+---
+
+## 23. v0.5.0, and a quota mistake I made while cutting it
+
+Published 2026-09-29T20:37:13Z, built **on this machine** via
+`scripts/build-release.sh`, not by GitHub Actions.
+
+| | |
+|---|---|
+| Assets | `memory-wire-linux-x86_64.tar.gz` 3,978,654 B · `memory-wire-linux-aarch64.tar.gz` 3,503,968 B |
+| Binary | 9,023,808 B (8.60 MiB), `DT_NEEDED` = 3 (`libgcc_s`, `libm`, `libc`) |
+| Gate at the tag | 474 tests / 0 failed, clippy `--all-targets --all-features -D warnings` clean, `cargo doc` 0 warnings |
+| Installed-from-URL binary | byte-identical to the cross-compiled artifact and to the uploaded tarball |
+
+**First release to carry a Linux aarch64 asset.** `v0.4.0` shipped
+`linux-x86_64` only, so ARM Linux users could not install at all. The macOS gap
+is unchanged and was never closable from here: `libsqlite3-sys` links
+CoreFoundation, so a macOS binary needs Apple's SDK. The script skips both macOS
+targets with that reason and then **refuses to publish an incomplete set** rather
+than shipping a partial release silently — which is what happened, and
+`--only "linux-x86_64 linux-aarch64"` made the subset an explicit decision.
+
+### 23.1 I spent Actions minutes I was told not to, by disabling the wrong workflow
+
+The instruction was explicit: build here because the quota is exhausted. I
+disabled `ci.yml` before pushing the tag — and `ci.yml` was already disabled from
+the v0.4.0 cut. The workflow that actually fires on `push: tags: ['v*']` is
+`release.yml`. My confirmation query filtered on `name=="CI"`, matched nothing,
+and I read that empty result as "already disabled" rather than as "I asked about
+the wrong thing." The tag push queued run `36625855201` across four jobs.
+
+I cancelled it; it settled `completed / cancelled` after roughly two minutes in
+flight. Some minutes were spent. Two lessons, both now mechanical: `gh workflow
+list` hides disabled workflows, so absence is not confirmation; and a state check
+that returns empty must be treated as a failed check, not a passing one.
+
+Both workflows are `active` again. The assets came from the local script, which
+consumes no Actions minutes.
+
+### 23.2 A published figure was wrong, and I had been quoting it
+
+The README claimed a **10,144,032 B** binary and a **4,039,811 B** download. The
+actual published v0.5.0 asset is **9,023,808 B** and **3,978,654 B**.
+
+The 10,144,032 figure was a *local* `cargo build --release` measurement taken
+after the HTTP MCP work — and it never matched a published asset, because
+`v0.4.0` was cut *before* that work landed and shipped 8,872,000 B. So a number
+that had been in the headline of the README for a release described an artifact
+no user could download. Corrected to the measured asset throughout, and the
+"the working tree is ahead of the release" banner is retired: `HEAD` **is** the
+`v0.5.0` tag.
+
+Also corrected in the same pass: the README said `build-release.sh` "builds all
+four targets" and told a reader to `rustup target add
+x86_64-apple-darwin aarch64-apple-darwin`. It skips both macOS targets, for a
+reason it prints. The historical per-build evidence elsewhere in this file is
+left as measured.
+
+### 23.3 Verified live from the published URL, not from the tree
+
+Installed through `curl … | sh` with `HOME`, `XDG_DATA_HOME` and
+`MW_INSTALL_DIR` all sandboxed, so it could not wire the real agent hosts or
+overwrite the v0.4.0 binary in `~/.local/bin`.
+
+- `releases/latest` resolved to `v0.5.0`; checksum verified before install.
+- The installer **printed the scan** and `--hosts claude-code` wired exactly that
+  one host: 5 hook refs in `.claude/settings.json`, and `codex` / `cursor` /
+  `opencode` configs all still absent.
+- The home view is content-first (bin, description, server state, bank, store),
+  not a route map.
+- `connect --list` from the *installed* binary reports `claude-code wired=yes`
+  and the rest `wired=no`.
+- Cold `tools/list` on `/mcp` with no `initialize` and no session header returned
+  the 4 tools — stateless, as shipped.
+- `resources/list` on `/mcp/demo` returned `memory://demo/<id>`; on `/mcp` it
+  returned `[]`, correctly, because that endpoint serves the *default* bank and I
+  had retained into `demo`. A call naming `bank: "other"` on `/mcp/demo` was
+  refused: `pinned to demo by this endpoint; refusing other`.
+- `x-total-count: 1` on the list route, with the default body unchanged.
+- `prompts/list` returns `memory_historian`; `resources/templates/list` is empty
+  by design.
+- After SIGTERM the WAL was folded (0 sidecars). `connect --uninstall` removed the
+  binary and pruned all 5 hooks.
+
+**One check failed and the reason is not data loss.** The database is not
+byte-identical after `--uninstall`, where it was for v0.4.0. `connect --uninstall`
+opens the store, and SQLite folds the WAL into the main file on close, so the
+bytes change. The *data* is intact: a server started on the same file afterwards
+recalls the retained memory. Worth stating precisely, because "byte-identical"
+and "no data loss" are different claims and only one of them is true here.
+
+Three of my own verification errors along the way, all mine and none the code's:
+I compared the installed binary against `target/release/memory-wire` (a stale
+10.5 MB host build) instead of the cross-compiled path; I posted retain to
+`/banks/:id/memories` when the route is `/banks/:id/retain`, so an empty recall
+looked like a fault; and I called `resources/list` on the wrong bank. Each was
+diagnosed before being reported, which is the only reason none of them became a
+false claim in a document.

@@ -5,16 +5,18 @@ Rust code was transmuted from. To update: `git -C _audit/<repo> pull`, re-run
 the audit deltas, record the new SHAs here, then port behavior per §3.
 
 > **These pins describe the tree as published in `v0.3.0`; the current release
-> is `v0.4.0`.** `v0.4.0` was published 2026-09-28T23:08:38Z with asset
-> `memory-wire-linux-x86_64.tar.gz` (3,624,052 B), built **on this machine**, not
-> by GitHub Actions. It carries the `embed` feature declaration, `build.rs` and
-> `src/vector.rs` as tree state — all of which post-date `v0.3.0` — and none of
-> §1–§3 below was re-derived for that cut. §1's competitor SHAs are the
+> is `v0.5.0`.** `v0.5.0` was published 2026-09-29T20:37:13Z with assets
+> `memory-wire-linux-x86_64.tar.gz` (3,978,654 B) and
+> `memory-wire-linux-aarch64.tar.gz` (3,503,968 B), built **on this machine**, not
+> by GitHub Actions. It is the first release to carry a Linux aarch64 asset, and
+> the first with no macOS gap closed — those still require Apple's SDK. It carries
+> `build.rs` and `src/vector.rs` as tree state — all of which post-date `v0.3.0` —
+> and none of §1–§3 below was re-derived for that cut. §1's competitor SHAs are the
 > synthesis baseline the code was transmuted from and were deliberately not
 > re-pulled; §2 is the toolchain that built it; §3 is its locked direct dependency
 > set **as of `v0.3.0`**. `Cargo.lock` gained `fastembed`, `ort`, `ort-sys` and
 > `tokenizers` back under the optional `embed` feature, and the version field moved
-> to `0.4.0` — neither is reflected in §3. The per-build evidence for `v0.2.0` and
+> to `0.5.0` — neither is reflected in §3. The per-build evidence for `v0.2.0` and
 > earlier stays where it was measured, in `docs/BENCHMARK.md` and
 > `docs/CONSISTENCY.md`; the record of this banner being retired, becoming true
 > again, and being retired a second time is `docs/CONSISTENCY.md` §15.2 and §18.7.

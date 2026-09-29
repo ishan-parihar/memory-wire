@@ -1,11 +1,11 @@
 ---
 name: memory-wire
-description: Persist and retrieve agent memory across sessions with memory-wire — one 9.7 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a memory-wire server (`memory-wire daemon start` to run one in the background, `memory-wire daemon status` to check), or over MCP stdio with `memory-wire mcp`, or over MCP HTTP at `/mcp` on a running server.
+description: Persist and retrieve agent memory across sessions with memory-wire — one 8.6 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a memory-wire server (`memory-wire daemon start` to run one in the background, `memory-wire daemon status` to check), or over MCP stdio with `memory-wire mcp`, or over MCP HTTP at `/mcp` on a running server.
 ---
 
 # memory-wire
 
-Agent memory over HTTP or MCP. One 9.7 MiB binary (10,144,032 B), three shared libraries, no language
+Agent memory over HTTP or MCP. One 8.6 MiB binary (9,023,808 B), three shared libraries, no language
 runtime, no database server, and no background process until you ask for one with
 `memory-wire daemon start`. **retain** stores a
 fact/decision (redacted before it touches disk), **recall** is ranked bank-isolated retrieval under a
@@ -189,7 +189,12 @@ JWT, `Bearer`, Slack, Google API keys, emails, phones, `<private>` blocks), not 
 
 ---
 
-*Size provenance: 10,144,032 B (9.67 MiB, rounds to 9.7) is `stat -c %s` of the default-feature release
-binary after `cargo build --release --locked` on this tree, `v0.4.0` at commit `75928a2`, re-measured
-2026-09-29 and byte-identical to the figure recorded in `docs/CONSISTENCY.md` §19.5. Default features only
-(`default = []`, so no `embed` weights); the gzipped download is a separate figure, see `README.md`.*
+*Size provenance: 9,023,808 B (8.60 MiB) is `stat -c %s` of the binary inside the
+**published** `memory-wire-linux-x86_64.tar.gz` (3,978,654 B) for `v0.5.0`, downloaded
+from the release and installed via `curl … | sh`; it is byte-identical to
+`target/x86_64-unknown-linux-gnu/release/memory-wire` from the local build. This
+supersedes the earlier 10,144,032 B figure, which was a `cargo build --release`
+measurement of the *host* build after the HTTP MCP work and never matched a
+published asset — `v0.4.0` shipped 8,872,000 B. Recorded in
+`docs/CONSISTENCY.md` §23.2. Default features only (`default = []`, so no `embed`
+weights); the gzipped download is a separate figure, see `README.md`.*
