@@ -16,11 +16,28 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The binary cargo just built for this test, so the test drives the shipped
 /// entry point rather than an in-process stand-in for it.
 const BIN: &str = env!("CARGO_BIN_EXE_memory-wire");
+
+/// How long a wait for `/health` to answer `ok` may run before it is a failure.
+///
+/// The assertion these tests actually make is "a detached daemon becomes ready
+/// and serves `/health`", and readiness is a condition, not a timestamp. A
+/// fixed sleep cannot express that: it either flukes a slow machine or gives up
+/// on a slow-but-working one. So the wait is for the condition, and this is
+/// only the point at which a daemon that is never going to answer has been
+/// proven to be never going to answer. Sixty seconds is not a tuned number — it
+/// is far past anything this binary has been observed to need, deliberately, so
+/// that a busy machine waits and a dead daemon fails with a message naming the
+/// endpoint. ponytail: fixed 60s ceiling; it is a failure threshold, not a
+/// budget the daemon is expected to spend.
+const HEALTH_CEILING: Duration = Duration::from_secs(60);
+
+/// Gap between `/health` probes while waiting out [`HEALTH_CEILING`].
+const HEALTH_POLL: Duration = Duration::from_millis(25);
 
 /// A scratch `XDG_DATA_HOME`, a free port, and a guaranteed stop.
 struct Fixture {
@@ -117,12 +134,13 @@ fn text(out: &Output) -> String {
     )
 }
 
-/// `GET /health` on `addr`, as the body. `None` means nothing answered, which is
-/// a different answer from a body that is not `ok`.
+/// One `GET /health` probe on `addr`, as the body. `None` means nothing answered
+/// — refused, or a probe that did not complete — which is a different answer
+/// from a body that is not `ok`, and neither is a verdict on its own. Callers
+/// that want a verdict wait on the condition; see [`wait_for_health`].
 fn health(addr: &str) -> Option<String> {
     let mut sock = TcpStream::connect(addr).ok()?;
-    sock.set_read_timeout(Some(Duration::from_secs(5)))
-        .ok()?;
+    sock.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     sock.write_all(
         format!("GET /health HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n").as_bytes(),
     )
@@ -131,6 +149,32 @@ fn health(addr: &str) -> Option<String> {
     sock.read_to_end(&mut raw).ok()?;
     let text = String::from_utf8_lossy(&raw).into_owned();
     Some(text.split_once("\r\n\r\n")?.1.trim().to_string())
+}
+
+/// Poll `GET /health` on `addr` until it answers `ok`, or fail.
+///
+/// The same shape as `daemon::wait_until_serving` on the other side of the
+/// spawn, and deliberately: the product proves it before it claims a daemon is
+/// up, and a test that asserted a server was up without proving it would be
+/// asserting less than the thing it is testing. The ceiling is a failure
+/// threshold, not a wait — a loaded box waits longer here and still passes,
+/// because a slow server that does come up is a working server.
+fn wait_for_health(addr: &str) {
+    let deadline = Instant::now() + HEALTH_CEILING;
+    let mut last = None;
+    while Instant::now() < deadline {
+        last = health(addr);
+        if last.as_deref() == Some("ok") {
+            return;
+        }
+        std::thread::sleep(HEALTH_POLL);
+    }
+    panic!(
+        "GET http://{addr}/health did not answer `ok` within {HEALTH_CEILING:?}\n\
+         last answer: {last:?}\n\
+         nothing is serving on this port, or something other than memory-wire is\n\
+         (a foreign process is named by a body that is not `ok`; nothing answering at all is not)"
+    );
 }
 
 /// Can a server bind this address right now?
@@ -154,7 +198,10 @@ fn the_daemon_lifecycle_should_start_serve_stop_and_release_the_port() {
         text(&before)
     );
     assert!(text(&before).contains("not running"), "{}", text(&before));
-    assert!(!f.state_file().exists(), "status must not create a state file");
+    assert!(
+        !f.state_file().exists(),
+        "status must not create a state file"
+    );
 
     // 2. Start. Returns immediately, having proved the server answers.
     let started = f.start();
@@ -175,7 +222,10 @@ fn the_daemon_lifecycle_should_start_serve_stop_and_release_the_port() {
     assert_eq!(recorded["db"], f.db().display().to_string(), "{recorded}");
     let pid = recorded["pid"].as_i64().expect("a pid in the state file");
     assert!(pid > 0, "{recorded}");
-    assert!(recorded["started_at"].as_i64().expect("a start time") > 0, "{recorded}");
+    assert!(
+        recorded["started_at"].as_i64().expect("a start time") > 0,
+        "{recorded}"
+    );
 
     // 4. Status reports serving, with the facts, and the endpoint really answers
     //    — the body `ok`, which is the check a foreign 200 cannot pass.
@@ -186,13 +236,16 @@ fn the_daemon_lifecycle_should_start_serve_stop_and_release_the_port() {
     assert!(screen.contains(&format!("pid        {pid}")), "{screen}");
     assert!(screen.contains("uptime"), "{screen}");
     assert!(screen.contains(&f.addr()), "{screen}");
-    assert_eq!(health(&f.addr()).as_deref(), Some("ok"), "the server must answer `ok`");
+    wait_for_health(&f.addr());
 
     // 5. Stop. The server drains and exits, and the state file goes with it.
     let stopped = f.run(&["daemon", "stop"]);
     assert!(stopped.status.success(), "{}", text(&stopped));
     assert!(text(&stopped).contains("stopped"), "{}", text(&stopped));
-    assert!(!f.state_file().exists(), "the state file must not outlive the daemon");
+    assert!(
+        !f.state_file().exists(),
+        "the state file must not outlive the daemon"
+    );
     assert_eq!(health(&f.addr()), None, "nothing may still answer /health");
     assert!(port_is_free(&f.addr()), "the port must be free again");
 
@@ -213,7 +266,11 @@ fn a_second_start_should_refuse_rather_than_spawn_a_server_that_dies_on_bind() {
     assert!(first.status.success(), "{}", text(&first));
 
     let second = f.start();
-    assert!(!second.status.success(), "start must refuse\n{}", text(&second));
+    assert!(
+        !second.status.success(),
+        "start must refuse\n{}",
+        text(&second)
+    );
     let err = text(&second);
     assert!(err.contains("already serving"), "{err}");
     assert!(err.contains(&f.addr()), "{err}");
@@ -223,8 +280,12 @@ fn a_second_start_should_refuse_rather_than_spawn_a_server_that_dies_on_bind() {
     let status = f.run(&["daemon", "status"]);
     assert!(status.status.success(), "{}", text(&status));
     let pid = f.recorded_state()["pid"].as_i64().expect("a pid");
-    assert!(text(&status).contains(&format!("pid        {pid}")), "{}", text(&status));
-    assert_eq!(health(&f.addr()).as_deref(), Some("ok"));
+    assert!(
+        text(&status).contains(&format!("pid        {pid}")),
+        "{}",
+        text(&status)
+    );
+    wait_for_health(&f.addr());
 }
 
 // Stopping a stopped daemon is not an error — it is the answer to a question,
@@ -234,7 +295,11 @@ fn stopping_nothing_should_succeed_and_say_so() {
     let f = Fixture::new("stopnothing");
     let stopped = f.run(&["daemon", "stop"]);
     assert!(stopped.status.success(), "{}", text(&stopped));
-    assert!(text(&stopped).contains("nothing running"), "{}", text(&stopped));
+    assert!(
+        text(&stopped).contains("nothing running"),
+        "{}",
+        text(&stopped)
+    );
 
     // Twice, because the state file removal is the part that could go wrong.
     let again = f.run(&["daemon", "stop"]);
@@ -265,7 +330,10 @@ fn a_stale_state_file_should_not_block_a_new_daemon() {
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    assert!(f.state_file().exists(), "SIGKILL leaves the state file behind");
+    assert!(
+        f.state_file().exists(),
+        "SIGKILL leaves the state file behind"
+    );
 
     // Stale is reported as stale, and the pid is not signalled by `stop`.
     let stale = f.run(&["daemon", "status"]);
@@ -275,11 +343,18 @@ fn a_stale_state_file_should_not_block_a_new_daemon() {
 
     let stopped = f.run(&["daemon", "stop"]);
     assert!(stopped.status.success(), "{}", text(&stopped));
-    assert!(text(&stopped).contains("nothing running"), "{}", text(&stopped));
-    assert!(!f.state_file().exists(), "the stale file must be cleaned up");
+    assert!(
+        text(&stopped).contains("nothing running"),
+        "{}",
+        text(&stopped)
+    );
+    assert!(
+        !f.state_file().exists(),
+        "the stale file must be cleaned up"
+    );
 
     // And a fresh start is not blocked by any of it.
     let restarted = f.start();
     assert!(restarted.status.success(), "{}", text(&restarted));
-    assert_eq!(health(&f.addr()).as_deref(), Some("ok"));
+    wait_for_health(&f.addr());
 }
