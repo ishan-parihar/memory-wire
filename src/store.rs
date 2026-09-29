@@ -636,6 +636,118 @@ pub trait Store: Send + Sync {
     }
 }
 
+/// Every [`Store`] method, forwarded, for a borrowed store.
+///
+/// [`crate::api::MemoryService::new`] takes ownership of its `S` and wraps it in
+/// an `Arc`, so a caller holding only `&S` needs a [`Store`] out of that
+/// reference. The obvious way to get one is a struct holding the borrow and
+/// re-implementing the trait by hand — and that shape is a silent trap rather
+/// than a loud one: the trait's *defaults* satisfy the compiler, so a wrapper
+/// forwarding six of the eighteen methods is not a type error, it is a wrong
+/// answer. It was found doing exactly that. `get_bank_config`'s default is
+/// `Ok(None)`, so the vector retain path read no bank config and wrote every
+/// memory without the bank's `retainTags`, while the direct path wrote them with
+/// it — two public retain paths, divergent answers, nothing to compile-fail.
+///
+/// A blanket impl has no list to fall behind. Adding a method to [`Store`]
+/// without adding it here is a compile error, so the divergence is impossible by
+/// construction rather than by vigilance. `(*self).m(..)` is the whole forward:
+/// one deref of the reference, every call landing on the store the caller holds.
+impl<T: Store + ?Sized> Store for &T {
+    fn put_bank(&self, bank: &Bank) -> Result<(), StoreError> {
+        (*self).put_bank(bank)
+    }
+    fn put(&self, m: &Memory) -> Result<(), StoreError> {
+        (*self).put(m)
+    }
+    fn get(&self, bank_id: &str, id: &str) -> Result<Option<Memory>, StoreError> {
+        (*self).get(bank_id, id)
+    }
+    fn list(&self, bank_id: &str) -> Result<Vec<Memory>, StoreError> {
+        (*self).list(bank_id)
+    }
+    fn keyword_search(
+        &self,
+        bank_id: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<KeywordHits, StoreError> {
+        (*self).keyword_search(bank_id, query, limit)
+    }
+    fn put_tagged(&self, m: &Memory, tags: &[String]) -> Result<(), StoreError> {
+        (*self).put_tagged(m, tags)
+    }
+    fn put_doc(
+        &self,
+        m: &Memory,
+        tags: &[String],
+        document_id: Option<&str>,
+        update_mode: UpdateMode,
+    ) -> Result<String, StoreError> {
+        (*self).put_doc(m, tags, document_id, update_mode)
+    }
+    fn delete(&self, bank_id: &str, id: &str) -> Result<bool, StoreError> {
+        (*self).delete(bank_id, id)
+    }
+    fn list_page(
+        &self,
+        bank_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Memory>, StoreError> {
+        (*self).list_page(bank_id, limit, offset)
+    }
+    fn bank_stats(&self, bank_id: &str) -> Result<BankStats, StoreError> {
+        (*self).bank_stats(bank_id)
+    }
+    fn recall_inputs(
+        &self,
+        bank_id: &str,
+        query: &str,
+        tags: &[String],
+        fts_limit: usize,
+    ) -> Result<RecallInputs, StoreError> {
+        (*self).recall_inputs(bank_id, query, tags, fts_limit)
+    }
+    fn recall_inputs_lexical(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        tags: &[String],
+        fts_limit: usize,
+    ) -> Result<RecallInputs, StoreError> {
+        (*self).recall_inputs_lexical(bank_id, lq, tags, fts_limit)
+    }
+    fn get_bank_config(&self, bank_id: &str) -> Result<Option<String>, StoreError> {
+        (*self).get_bank_config(bank_id)
+    }
+    fn set_bank_config(&self, bank_id: &str, config: &str) -> Result<(), StoreError> {
+        (*self).set_bank_config(bank_id, config)
+    }
+    fn bank_ttls(&self) -> Result<Vec<(String, Option<u32>)>, StoreError> {
+        (*self).bank_ttls()
+    }
+    fn put_vector(
+        &self,
+        bank_id: &str,
+        memory_id: &str,
+        vector: &[f32],
+    ) -> Result<(), StoreError> {
+        (*self).put_vector(bank_id, memory_id, vector)
+    }
+    fn bank_vectors(&self, bank_id: &str) -> Result<Vec<(String, Vec<f32>)>, StoreError> {
+        (*self).bank_vectors(bank_id)
+    }
+    fn expire_before(
+        &self,
+        bank_id: &str,
+        cutoff: &str,
+        dry_run: bool,
+    ) -> Result<usize, StoreError> {
+        (*self).expire_before(bank_id, cutoff, dry_run)
+    }
+}
+
 /// The `ttl_days` a stored config asks for, as the column holds it.
 ///
 /// Absent, `null`, out of `u32` range, and non-numeric all read the same way:

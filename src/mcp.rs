@@ -62,7 +62,9 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use serde_json::{json, Map, Value};
 
-use memory_wire::api::{http_error, parse_update_mode, MemoryService, REFLECT_SYSTEM_PROMPT};
+use memory_wire::api::{
+    http_error, parse_update_mode, ApiError, MemoryService, REFLECT_SYSTEM_PROMPT,
+};
 use memory_wire::memory::Memory;
 use memory_wire::store::{default_db_path, SqliteStore, Store};
 
@@ -183,9 +185,40 @@ fn call_failure(e: CallError) -> McpError {
 }
 
 /// The MCP surface: one service plus the bank tools default to.
-pub struct Server {
-    svc: MemoryService<SqliteStore>,
+///
+/// Generic over the store so a test can stand a probe in front of it and see
+/// which thread a handler's store call lands on. Production is [`SqliteStore`],
+/// the default type parameter, so every other mention of `Server` in the tree
+/// still means that.
+pub struct Server<S: Store = SqliteStore> {
+    svc: Arc<MemoryService<S>>,
     bank: String,
+}
+
+/// Hand-written, because `#[derive]` would add an `S: Clone` bound and
+/// `SqliteStore` is not `Clone` — which is the point of the `Arc`. A handler
+/// hands a *share* of the one service to a blocking task, so both fields are
+/// cheap to duplicate and the store itself is never copied.
+impl<S: Store> Clone for Server<S> {
+    fn clone(&self) -> Self {
+        Self { svc: self.svc.clone(), bank: self.bank.clone() }
+    }
+}
+
+/// One `tools/call`'s outcome, before the protocol decides what it is.
+///
+/// The store call runs on the blocking pool, and a `CallError` has no
+/// [`memory_wire::api::ApiError`] representation — an unknown tool name is not a
+/// storage fault, and folding it into one would turn a `MethodNotFound` into an
+/// `InternalError`. So the failure travels *in* the value and the JSON-RPC
+/// decision stays in the handler, where the protocol is.
+enum ToolOutcome {
+    /// The tool ran and returned this.
+    Ran(Value),
+    /// The tool ran and failed, and the caller must be able to read why.
+    Failed(String),
+    /// No such tool — a protocol-level `MethodNotFound`.
+    UnknownTool(String),
 }
 
 /// Annotations for one tool.
@@ -203,7 +236,34 @@ fn annotations(read_only: bool) -> ToolAnnotations {
     a
 }
 
-impl Server {
+/// Run one blocking store call off the async worker threads, for an MCP handler.
+///
+/// [`memory_wire::api::blocking`] is the same call the REST routes make, and
+/// this only re-shapes the *result*: these handlers do not return
+/// [`memory_wire::api::ApiError`], they return [`McpError`], so the inner
+/// `Result` travels as the value and the two are flattened in the same place the
+/// `?` would be. A storage fault is therefore still classified exactly once, by
+/// [`api_failure`], from the same `ApiError` the REST surface classifies.
+///
+/// The bounds are `blocking`'s, unchanged: `Send + 'static` on the closure and on
+/// its value, so a handler genuinely has to hand over owned data. It cannot
+/// borrow `&self` across the thread, which is why the handlers clone `self`
+/// rather than capture it.
+async fn store_task<T, F>(f: F) -> Result<T, McpError>
+where
+    F: FnOnce() -> Result<T, McpError> + Send + 'static,
+    T: Send + 'static,
+{
+    match memory_wire::api::blocking(move || Ok::<_, memory_wire::api::ApiError>(f()))
+        .await
+        .map_err(|e| api_failure(&e))?
+    {
+        Ok(v) => Ok(v),
+        Err(e) => Err(e),
+    }
+}
+
+impl Server<SqliteStore> {
     /// Open the file-backed store and bind the server to one default bank.
     ///
     /// No bank is created here: a retain creates its own bank implicitly
@@ -214,7 +274,7 @@ impl Server {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let svc = MemoryService::new(SqliteStore::open(&path)?);
+        let svc = Arc::new(MemoryService::new(SqliteStore::open(&path)?));
         Ok(Self { svc, bank })
     }
 
@@ -226,14 +286,13 @@ impl Server {
     /// connection per session is both a per-session cost and a way for the MCP
     /// surface and the REST surface to hold different views of what is
     /// committed. The share is the `Arc` the service already keeps internally, so
-    /// this clones a pointer rather than a store.
+    /// this moves a pointer rather than a store.
     pub(crate) fn over(svc: Arc<MemoryService<SqliteStore>>, bank: String) -> Self {
-        Self {
-            svc: MemoryService { store: svc.store.clone() },
-            bank,
-        }
+        Self { svc, bank }
     }
+}
 
+impl<S: Store> Server<S> {
     /// The four tool definitions, in listing order.
     pub fn tools() -> Vec<Tool> {
         [
@@ -566,7 +625,7 @@ impl Server {
     }
 }
 
-impl ServerHandler for Server {
+impl<S: Store + 'static> ServerHandler for Server<S> {
     fn get_info(&self) -> ServerConfig {
         // `ServerConfig`/`Implementation` are `#[non_exhaustive]`, so they are
         // built from `default()` and mutated rather than struct-literal'd.
@@ -608,7 +667,7 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult { tools: Self::tools(), ..Default::default() })
+        Ok(ListToolsResult { tools: Server::<SqliteStore>::tools(), ..Default::default() })
     }
 
     async fn call_tool(
@@ -620,27 +679,44 @@ impl ServerHandler for Server {
         // `None` on stdio, which never puts an HTTP request in the context, so
         // the stdio path is this module's pre-existing resolution rule verbatim.
         let pinned = crate::mcp_http::url_bank(&context);
+        // Every arm of the dispatch reads or writes SQLite, and `/mcp` is mounted
+        // on the same multi-threaded runtime the REST routes share — so it runs
+        // on the blocking pool, through the same `api::blocking` those routes use
+        // and for the reason that helper's doc comment names. The clone is what
+        // satisfies the closure's `Send + 'static`: two fields, one behind an
+        // `Arc` and one small `String`, so nothing borrows `&self` across threads.
+        let me = self.clone();
+        let name = request.name;
         // `CallToolResponse` is the MRTR union (SEP-2322): a completed result, an
         // input request, or a task handle. This server has no elicitation and no
         // long-running work, so every outcome is `Complete` and the conversion is
         // the one `From` impl rather than a variant the handler has to pick.
-        let result: CallToolResult =
-            match self.call_scoped(&request.name, &args, pinned.as_deref()) {
-                Ok(v) => CallToolResult::success(vec![ContentBlock::text(v.to_string())]),
-                // Unroutable: a JSON-RPC error the client surfaces opaquely.
-                Err(CallError::UnknownTool(name)) => {
-                    return Err(ErrorData::new(
-                        ErrorCode::METHOD_NOT_FOUND,
-                        format!("unknown tool: {name}"),
-                        None,
-                    ));
-                }
-                // The tool ran and failed: the caller must be able to read why.
-                Err(CallError::Failed(why)) => {
-                    CallToolResult::error(vec![ContentBlock::text(why)])
-                }
-            };
-        Ok(result.into())
+        let outcome = memory_wire::api::blocking(move || -> Result<ToolOutcome, ApiError> {
+            Ok(match me.call_scoped(&name, &args, pinned.as_deref()) {
+                Ok(v) => ToolOutcome::Ran(v),
+                Err(CallError::Failed(why)) => ToolOutcome::Failed(why),
+                Err(CallError::UnknownTool(unknown)) => ToolOutcome::UnknownTool(unknown),
+            })
+        })
+        .await
+        .map_err(|e| api_failure(&e))?;
+        Ok(match outcome {
+            ToolOutcome::Ran(v) => {
+                CallToolResult::success(vec![ContentBlock::text(v.to_string())]).into()
+            }
+            // The tool ran and failed: the caller must be able to read why.
+            ToolOutcome::Failed(why) => {
+                CallToolResult::error(vec![ContentBlock::text(why)]).into()
+            }
+            // Unroutable: a JSON-RPC error the client surfaces opaquely.
+            ToolOutcome::UnknownTool(unknown) => {
+                return Err(ErrorData::new(
+                    ErrorCode::METHOD_NOT_FOUND,
+                    format!("unknown tool: {unknown}"),
+                    None,
+                ));
+            }
+        })
     }
 
     /// One page of a bank's memories as addressable resources.
@@ -656,10 +732,9 @@ impl ServerHandler for Server {
         // `None` on stdio, which never puts an HTTP request in the context — the
         // same read `call_tool` does, so the two cannot disagree about the pin.
         let pinned = crate::mcp_http::url_bank(&context);
-        self.list_scoped(
-            request.as_ref().and_then(|r| r.cursor.as_deref()),
-            pinned.as_deref(),
-        )
+        let cursor = request.and_then(|r| r.cursor);
+        let me = self.clone();
+        store_task(move || me.list_scoped(cursor.as_deref(), pinned.as_deref())).await
     }
 
     /// One memory's content, addressed by `memory://{bank}/{id}`.
@@ -669,9 +744,13 @@ impl ServerHandler for Server {
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
         let pinned = crate::mcp_http::url_bank(&context);
+        let uri = request.uri;
+        let me = self.clone();
         // MRTR union, as in `call_tool`: a completed read, or an input request
         // this server never issues.
-        Ok(self.read_scoped(&request.uri, pinned.as_deref())?.into())
+        Ok(store_task(move || me.read_scoped(&uri, pinned.as_deref()))
+            .await?
+            .into())
     }
 
     /// The one prompt: the historian framing, advertised.
@@ -680,7 +759,7 @@ impl ServerHandler for Server {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
-        Ok(ListPromptsResult { prompts: Self::prompts(), ..Default::default() })
+        Ok(ListPromptsResult { prompts: Server::<SqliteStore>::prompts(), ..Default::default() })
     }
 
     /// The historian framing itself, byte for byte as `reflect` frames it.
@@ -725,11 +804,20 @@ impl ServerHandler for Server {
         request: CompleteRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CompleteResult, McpError> {
-        let matched = match &request.r#ref {
+        // `bank_ttls` reads SQLite, so it goes to the blocking pool like the
+        // other three handlers. The match stays out here: it is protocol shape,
+        // not a store call, and the empty arm is the protocol's own "no
+        // completions here" rather than an error.
+        let wanted = match &request.r#ref {
             Reference::Resource(r) if r.uri.starts_with(MEMORY_SCHEME) => {
-                self.bank_completions(&request.argument.value)
+                Some(request.argument.value.clone())
             }
-            _ => Vec::new(),
+            _ => None,
+        };
+        let me = self.clone();
+        let matched = match wanted {
+            Some(value) => store_task(move || Ok(me.bank_completions(&value))).await?,
+            None => Vec::new(),
         };
         let total = matched.len();
         let values: Vec<String> = matched.into_iter().take(COMPLETE_LIMIT).collect();
@@ -835,7 +923,7 @@ mod tests {
     use super::*;
     use rmcp::service::serve_directly;
     use rmcp::transport::async_rw::AsyncRwTransport;
-    use memory_wire::store::Store;
+    use memory_wire::store::{Store, StoreError};
     use rmcp::RoleServer;
     use std::time::Duration;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
@@ -878,7 +966,13 @@ mod tests {
 
     /// A live MCP session over an in-memory duplex: the same newline-delimited
     /// JSON-RPC `memory-wire mcp` puts on stdout, minus the process.
-    fn session(s: Server) -> (Client, rmcp::service::RunningService<RoleServer, Server>) {
+    ///
+    /// Generic over the store so `thread_probe_below` can stand its own in front
+    /// of the same session machinery; production and every other test use
+    /// [`Server`]'s default parameter, which is [`SqliteStore`].
+    fn session<S: Store + 'static>(
+        s: Server<S>,
+    ) -> (Client, rmcp::service::RunningService<RoleServer, Server<S>>) {
         let (server_io, client_io) = tokio::io::duplex(64 * 1024);
         let (server_r, server_w) = tokio::io::split(server_io);
         let transport = AsyncRwTransport::<RoleServer, _, _>::new(server_r, server_w);
@@ -890,7 +984,7 @@ mod tests {
 
     fn server() -> Server {
         Server {
-            svc: MemoryService::new(SqliteStore::open_in_memory().expect("open")),
+            svc: Arc::new(MemoryService::new(SqliteStore::open_in_memory().expect("open"))),
             bank: "agent".to_string(),
         }
     }
@@ -1573,5 +1667,116 @@ mod tests {
         assert_eq!(s.bank_completions(""), vec!["agent", "other"]);
         assert_eq!(s.bank_completions("oth"), vec!["other"]);
         assert!(s.bank_completions("zz").is_empty(), "no bank, no value");
+    }
+
+    /// A store that records the thread every call landed on.
+    ///
+    /// The point is *where* a call ran, not what it returned, so the answers are
+    /// the emptiest ones that still let a handler finish its own logic: the tool
+    /// path refuses at its first store call, the two resource paths answer with
+    /// nothing in the bank, and completion answers with no banks. Each one notes
+    /// the thread on the way through. Every other method keeps the trait's own
+    /// default, which is the point: nothing in this test can be satisfied by a
+    /// method it did not think to write.
+    #[derive(Clone, Default)]
+    struct ThreadProbe {
+        seen: Arc<std::sync::Mutex<Vec<std::thread::ThreadId>>>,
+    }
+
+    impl ThreadProbe {
+        fn note(&self) {
+            self.seen
+                .lock()
+                .expect("probe mutex is never poisoned: nothing in it can panic")
+                .push(std::thread::current().id());
+        }
+    }
+
+    impl Store for ThreadProbe {
+        fn put_bank(&self, _bank: &memory_wire::memory::Bank) -> Result<(), StoreError> {
+            self.note();
+            Err(StoreError::Unsupported("put bank"))
+        }
+        fn put(&self, _m: &Memory) -> Result<(), StoreError> {
+            self.note();
+            Err(StoreError::Unsupported("put"))
+        }
+        fn get(&self, _bank_id: &str, _id: &str) -> Result<Option<Memory>, StoreError> {
+            self.note();
+            Ok(None)
+        }
+        fn list(&self, _bank_id: &str) -> Result<Vec<Memory>, StoreError> {
+            self.note();
+            Ok(Vec::new())
+        }
+        fn bank_ttls(&self) -> Result<Vec<(String, Option<u32>)>, StoreError> {
+            self.note();
+            Ok(Vec::new())
+        }
+    }
+
+    /// Every store call an MCP handler makes has to leave the async workers.
+    ///
+    /// The HTTP mount runs on the same multi-threaded runtime as the REST routes,
+    /// and the REST routes have always gone through `api::blocking` for the
+    /// reason that helper's doc comment names: SQLite is synchronous, so a
+    /// handler that calls it inline parks a tokio worker for the length of the
+    /// request, and once every worker is parked the graceful-shutdown future —
+    /// which also needs a worker to be polled — can never run, so the process
+    /// stops answering a SIGTERM it never sees. `src/mcp.rs` made zero such
+    /// calls, so `/mcp` was the one mounted surface that could do it.
+    ///
+    /// The check is thread identity rather than a stopwatch, so it has nothing
+    /// to be flaky about: under this module's single-worker runtime the test body
+    /// and rmcp's service loop share one thread, `spawn_blocking` does not, and
+    /// a handler that dispatched its work cannot be the thread that ran it. Each
+    /// of the four handlers is driven over a real JSON-RPC session — the same
+    /// path stdio and `/mcp` use — so what is asserted is the shipping
+    /// behaviour rather than a helper called in isolation.
+    #[test]
+    fn every_mcp_handlers_store_call_runs_off_the_runtime_thread() {
+        let probe = ThreadProbe::default();
+        // Cloned before the move: the async block owns its `Server`, and the
+        // assertion after it reads the probe's own record.
+        let owned = probe.clone();
+        let runtime_thread = run(async {
+            let s = Server {
+                svc: Arc::new(MemoryService::new(owned)),
+                bank: "agent".to_string(),
+            };
+            let (mut c, _running) = session(s);
+            // `memory_retain` -> `put_bank`, the tool path's first store call.
+            c.request(1, "tools/call", json!({ "name": RETAIN, "arguments": { "content": "x" } }))
+                .await;
+            // `resources/list` -> `list_page`, whose default delegates to `list`.
+            c.request(2, "resources/list", json!({})).await;
+            // `resources/read` -> `get`. A miss is a JSON-RPC error, which is a
+            // reply like any other here: what matters is that `get` ran.
+            c.request(3, "resources/read", json!({ "uri": "memory://agent/m1" })).await;
+            // `completion/complete` -> `bank_ttls`, the bank listing.
+            c.request(
+                4,
+                "completion/complete",
+                json!({
+                    "ref": { "type": "ref/resource", "uri": "memory://agent/m1" },
+                    "argument": { "name": "bank", "value": "" }
+                }),
+            )
+            .await;
+            std::thread::current().id()
+        });
+
+        let seen = probe.seen.lock().expect("probe mutex is never poisoned").clone();
+        assert_eq!(
+            seen.len(),
+            4,
+            "all four handlers must reach the store, or this test proves nothing: {seen:?}"
+        );
+        for id in seen {
+            assert_ne!(
+                id, runtime_thread,
+                "a handler ran SQLite on the runtime thread instead of the blocking pool"
+            );
+        }
     }
 }

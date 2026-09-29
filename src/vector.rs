@@ -488,7 +488,10 @@ pub fn retain(
     embedder: &mut Embedder,
 ) -> Result<String, EmbedError> {
     let redacted = redact_pii(content);
-    let svc = crate::api::MemoryService::new(StoreHandle(store));
+    // `MemoryService::new` takes an `S` and wraps it in an `Arc`, so the borrow
+    // itself is the `S`: `store.rs` has one blanket `impl Store for &T`, so this
+    // forwards every method rather than a hand-picked six of them.
+    let svc = crate::api::MemoryService::new(store);
     let id = svc
         .retain_doc(
             bank_id,
@@ -504,43 +507,6 @@ pub fn retain(
         .put_vector(bank_id, &id, &vector)
         .map_err(|e| EmbedError::Model(e.to_string()))?;
     Ok(id)
-}
-
-/// A [`Store`] handle for [`crate::api::MemoryService`], which takes ownership of
-/// its store in [`MemoryService::new`].
-///
-/// Wraps a borrow rather than an `Arc` so the vector arm keeps the same
-/// signature as the rest of this module (a `&impl Store`) instead of forcing
-/// every caller to construct an `Arc` for one call. `MemoryService` needs
-/// `S: Store` and never asks for anything `put_vector`/`bank_vectors` lack,
-/// because neither is on the retain path it runs.
-struct StoreHandle<'a>(&'a dyn Store);
-
-impl Store for StoreHandle<'_> {
-    fn put_bank(&self, bank: &crate::memory::Bank) -> Result<(), StoreError> {
-        self.0.put_bank(bank)
-    }
-    fn put(&self, m: &Memory) -> Result<(), StoreError> {
-        self.0.put(m)
-    }
-    fn get(&self, bank_id: &str, id: &str) -> Result<Option<Memory>, StoreError> {
-        self.0.get(bank_id, id)
-    }
-    fn list(&self, bank_id: &str) -> Result<Vec<Memory>, StoreError> {
-        self.0.list(bank_id)
-    }
-    fn put_tagged(&self, m: &Memory, tags: &[String]) -> Result<(), StoreError> {
-        self.0.put_tagged(m, tags)
-    }
-    fn put_doc(
-        &self,
-        m: &Memory,
-        tags: &[String],
-        document_id: Option<&str>,
-        update_mode: crate::store::UpdateMode,
-    ) -> Result<String, StoreError> {
-        self.0.put_doc(m, tags, document_id, update_mode)
-    }
 }
 
 #[cfg(test)]
@@ -956,5 +922,42 @@ mod tests {
                 "the stored vector must be the embedding of the stored (redacted) text"
             );
         }
+    }
+
+    /// The bank's own `retainTags` reach the row this module writes.
+    ///
+    /// There are two public retain paths and they must answer the same way. This
+    /// one takes a `&impl Store` because it also has to write a vector, and
+    /// `MemoryService::new` wants an owned `S` — so the borrow has to be a
+    /// [`Store`] itself. Any method that borrow does not forward falls through to
+    /// the trait's *default*, and a default is not a compile error: it is a
+    /// plausible wrong answer. `get_bank_config`'s default is `Ok(None)`, and the
+    /// retain path reads it for exactly this config key, so the failure mode was
+    /// a bank that quietly wrote every memory *without* its configured tags while
+    /// the service path wrote them with — two public entry points, divergent
+    /// rows, and nothing to notice it. The readback below is a tag-filtered
+    /// recall rather than a config read, because a dropped tag is invisible from
+    /// the config and only visible from the rows it should have marked.
+    #[test]
+    fn the_vector_retain_path_writes_the_banks_configured_retain_tags() {
+        let store = SqliteStore::open_in_memory().expect("open");
+        store.put_bank(&bank("ops")).expect("bank");
+        store
+            .set_bank_config("ops", r#"{"retainTags":["from-config"]}"#)
+            .expect("config");
+
+        let mut e = embedder().lock().expect("embedder mutex");
+        retain(&store, "ops", "the release is mine", &[], None, &mut e).expect("retain");
+
+        let svc = crate::api::MemoryService::new(&store);
+        let tagged = svc
+            .recall_filtered("ops", "release", None, &["from-config".to_string()])
+            .expect("recall");
+        assert_eq!(
+            tagged.len(),
+            1,
+            "the row written by vector::retain does not carry the bank's retainTags"
+        );
+        assert_eq!(tagged[0].memory.content, "the release is mine");
     }
 }

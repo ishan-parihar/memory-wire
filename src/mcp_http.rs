@@ -270,7 +270,13 @@ mod tests {
         .await;
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
         let over_http = reply["result"]["tools"].clone();
-        let over_stdio = serde_json::to_value(crate::mcp::Server::tools()).expect("tools serialize");
+        // The tool listing is a static of the production server, so it is named
+        // with its concrete store type: `Server`'s default parameter makes the
+        // bare `Server` spelling mean the same thing in a type, but an
+        // associated call carries no such default.
+        let over_stdio =
+            serde_json::to_value(crate::mcp::Server::<memory_wire::store::SqliteStore>::tools())
+                .expect("tools serialize");
         assert_eq!(over_http, over_stdio, "HTTP and stdio must serve one tool set");
 
         // retain, with no `bank` argument: the URL decides.
