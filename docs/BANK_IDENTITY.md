@@ -151,3 +151,34 @@ it is worth knowing about.
 If a specific id matters more than the derivation — a team sharing one server,
 a project that must never share a bank with anything — that is what steps 1 and
 2 are for. Name it.
+
+## Measured: what can and cannot collide
+
+The caveat above is about lossy sanitisation. It is worth separating that from
+the case that actually drives the competitors' design, because they are not the
+same risk and only one of them applies here.
+
+Measured on 2026-09-29 by resolving the bank with `memory-wire doctor` in each
+directory:
+
+| directory | resolved bank | collides? |
+|---|---|---|
+| two unrelated local repos both named `api`, no git remote | `api`, `api` | **yes** |
+| a local repo with a unique name, no git remote | `unique-thing` | no |
+| a clone of `github.com/ishan-parihar/memory-wire` | `ishan-parihar-memory-wire` | no |
+| a clone of `github.com/rust-lang/rust` | `rust-lang-rust` | no |
+
+**A fork does not collide.** A GitHub fork has a different owner, so its
+`origin` differs, so the remote-derived branch produces a different bank. That
+is the threat Hindsight names when it fails closed — "a cloned repository must
+not be able to turn memory on" — and remote-derived identity already covers it.
+Two clones of the *same* repository do share a bank, which is the same user's
+own two checkouts and is almost certainly the intent.
+
+The residual is therefore narrow: **two different local directories that share
+a basename and have no git remote.** Set `MEMORY_WIRE_BANK`, or pass `--bank`,
+and it is named rather than derived.
+
+Whether a repository must *opt in* before a hook will write to it is a product
+decision rather than a correctness fix, and it is deliberately not made here.
+The measurement above is the input to it.
