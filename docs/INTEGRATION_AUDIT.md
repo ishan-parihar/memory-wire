@@ -280,8 +280,15 @@ Verified in our tree, absent from both audited codebases — not padding:
 
 ## 6. Where they are better
 
-- **Breadth.** 21 adapters and 54 tools against our 7 and 4. Partly deliberate (a tool
-  count we cannot justify with semantics is surface, not capability) and partly not.
+- **Breadth.** **20 distinct harnesses across 28 connect modules**
+  (`src/cli/connect/*.ts`, collapsing `-cli`/`-hooks` variants and excluding `index`,
+  `types`, `util`, `guidelines`, `json-mcp-adapter`) against our 7. And **54 MCP tools**
+  (`src/mcp/tools-registry.ts`) against our 4. Partly deliberate — a tool count we cannot
+  justify with semantics is surface, not capability — and partly not.
+
+  Correction: an earlier draft of this document said "21 adapters". That number was
+  carried over from `INTEGRATION_GAPS.md` and is wrong; 20 is the verified count. The
+  54-tool figure is confirmed.
 - **A real plugin protocol on hermes**, which we cannot reach except by writing a
   `MemoryProvider` in Python.
 - **Per-harness lifecycle coverage.** We write 5 hook events; agentmemory ships 12 for
@@ -305,3 +312,41 @@ Verified in our tree, absent from both audited codebases — not padding:
   route, and it works.
 - **Writing `memory.backend` in OMP's `config.yml`.** It currently reads `hindsight`.
   Displacing a competitor unasked is the hazard that keeps hermes out of the implicit set.
+
+## 8. Two open questions about OMP, one of them about a competitor
+
+### 8.1 agentmemory integrates with pi, and I cannot yet say whether it works **[U]**
+
+They ship `src/cli/connect/pi.ts` and an `integrations/pi/` package. The installer targets
+**`~/.pi/agent/extensions/agentmemory/`** (`pi.ts:18-19`), using native lifecycle hooks
+against their REST API — recall on agent start, capture on agent end — with the comment
+*"pi auto-discovers `~/.pi/agent/extensions/*/index.ts`"*.
+
+We target `~/.omp/`, which is right for OMP 18.3.0. The interesting part is whether theirs
+still lands. OMP's binary contains `const w = T.omp || T.pi || { version: T.version }` —
+an explicit `.omp`-prefers-`.pi` fallback — so `.pi` is **legacy but referenced**, not dead.
+On this machine `~/.omp` was last modified 2026-09-30 and carries `natives/18.3.1`, while
+`~/.pi` was last modified 2026-08-24.
+
+So `.pi` is the pre-migration location and `.omp` the current one. **Whether OMP still
+loads extensions from `~/.pi/agent/extensions/` when `~/.omp/agent/extensions/` also
+exists is untested**, and the binary string is about a config object rather than the
+extensions directory, so it does not answer the question. I nearly published "their pi
+integration is broken" and the evidence does not support it.
+
+The test is cheap and worth doing: drop a marker extension into `~/.pi/agent/extensions/`,
+ask omp to enumerate its extensions, and see whether it loads. If it does not, that is a
+defect worth reporting to them and a reason to be sure our own path stays correct across
+OMP renames.
+
+### 8.2 Whether an OMP extension is worth building
+
+`~/.omp/agent/extensions/` already holds a third-party TypeScript extension
+(`herdr-omp-agent-state.ts`, 12,746 B) and OMP loads it — the `--extension` /
+`--plugin-dir` flags and auto-discovery are real. That makes the P1.3 "OMP loses automatic
+injection" concern actionable rather than theoretical: an extension is a supported surface.
+
+It is not free. Our extension would have to either call the REST API (like the hermes
+plugin) or embed an MCP client, and it would need to hook the same lifecycle moments. That
+is the same trade already recorded as **rejected** for hermes in §2/F7 — an MCP client in
+TypeScript is less bad than one in Python, but it is still a client.
