@@ -31,7 +31,11 @@ const HOOK_TIMEOUT: u64 = 5;
 type McpSpec = (&'static str, fn(&str) -> Value);
 
 /// An agent host this installer can wire.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+///
+/// The names are [`Host::id`]s rather than variant names, so a host can only
+/// ever be spelled one way: [`parse_hosts`] is the single place a name is
+/// resolved, and there is no second list for it to disagree with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Host {
     /// Claude Code (`~/.claude/settings.json`).
     ClaudeCode,
@@ -72,6 +76,42 @@ pub const IMPLICIT: &[Host] = &[
     Host::Cursor,
     Host::Opencode,
 ];
+
+/// Resolve a host list: one name, several separated by commas or spaces, or the
+/// same flag given twice. Duplicates collapse, so one call that names a host
+/// twice wires it once.
+///
+/// Spaces separate as well as commas because a caller writing
+/// `"claude-code, cursor"` in a script means the two hosts it wrote, and
+/// refusing a call that is not wrong buys nothing. Names are otherwise matched
+/// exactly, as the single-host argument was.
+pub fn parse_hosts(raw: &[String]) -> Result<Vec<Host>, String> {
+    let mut hosts: Vec<Host> = Vec::new();
+    for token in raw.iter().flat_map(|v| v.split([',', ' ', '\t'])) {
+        let name = token.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let host = ALL
+            .iter()
+            .copied()
+            .find(|h| h.id() == name)
+            .ok_or_else(|| unknown_host(name))?;
+        if !hosts.contains(&host) {
+            hosts.push(host);
+        }
+    }
+    Ok(hosts)
+}
+
+/// The message for a name that is not a host, naming the ones that are.
+fn unknown_host(name: &str) -> String {
+    format!(
+        "unknown agent host `{name}` — `memory-wire connect --list` shows the hosts; \
+         valid names: {}",
+        ALL.iter().map(|h| h.id()).collect::<Vec<_>>().join(", ")
+    )
+}
 
 /// A host lifecycle event and the `hook` subcommand it runs.
 struct Event {
@@ -279,6 +319,55 @@ fn is_executable(p: &Path) -> bool {
 /// Is this host installed? Config dir first, then its binary on `PATH`.
 fn detected_with(host: Host, home: &Path, on_path: fn(&str) -> bool) -> bool {
     exists(home, host.detect_rel()) || on_path(host.binary())
+}
+
+/// One `connect --list` line: the host, whether it is on this machine, and
+/// whether it already carries our entries.
+///
+/// Reads and nothing else. No config is created, edited, moved or removed, and
+/// no backup directory is made — this is the input to a decision about which
+/// hosts to wire, so a version that rewrote a file while reporting would be
+/// editing something the caller is choosing whether to touch at all.
+pub fn listing(host: Host, home: &Path, on_path: fn(&str) -> bool) -> String {
+    let detected = detected_with(host, home, on_path);
+    let wired = detected && wired_with(host, home);
+    format!("{:<12} detected={:<3} wired={}", host.id(), yes_no(detected), yes_no(wired))
+}
+
+/// `yes` / `no`, so a line is greppable without a parser.
+fn yes_no(b: bool) -> &'static str {
+    if b { "yes" } else { "no" }
+}
+
+/// Does this host already carry our entries? Parses, never writes.
+///
+/// A config that cannot be parsed reads as not-wired rather than refused: this
+/// is a report, and the refusal that belongs to a write is [`apply`]'s.
+fn wired_with(host: Host, home: &Path) -> bool {
+    // The plugin host has no key to look for — its install is a directory whose
+    // name IS the provider name, so the directory is the installed state. The
+    // path is composed from the same two pieces `connect_plugin` builds it from
+    // (`.hermes/plugins/<marker>`); that module owns the write, this the read.
+    if host.style() == Style::Plugin {
+        return home.join(host.detect_rel()).join("plugins").join(MARKER).is_dir();
+    }
+    let Ok(raw) = paths::read_or_empty(&home.join(host.config_rel())) else {
+        return false;
+    };
+    let Ok(root) = serde_json::from_str::<Value>(&raw) else {
+        return false;
+    };
+    match host.style() {
+        // The MCP hosts are keyed by the server name we register under, so the
+        // key is the check. The hook hosts are recognised the way every other
+        // pass recognises them: by the marker inside the entry.
+        Style::Mcp => host.mcp_spec().is_some_and(|(key, _)| {
+            root.get(key).and_then(Value::as_object).is_some_and(|m| m.contains_key(MARKER))
+        }),
+        _ => EVENTS
+            .iter()
+            .any(|ev| root.pointer(&format!("/hooks/{}", ev.name)).is_some_and(is_ours)),
+    }
 }
 
 /// What one edit pass did to a config.
@@ -815,6 +904,77 @@ mod tests {
         );
         assert!(ALL.contains(&Host::Hermes), "hermes is still reachable by name");
         assert_eq!(ALL.len(), IMPLICIT.len() + 1, "every other host stays implicit");
+    }
+
+    fn parse(v: &[&str]) -> Result<Vec<Host>, String> {
+        parse_hosts(&v.iter().map(|s| (*s).to_string()).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn a_host_list_should_take_commas_spaces_and_repetition() {
+        assert_eq!(parse(&["codex"]), Ok(vec![Host::Codex]));
+        assert_eq!(parse(&["codex,cursor"]), Ok(vec![Host::Codex, Host::Cursor]));
+        assert_eq!(parse(&["codex", "cursor"]), Ok(vec![Host::Codex, Host::Cursor]));
+        // The spaced comma form is what a shell script actually writes.
+        assert_eq!(parse(&["codex, cursor"]), Ok(vec![Host::Codex, Host::Cursor]));
+        assert_eq!(parse(&["hermes"]), Ok(vec![Host::Hermes]));
+        // A name repeated inside one call is still one host.
+        assert_eq!(parse(&["codex,codex", "codex"]), Ok(vec![Host::Codex]));
+        // No host at all is the bare `connect`, decided by the caller, not here.
+        assert_eq!(parse(&[]), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn an_unknown_host_name_should_name_every_valid_one() {
+        let err = parse(&["claude_code"]).expect_err("a name that is not a host");
+        assert!(err.contains("claude_code"), "{err}");
+        for host in ALL {
+            assert!(err.contains(host.id()), "{} missing from: {err}", host.id());
+        }
+    }
+
+    /// Every host is listed whether or not this machine has it: a caller
+    /// choosing what to install needs to see what it could install, so a missing
+    /// host may not be dropped from the answer.
+    #[test]
+    fn listing_should_name_an_undetected_host_rather_than_omitting_it() {
+        let home = tmp_home("list-none");
+        for host in ALL {
+            let line = listing(*host, &home, no_path);
+            assert!(line.starts_with(&format!("{:<12}", host.id())), "{line}");
+            assert!(line.contains("detected=no"), "{line}");
+            assert!(line.contains("wired=no"), "{line}");
+        }
+        assert!(!home.join("data").exists(), "a listing must not create a data dir");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// `wired` is read out of the file rather than inferred: our own entry means
+    /// wired, a config holding only somebody else's hook does not, and reading
+    /// the answer must not change the answer's subject.
+    #[test]
+    fn listing_should_read_wired_from_the_config_without_editing_it() {
+        let home = tmp_home("list-wired");
+        let rel = Host::ClaudeCode.config_rel();
+        write_config(&home, &rel, FOREIGN);
+        let before = std::fs::read_to_string(home.join(&rel)).expect("read");
+        assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=no"));
+        assert_eq!(
+            std::fs::read_to_string(home.join(&rel)).expect("read"),
+            before,
+            "reading the state must leave the file byte-identical"
+        );
+
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        let wired = std::fs::read_to_string(home.join(&rel)).expect("read");
+        assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=yes"));
+        assert_eq!(
+            std::fs::read_to_string(home.join(&rel)).expect("read"),
+            wired,
+            "listing a wired config must not rewrite it"
+        );
+        std::fs::remove_dir_all(&home).ok();
     }
 
     #[test]

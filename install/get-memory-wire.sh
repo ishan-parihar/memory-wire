@@ -12,6 +12,9 @@
 # Flags:
 #   --db <path>   echo the serve/daemon lines with this --db
 #   --connect     wire the agent hosts (default; --no-connect to skip)
+#   --hosts <a,b> wire only these hosts, e.g. claude-code,codex. Never prompts:
+#                 this is the path for a script or an AI agent. Run the installer
+#                 with no flag on a terminal to pick from a numbered list.
 #   --daemon      also start the background server and run doctor
 #   --uninstall   remove the binary only; the database is left in place
 set -eu
@@ -23,6 +26,7 @@ BIN="memory-wire"
 UNINSTALL=0
 DB_PATH=""
 CONNECT=auto        # auto | yes | no
+HOSTS=""            # --hosts <a,b>; empty means every detected host
 START_DAEMON=no
 
 die() { printf 'memory-wire: %s\n' "$*" >&2; exit 1; }
@@ -34,6 +38,9 @@ while [ $# -gt 0 ]; do
     --db=*) DB_PATH="${1#--db=}" ;;
     --connect) CONNECT=yes ;;
     --no-connect) CONNECT=no ;;
+    --hosts) [ $# -ge 2 ] || die "--hosts needs a host list, e.g. --hosts claude-code,codex"
+              HOSTS="$2"; shift ;;
+    --hosts=*) HOSTS="${1#--hosts=}" ;;
     --daemon) START_DAEMON=yes ;;
     # Print the header comment block. Done by scanning for the first non-comment
     # line rather than a hardcoded line range, which silently truncated the flag
@@ -141,11 +148,63 @@ printf '  curl -s http://127.0.0.1:8888/health      # -> ok\n'
 #
 # `connect` is idempotent, backs up every file it edits, refuses a malformed
 # config untouched, and never overwrites a hook it did not write.
+#
+# Resolve the host list to run first, so the scan is on screen before anything
+# is written: `--list` only reads, and says which hosts are here and which are
+# already wired.
+connect() {
+  if [ -n "$HOSTS" ]; then
+    # $HOSTS unquoted on purpose: a host list is several words, and the names are
+    # [a-z-], so there is nothing here for the shell to glob or split wrongly.
+    "$BIN_PATH" connect $HOSTS "$@"
+  else
+    "$BIN_PATH" connect "$@"
+  fi
+}
+
+# Turn an answer at the menu into a host list. $1 is what the person typed, $2 the
+# detected hosts in menu order. A number and a host name are both accepted; an
+# answer that is neither is passed through to `connect`, which names the valid
+# hosts itself rather than this script carrying a second list of them. An empty
+# answer prints nothing, which leaves the caller's default alone.
+choose_hosts() {
+  # $2 unquoted for the same reason $HOSTS is above.
+  # shellcheck disable=SC2086
+  printf '%s\n' $2 | awk -v want="$1" '
+    BEGIN { n = split(want, a, /[,[:space:]]+/)
+            for (i = 1; i <= n; i++) if (a[i] != "") pick[a[i]] = 1 }
+    { if (pick[NR] || pick[$1]) { printf "%s%s", seen ? " " : "", $1; seen = 1 } }'
+}
+
 CONNECT_RC=0
 CONNECT_OUT=""
 if [ "$CONNECT" != no ] && [ -x "$BIN_PATH" ]; then
-  printf '\nwiring agent hosts (memory-wire connect):\n'
-  CONNECT_OUT="$("$BIN_PATH" connect 2>&1)" && CONNECT_RC=0 || CONNECT_RC=$?
+  printf '\nagent hosts on this machine (memory-wire connect --list):\n'
+  HOSTS_LIST="$("$BIN_PATH" connect --list 2>&1)" || HOSTS_LIST=""
+  printf '%s\n' "$HOSTS_LIST" | sed 's/^/  /'
+
+  # When to ask and when not to. `--hosts` is the non-interactive path and never
+  # prompts. Without it, only a terminal is asked: a pipe, a CI log or an agent's
+  # captured stdin cannot answer, and a question nobody can answer is a hang, not
+  # a question — so those wire every detected host exactly as before.
+  if [ -z "$HOSTS" ] && [ -t 0 ]; then
+    DETECTED=$(printf '%s\n' "$HOSTS_LIST" | awk '$2 == "detected=yes" { print $1 }')
+    if [ -n "$DETECTED" ]; then
+      n=0
+      for h in $DETECTED; do
+        n=$((n + 1))
+        printf '  %d) %s\n' "$n" "$h"
+      done
+      printf 'wire which? [enter = all detected, or numbers/names such as 1,3]\n'
+      printf '> '
+      REPLY=""
+      IFS= read -r REPLY || true
+      HOSTS=$(choose_hosts "$REPLY" "$DETECTED")
+    fi
+  fi
+
+  printf '\nwiring agent hosts (memory-wire connect%s):\n' "${HOSTS:+ $HOSTS}"
+  CONNECT_OUT="$(connect 2>&1)" && CONNECT_RC=0 || CONNECT_RC=$?
   printf '%s\n' "$CONNECT_OUT" | sed 's/^/  /'
 
   if [ "$CONNECT_RC" -ne 0 ]; then

@@ -109,14 +109,22 @@ enum Cmd {
     },
     /// Wire memory-wire into agent hosts (default: every detected host).
     Connect {
-        /// Wire only this host instead of all detected hosts.
-        agent: Option<connect::Host>,
+        /// Hosts to wire instead of every detected one. Repeat the argument or
+        /// comma-separate the names; a name repeated is one host. With no host
+        /// named, every detected host is wired. `memory-wire connect --list`
+        /// reports the names and which of them are on this machine.
+        #[arg(value_name = "AGENT")]
+        agent: Vec<String>,
         /// Remove memory-wire entries instead of adding them.
         #[arg(long)]
         uninstall: bool,
         /// Write the memory-wire rules block into this project's agent files.
         #[arg(long)]
         guidelines: bool,
+        /// Report every host, whether it is on this machine and whether it is
+        /// already wired, and write nothing at all.
+        #[arg(long)]
+        list: bool,
     },
     /// Lifecycle hook (hosts call this; reads hook JSON on stdin).
     Hook {
@@ -234,15 +242,31 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Daemon { action } => {
             std::process::exit(daemon::run(action));
         }
-        Cmd::Connect { agent, uninstall, guidelines } => {
-            if let Some(why) = connect_conflict(uninstall, guidelines) {
+        Cmd::Connect { agent, uninstall, guidelines, list } => {
+            // A name that is not a host is a usage error, not a wiring failure,
+            // so it goes out the same way a bad flag does: the reason and this
+            // subcommand's own help together, for a caller to correct in one turn.
+            let hosts = match connect::parse_hosts(&agent) {
+                Ok(hosts) => hosts,
+                Err(why) => cli_home::usage_failure(&clap::Error::raw(
+                    clap::error::ErrorKind::InvalidValue,
+                    why,
+                )),
+            };
+            if let Some(why) = connect_conflict(hosts.len(), uninstall, guidelines, list) {
                 eprintln!("memory-wire: {why}");
                 std::process::exit(1);
+            }
+            if list {
+                // Before anything below has opened a file: a listing cannot fail,
+                // so there is no exit code to carry out of it.
+                list_hosts();
+                return Ok(());
             }
             let failed = if guidelines {
                 write_guidelines()
             } else {
-                wire(agent, uninstall)
+                wire(hosts, uninstall)
             };
             if failed {
                 std::process::exit(1);
@@ -303,12 +327,42 @@ async fn main() -> anyhow::Result<()> {
 /// `--uninstall` and `--guidelines` write to disjoint places and disagree about
 /// what "installed" means, so honouring both would report a teardown while
 /// writing a rules block (or the reverse) — a state neither can be undone from.
-fn connect_conflict(uninstall: bool, guidelines: bool) -> Option<&'static str> {
-    (uninstall && guidelines).then_some("cannot combine --uninstall with --guidelines")
+/// `--list` writes nothing, so pairing it with either would answer a scan where a
+/// change was asked for.
+fn connect_conflict(
+    hosts: usize,
+    uninstall: bool,
+    guidelines: bool,
+    list: bool,
+) -> Option<&'static str> {
+    if uninstall && guidelines {
+        return Some("cannot combine --uninstall with --guidelines");
+    }
+    if list && (uninstall || guidelines) {
+        return Some("--list wires nothing; drop it to make a change");
+    }
+    if list && hosts > 0 {
+        return Some("--list takes no host; `memory-wire connect <host>` wires one");
+    }
+    None
+}
+
+/// Print one line per host — is it here, is it already wired — and touch nothing.
+fn list_hosts() {
+    let home = match paths::home() {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("memory-wire: {e}");
+            return;
+        }
+    };
+    for host in connect::ALL {
+        println!("{}", connect::listing(*host, &home, connect::binary_on_path));
+    }
 }
 
 /// Wire (or unwire) the selected hosts; returns true when any host was refused.
-fn wire(agent: Option<connect::Host>, uninstall: bool) -> bool {
+fn wire(hosts: Vec<connect::Host>, uninstall: bool) -> bool {
     let home = match paths::home() {
         Ok(h) => h,
         Err(e) => {
@@ -319,18 +373,18 @@ fn wire(agent: Option<connect::Host>, uninstall: bool) -> bool {
     let exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| "memory-wire".to_string());
-    let selected: Vec<connect::Host> = match agent {
-        Some(h) => vec![h],
-        // Not `connect::ALL`: see `IMPLICIT`. Hermes is reachable by name only.
-        None => connect::IMPLICIT.to_vec(),
-    };
+    // Only a bare `connect` is `IMPLICIT` — and not `connect::ALL`: see the note
+    // below. A caller who names every host has still chosen, and is not told
+    // about the one they left out.
+    let implicit = hosts.is_empty();
+    let selected = if implicit { connect::IMPLICIT.to_vec() } else { hosts };
     let mut failed = false;
     for host in selected {
         let outcome = connect::run(host, &exe, &home, uninstall);
         failed |= outcome.is_failure();
         println!("{}", outcome.render(host));
     }
-    if agent.is_none() {
+    if implicit {
         // Built from `ALL - IMPLICIT` rather than written out, so a host added to
         // one list and not the other cannot leave a stale name in this sentence.
         let skipped: Vec<&str> = connect::ALL
@@ -1317,9 +1371,16 @@ mod tests {
     // happens before anything is written.
     #[test]
     fn uninstall_with_guidelines_should_fail_without_writing_anything() {
-        assert_eq!(connect_conflict(true, true), Some("cannot combine --uninstall with --guidelines"));
-        assert_eq!(connect_conflict(true, false), None);
-        assert_eq!(connect_conflict(false, true), None);
+        assert_eq!(
+            connect_conflict(0, true, true, false),
+            Some("cannot combine --uninstall with --guidelines")
+        );
+        assert_eq!(connect_conflict(0, true, false, false), None);
+        assert_eq!(connect_conflict(0, false, true, false), None);
+        // `--list` reports and writes nothing, so it cannot stand in for a change.
+        assert_eq!(connect_conflict(0, true, false, true), Some("--list wires nothing; drop it to make a change"));
+        assert_eq!(connect_conflict(1, false, false, true), Some("--list takes no host; `memory-wire connect <host>` wires one"));
+        assert_eq!(connect_conflict(0, false, false, true), None);
 
         let dir = std::env::temp_dir().join(format!("mw-conflict-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
@@ -1341,6 +1402,138 @@ mod tests {
             .collect();
         assert!(left.is_empty(), "a refused combination must write nothing: {left:?}");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Every file under `root` as (path relative to `root`, bytes) — a comparison
+    /// that notices a file created, removed or rewritten, not only a changed one.
+    fn snapshot(root: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut queue = vec![root.to_path_buf()];
+        while let Some(dir) = queue.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read_dir") {
+                let path = entry.expect("entry").path();
+                if path.is_dir() {
+                    queue.push(path);
+                } else {
+                    let rel = path.strip_prefix(root).expect("under root").display().to_string();
+                    out.insert(rel, std::fs::read(&path).expect("read"));
+                }
+            }
+        }
+        out
+    }
+
+    /// One `connect` run against a scratch `HOME` with **no** `PATH`, so host
+    /// detection sees only what the test put there and cannot depend on which
+    /// agents happen to be installed on the machine running the suite.
+    fn connect_run(args: &[&str], home: &std::path::Path) -> (String, String, i32) {
+        let out = std::process::Command::new(crate::bin())
+            .args(args)
+            .current_dir(home)
+            .env("HOME", home)
+            .env_remove("XDG_DATA_HOME")
+            .env_remove("PATH")
+            .env("RUST_LOG", "off")
+            .output()
+            .expect("run memory-wire");
+        (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+            out.status.code().expect("an exit code, not a signal"),
+        )
+    }
+
+    /// `--list` is the input to the decision of which hosts to wire, so it must
+    /// not make one: every file under `HOME` is byte-identical afterwards, a
+    /// host this machine does not have still appears, and the answer is one line
+    /// per host with nothing else around it.
+    #[test]
+    fn list_should_report_every_host_and_write_nothing() {
+        let home = cli_scratch("list");
+        // One host present and already wired, one present and holding only a
+        // foreign hook: both states of the second column read off a real file.
+        std::fs::create_dir_all(home.join(".codex")).expect("mkdir");
+        std::fs::write(
+            home.join(".codex/hooks.json"),
+            r#"{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/usr/bin/memory-wire hook stop"}]}]}}"#,
+        )
+        .expect("write");
+        std::fs::create_dir_all(home.join(".claude")).expect("mkdir");
+        std::fs::write(home.join(".claude/settings.json"), "{\n  \"model\": \"opus\"\n}\n")
+            .expect("write");
+        let before = snapshot(&home);
+
+        let (out, err, code) = connect_run(&["connect", "--list"], &home);
+        assert_eq!(code, 0, "a machine with no host at all is not an error: {err}");
+        assert_eq!(snapshot(&home), before, "--list must not create, edit or remove a file");
+
+        let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), connect::ALL.len(), "one line per host, no banner: {out}");
+        for (line, host) in lines.iter().zip(connect::ALL) {
+            assert!(line.starts_with(&format!("{:<12}", host.id())), "{line}");
+        }
+        let fields = |id: &str| -> Vec<String> {
+            lines
+                .iter()
+                .find(|l| l.starts_with(id))
+                .unwrap_or_else(|| panic!("{id} is missing from:\n{out}"))
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(fields("codex"), ["codex", "detected=yes", "wired=yes"]);
+        assert_eq!(fields("claude-code"), ["claude-code", "detected=yes", "wired=no"]);
+        assert_eq!(fields("hermes"), ["hermes", "detected=no", "wired=no"]);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// One call may name several hosts, and a name repeated inside it is one
+    /// host: wired once, reported once, one entry per lifecycle event.
+    #[test]
+    fn repeated_hosts_in_one_invocation_should_wire_once() {
+        for argv in [
+            &["connect", "codex,codex"][..],
+            &["connect", "codex", "codex"][..],
+            &["connect", "codex, codex"][..],
+        ] {
+            let home = cli_scratch("dupe");
+            std::fs::create_dir_all(home.join(".codex")).expect("mkdir");
+            let (out, err, code) = connect_run(argv, &home);
+            assert_eq!(code, 0, "{argv:?} stderr: {err}");
+            let report: Vec<&str> = out.lines().filter(|l| l.starts_with("codex")).collect();
+            assert_eq!(report.len(), 1, "{argv:?} reported codex {} times:\n{out}", report.len());
+            assert!(report[0].contains(" wired"), "{out}");
+            // Counted structurally rather than by the marker substring: the exe
+            // path this run wires in is the build tree, whose directory is named
+            // after the project too, so one entry can carry the marker twice.
+            let doc: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(home.join(".codex/hooks.json")).expect("read"))
+                    .expect("json");
+            let entries: usize = doc["hooks"]
+                .as_object()
+                .expect("hooks")
+                .values()
+                .map(|ev| ev.as_array().map_or(0, Vec::len))
+                .sum();
+            assert_eq!(entries, 5, "{argv:?} must leave one entry per lifecycle event");
+            std::fs::remove_dir_all(&home).ok();
+        }
+    }
+
+    /// A name that is not a host is refused in one turn: nonzero, repeating the
+    /// name it was given and naming every name that would have worked.
+    #[test]
+    fn an_unknown_host_name_should_be_refused_with_the_valid_ones() {
+        let home = cli_scratch("bogus");
+        let (out, err, code) = connect_run(&["connect", "claude_code"], &home);
+        assert_ne!(code, 0, "a name that is not a host must not exit zero");
+        let said = format!("{out}{err}");
+        assert!(said.contains("claude_code"), "{said}");
+        for host in connect::ALL {
+            assert!(said.contains(host.id()), "{} missing from the refusal:\n{said}", host.id());
+        }
+        assert!(snapshot(&home).is_empty(), "a refused call must write nothing");
+        std::fs::remove_dir_all(&home).ok();
     }
 
     /// A private, empty directory for one CLI run: its cwd, its `HOME`, and
