@@ -11,3 +11,6 @@ eval/data/*
 !eval/data/sessions.json
 !eval/data/queries.json
 eval/results.json
+
+# release assets built by scripts/build-release.sh
+/dist

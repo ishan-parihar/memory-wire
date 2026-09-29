@@ -812,24 +812,64 @@ quoting a number.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/install/get-memory-wire.sh | sh
 # sh get-memory-wire.sh --db <path>     # echoes the serve line with that --db
+# sh get-memory-wire.sh --daemon        # also start the server and run doctor
+# sh get-memory-wire.sh --no-connect    # install the binary only, wire nothing
 # sh get-memory-wire.sh --uninstall     # removes the binary only, keeps the db
 ```
 
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
 defaults, which resolve to this repo and its latest published release
-(`v0.3.0`, asset `memory-wire-linux-x86_64.tar.gz`).
+(`v0.4.0`, asset `memory-wire-linux-x86_64.tar.gz`).
 
-**The published release is `v0.3.0`; the working tree is ahead of it.** `v0.3.0`
-is a real, published GitHub release (published 2026-09-28) and `Cargo.toml` still
-says `0.3.0`, so the version string describes the release and *not* the tree: the
-branch is **19 commits past the `v0.3.0` tag** with a large uncommitted wave on
-top. Nothing described in this README's `embed` paragraphs is in `v0.3.0` — that
-release shipped the lexical arm only, with the `embed` feature absent. So: what
-`curl … | sh` gives you is `v0.3.0`; what this file describes is later work. The
-tree-versus-release position, and the record that retired the older framing and
-then found it true again, are in `docs/CONSISTENCY.md` §15.2 and
+**The installer wires your agent hosts for you.** After the binary lands it runs
+`memory-wire connect`, which detects every supported host and writes both the
+lifecycle hooks and the MCP entry: `claude-code`, `codex`, and `copilot-cli` get
+the five hooks, `cursor` and `opencode` get the MCP server. It is idempotent, keeps
+a timestamped backup of every file it edits, refuses a malformed config untouched,
+and never overwrites a hook it did not write. Pass `--no-connect` to skip it, or
+`connect --uninstall` to undo it. The MCP entry points at the **installed binary
+by absolute path**, so it survives a `cargo clean` of a development checkout.
+
+Downloads are verified against the `.sha256` the release publishes next to each
+asset; a mismatch aborts the install rather than installing a corrupt binary.
+
+**The published release is `v0.4.0`; the working tree is ahead of it.** `v0.4.0`
+is a real, published GitHub release (2026-09-28) and `Cargo.toml` says `0.4.0`, so
+the version string describes the release and *not* necessarily the tree — check
+`git log v0.4.0..HEAD --oneline | wc -l` for the current distance. Nothing
+described in this README's `embed` paragraphs is in any published release: those
+shipped the lexical arm only, with the `embed` feature absent. So: what
+`curl … | sh` gives you is the latest tag; what this file describes may be later
+work. The tree-versus-release position is in `docs/CONSISTENCY.md` §15.2 and
 `docs/VERSIONS.md` §0.
+
+**Release assets are cut by `scripts/build-release.sh`, not by CI.** GitHub
+Actions minutes are metered and exhaustible, and a release you cannot cut because
+the quota is spent is a release blocker. The script builds all four targets
+(`linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`) on one machine
+using `cargo-zigbuild` for the cross targets, writes a `.sha256` beside each
+asset, and publishes with `gh release` — a REST call that consumes **no Actions
+minutes**:
+
+```bash
+rustup target add aarch64-unknown-linux-gnu x86_64-apple-darwin aarch64-apple-darwin
+cargo install cargo-zigbuild            # supplies libc headers per target
+
+./scripts/build-release.sh --check              # build + verify, publish nothing
+./scripts/build-release.sh --upload v0.4.1      # build, then create/update the release
+./scripts/build-release.sh --only linux-aarch64 # one target
+```
+
+It refuses to upload a partial set, and refuses to upload from a dirty tree
+unless you stash deliberately — a `v0.4.1` asset built from uncommitted work is
+unreproducible and worse than no asset. `.github/workflows/release.yml` does the
+same thing on hosted runners and is still useful if you have quota; the script is
+the floor under it.
+
+Until either path ran, only `linux-x86_64` had ever been uploaded, so the
+installer failed at the download step on ARM Linux and on both Macs.
+
 Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 
 ## Roadmap

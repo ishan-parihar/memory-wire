@@ -35,7 +35,10 @@ while [ $# -gt 0 ]; do
     --connect) CONNECT=yes ;;
     --no-connect) CONNECT=no ;;
     --daemon) START_DAEMON=yes ;;
-    -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    # Print the header comment block. Done by scanning for the first non-comment
+    # line rather than a hardcoded line range, which silently truncated the flag
+    # list every time a line was added above.
+    -h|--help) awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; exit 0 ;;
     *) die "unknown flag: $1 (try --help)" ;;
   esac
   shift
@@ -131,21 +134,64 @@ printf '  %s serve --addr 127.0.0.1:8888%s\n' \
 printf '  curl -s http://127.0.0.1:8888/health      # -> ok\n'
 
 # --- wire the agent harnesses ------------------------------------------------
-# Installing the binary is not installing the product: without this the agent
-# host has no hooks and no MCP entry, so nothing retains or recalls anything.
-# `connect` is idempotent and only ever writes entries it owns.
+# Installing the binary is not installing the product. Without this step the
+# agent host has no hooks and no MCP entry, so nothing retains or recalls
+# anything and memory-wire is just a binary on disk. This runs by DEFAULT;
+# --no-connect is the opt-out.
+#
+# `connect` is idempotent, backs up every file it edits, refuses a malformed
+# config untouched, and never overwrites a hook it did not write.
+CONNECT_RC=0
+CONNECT_OUT=""
 if [ "$CONNECT" != no ] && [ -x "$BIN_PATH" ]; then
   printf '\nwiring agent hosts (memory-wire connect):\n'
-  if "$BIN_PATH" connect; then
-    printf '  hosts wired — restart your agent to pick up the change\n'
-  else
-    printf '  connect exited nonzero; wire them by hand with: %s connect <host>\n' \
-      "$BIN_PATH" >&2
+  CONNECT_OUT="$("$BIN_PATH" connect 2>&1)" && CONNECT_RC=0 || CONNECT_RC=$?
+  printf '%s\n' "$CONNECT_OUT" | sed 's/^/  /'
+
+  if [ "$CONNECT_RC" -ne 0 ]; then
+    # Loud, but not fatal: the binary is installed and usable, and a user who
+    # only wants the HTTP surface should not get a failed installer. Exiting 0
+    # while saying nothing useful, though, is exactly how "it installed but my
+    # agent has no memory" happens.
+    printf '\n  WARNING: memory-wire connect exited %s — the agent hosts are NOT wired.\n' "$CONNECT_RC" >&2
+    printf '  The binary is installed and the HTTP surface works, but agents will not\n' >&2
+    printf '  use it until you run this by hand:\n' >&2
+    printf '    %s connect\n' "$BIN_PATH" >&2
   fi
-  # The agent-facing skill is a deliberate copy, not something connect does.
-  SKILL_SRC="$TMP/../plugin/skills/memory-wire/SKILL.md"
-  printf '  agent skill: copy plugin/skills/memory-wire/SKILL.md into your host'"'"'s\n'
-  printf '  skills dir (~/.claude/skills/, ~/.config/opencode/skills/, ...)\n'
+
+  # Did anything actually get wired? A machine with no agent host installed is a
+  # normal state, and silently reporting success there would be a lie. `wired` and
+  # `already-wired` both count: `connect` is idempotent, so a re-run over a machine
+  # that is already configured must not be told nothing was detected — the hosts
+  # ARE wired, connect simply had no change to make.
+  if printf '%s' "$CONNECT_OUT" | grep -qE '^[^ ]+ +(already-)?wired'; then
+    printf '\n  hosts wired — restart your agent to load the hooks and MCP entry\n'
+  elif [ "$CONNECT_RC" -eq 0 ]; then
+    printf '\n  no supported agent host was detected, so nothing was wired.\n'
+    printf '  Install Claude Code, Codex, Copilot CLI, Cursor or opencode and re-run:\n'
+    printf '    %s connect\n' "$BIN_PATH"
+  fi
+
+  # --- agent skill ------------------------------------------------------------
+  # The skill is the file actually addressed to a model: it teaches when to
+  # retain, what budget means, and which errors are worth acting on. `connect`
+  # deliberately does not install it (it owns only hooks and MCP entries), so
+  # the installer does. Best-effort: a skill is an enhancement, not a
+  # prerequisite, and a failed download must not fail the install.
+  SKILL_DIR="$HOME/.agents/skills/$BIN"
+  SKILL_URL="https://raw.githubusercontent.com/$MW_REPO/${MW_BRANCH:-main}/plugin/skills/$BIN/SKILL.md"
+  mkdir -p "$SKILL_DIR"
+  if [ -f "$SKILL_DIR/SKILL.md" ]; then
+    printf '  agent skill: already present at %s\n' "$SKILL_DIR/SKILL.md"
+  elif curl -fsSL "$SKILL_URL" -o "$SKILL_DIR/SKILL.md" 2>/dev/null; then
+    printf '  agent skill: installed at %s\n' "$SKILL_DIR/SKILL.md"
+    printf '  (agents reading skills from a per-host directory can copy it there as well:\n'
+    printf '   ~/.claude/skills/, ~/.config/opencode/skills/, ~/.codex/skills/)\n'
+  else
+    printf '  agent skill: could not download from %s\n' "$SKILL_URL" >&2
+    printf '  fetch it by hand:\n    curl -fsSL %s -o ~/.agents/skills/%s/SKILL.md\n' \
+      "$SKILL_URL" "$BIN" >&2
+  fi
 fi
 
 if [ "$START_DAEMON" = yes ] && [ -x "$BIN_PATH" ]; then
