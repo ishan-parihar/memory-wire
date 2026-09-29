@@ -43,18 +43,27 @@ Upstream package versions observed at those SHAs: `hindsight-api-slim` 0.10.1
 
 ## 3. Locked direct dependencies (`cargo tree --depth 1`)
 
-**Complete as of 2026-09-28.** The gap the previous revision flagged is closed:
-`rmcp 1.8.0` is now listed, and the whole row was regenerated rather than
-patched.
+  **Complete as of 2026-09-28. `rmcp` version updated 2026-09-29.**
+  The gap the previous revision flagged is closed: `rmcp` is now listed, and the
+  whole row was regenerated rather than patched.
 
-- anyhow 1.0.104, axum 0.7.9, chrono 0.4.45, clap 4.6.7, regex 1.13.1,
-  **rmcp 1.8.0**, rusqlite 0.32.1 (bundled), serde 1.0.229, serde_json 1.0.151,
-  sha2 0.10.9, thiserror 2.0.21, tokio 1.53.1, tracing 0.1.44,
-  tracing-subscriber 0.3.23, uuid 1.26.1
+  - anyhow 1.0.104, axum 0.7.9, chrono 0.4.45, clap 4.6.7, regex 1.13.1,
+    **rmcp 3.5.0**, rusqlite 0.32.1 (bundled), serde 1.0.229, serde_json 1.0.151,
+    sha2 2.10.9, thiserror 2.0.21, tokio 1.53.1, tracing 0.1.44,
+    tracing-subscriber 0.3.23, uuid 1.26.1
 
-`rmcp` is declared `rmcp = { version = "1.8", default-features = false,
-features = ["server", "transport-io"] }`. Its `schemars 1.2.2` is transitive and
-correctly does not belong in this list.
+  `rmcp` is declared `rmcp = { version = "3.5", default-features = false,
+  features = ["server", "transport-io", "transport-streamable-http-server"] }`.
+  Its `schemars 1.2.2` is transitive and correctly does not belong in this list.
+
+  **`rmcp` 3.5.0 (2026-09-29) moved the MCP transport to spec `2026-07-28`,
+  which is stateless.** The HTTP mount now serves every request with no session
+  and no `initialize` handshake; a client POSTing `tools/list` cold succeeds, and
+  no `Mcp-Session-Id` is issued. A legacy client that still handshakes at
+  `2025-06-18` is answered and negotiates `2025-06-18`, so the three hosts that
+  depend on that surface are unaffected. `GET /mcp` now answers `405`; the SSE
+  stream it used to open never carried a notification. Cost: **+291,872 B
+  (+2.85%)** on the release binary, `DT_NEEDED` unchanged at 3.
 
 **Removed at `v0.3.0`, and back since — the lock state has moved again.** On
 2026-09-28, at the `v0.3.0` cut, `fastembed`, `ort` and `tokenizers` had zero

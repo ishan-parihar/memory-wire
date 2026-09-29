@@ -51,11 +51,12 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, CompleteRequestParams, CompleteResult, CompletionInfo,
-    Content, ErrorCode, ErrorData, GetPromptRequestParams, GetPromptResult, Implementation,
-    ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams, Prompt,
-    PromptMessage, PromptMessageRole, RawResource, ReadResourceRequestParams, ReadResourceResult,
-    Reference, Resource, ResourceContents, ServerCapabilities, ServerInfo, Tool, ToolAnnotations,
+    CallToolRequestParams, CallToolResponse, CallToolResult, CompleteRequestParams, CompleteResult,
+    CompletionInfo, ContentBlock, ErrorCode, ErrorData, GetPromptRequestParams, GetPromptResponse,
+    GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams,
+    ReadResourceResponse, ReadResourceResult, Reference, Resource, ResourceContents, Role,
+    ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
@@ -321,12 +322,9 @@ impl Server {
             Some(at) => format!("retained {at}"),
             None => "retained memory".to_string(),
         };
-        Resource::new(
-            RawResource::new(memory_uri(bank, &m.id), &m.id)
-                .with_description(described)
-                .with_mime_type(MEMORY_MIME),
-            None,
-        )
+        Resource::new(memory_uri(bank, &m.id), &m.id)
+            .with_description(described)
+            .with_mime_type(MEMORY_MIME)
     }
 
     /// One page of a bank's memories as resources, and the cursor for the next.
@@ -362,7 +360,7 @@ impl Server {
                 .map(|m| Self::resource_entry(&bank, m))
                 .collect(),
             next_cursor: more.then(|| (offset + RESOURCE_PAGE).to_string()),
-            meta: None,
+            ..Default::default()
         })
     }
 
@@ -569,15 +567,15 @@ impl Server {
 }
 
 impl ServerHandler for Server {
-    fn get_info(&self) -> ServerInfo {
-        // `ServerInfo`/`Implementation` are `#[non_exhaustive]`, so they are
+    fn get_info(&self) -> ServerConfig {
+        // `ServerConfig`/`Implementation` are `#[non_exhaustive]`, so they are
         // built from `default()` and mutated rather than struct-literal'd.
         let mut server_info = Implementation::from_build_env();
         server_info.name = "memory-wire".to_string();
         server_info.title = Some("memory-wire".to_string());
         server_info.version = env!("CARGO_PKG_VERSION").to_string();
 
-        let mut info = ServerInfo::default();
+        let mut info = ServerConfig::default();
         // Only what is implemented here. An incorrect advertisement is worse
         // than none, because a client is entitled to act on it: a client told
         // `subscribe` will hold a subscription this server never answers.
@@ -617,22 +615,32 @@ impl ServerHandler for Server {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         let args = request.arguments.map(Value::Object).unwrap_or(Value::Null);
         // `None` on stdio, which never puts an HTTP request in the context, so
         // the stdio path is this module's pre-existing resolution rule verbatim.
         let pinned = crate::mcp_http::url_bank(&context);
-        match self.call_scoped(&request.name, &args, pinned.as_deref()) {
-            Ok(v) => Ok(CallToolResult::success(vec![Content::text(v.to_string())])),
-            // Unroutable: a JSON-RPC error the client surfaces opaquely.
-            Err(CallError::UnknownTool(name)) => Err(ErrorData::new(
-                ErrorCode::METHOD_NOT_FOUND,
-                format!("unknown tool: {name}"),
-                None,
-            )),
-            // The tool ran and failed: the caller must be able to read why.
-            Err(CallError::Failed(why)) => Ok(CallToolResult::error(vec![Content::text(why)])),
-        }
+        // `CallToolResponse` is the MRTR union (SEP-2322): a completed result, an
+        // input request, or a task handle. This server has no elicitation and no
+        // long-running work, so every outcome is `Complete` and the conversion is
+        // the one `From` impl rather than a variant the handler has to pick.
+        let result: CallToolResult =
+            match self.call_scoped(&request.name, &args, pinned.as_deref()) {
+                Ok(v) => CallToolResult::success(vec![ContentBlock::text(v.to_string())]),
+                // Unroutable: a JSON-RPC error the client surfaces opaquely.
+                Err(CallError::UnknownTool(name)) => {
+                    return Err(ErrorData::new(
+                        ErrorCode::METHOD_NOT_FOUND,
+                        format!("unknown tool: {name}"),
+                        None,
+                    ));
+                }
+                // The tool ran and failed: the caller must be able to read why.
+                Err(CallError::Failed(why)) => {
+                    CallToolResult::error(vec![ContentBlock::text(why)])
+                }
+            };
+        Ok(result.into())
     }
 
     /// One page of a bank's memories as addressable resources.
@@ -659,9 +667,11 @@ impl ServerHandler for Server {
         &self,
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         let pinned = crate::mcp_http::url_bank(&context);
-        self.read_scoped(&request.uri, pinned.as_deref())
+        // MRTR union, as in `call_tool`: a completed read, or an input request
+        // this server never issues.
+        Ok(self.read_scoped(&request.uri, pinned.as_deref())?.into())
     }
 
     /// The one prompt: the historian framing, advertised.
@@ -682,13 +692,14 @@ impl ServerHandler for Server {
         &self,
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<GetPromptResult, McpError> {
+    ) -> Result<GetPromptResponse, McpError> {
         match request.name.as_str() {
             HISTORIAN => Ok(GetPromptResult::new(vec![PromptMessage::new_text(
-                PromptMessageRole::User,
+                Role::User,
                 REFLECT_SYSTEM_PROMPT,
             )])
-            .with_description(HISTORIAN_DESCRIPTION)),
+            .with_description(HISTORIAN_DESCRIPTION)
+            .into()),
             other => Err(ErrorData::invalid_params(
                 format!("unknown prompt: {other}"),
                 None,
@@ -1292,7 +1303,7 @@ mod tests {
 
         let listed = s.list(None).expect("list");
         assert_eq!(listed.resources.len(), 1, "{listed:?}");
-        let one = &listed.resources[0].raw;
+        let one = &listed.resources[0];
         assert_eq!(one.uri, format!("memory://agent/{id}"), "{one:?}");
         assert_eq!(one.name, id, "{one:?}");
         assert_eq!(one.mime_type.as_deref(), Some("text/plain"), "{one:?}");
@@ -1370,9 +1381,9 @@ mod tests {
         let pinned = s.list_scoped(None, Some("agent")).expect("list");
         assert_eq!(pinned.resources.len(), 1, "{pinned:?}");
         assert!(
-            pinned.resources[0].raw.uri.starts_with("memory://agent/"),
+            pinned.resources[0].uri.starts_with("memory://agent/"),
             "{:?}",
-            pinned.resources[0].raw.uri
+            pinned.resources[0].uri
         );
 
         // The server default is untouched by the pin: it is still `agent`.

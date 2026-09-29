@@ -19,7 +19,7 @@
 //! path, so one `nest_service` covers both: the path reaches the handler as the
 //! `http::request::Parts` rmcp puts in the request's extensions, and
 //! [`url_bank`] reads the segment out of it. That is also why nothing here has
-//! to select a service per bank — one service, one session manager, and the bank
+//! to select a service per bank — one service, no sessions at all, and the bank
 //! is a property of the call rather than of the connection.
 //!
 //! # Security posture
@@ -44,7 +44,7 @@ use memory_wire::api::MemoryService;
 use memory_wire::store::SqliteStore;
 use rmcp::service::RequestContext;
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    session::never::NeverSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use rmcp::RoleServer;
 
@@ -65,18 +65,35 @@ pub fn routes(svc: Arc<MemoryService<SqliteStore>>) -> Router<Arc<MemoryService<
 }
 
 /// The streamable-HTTP service, over the store this process already has open.
+///
+/// # Stateless, and both halves of it
+///
+/// [`NeverSessionManager`] and `legacy_session_mode(false)` are one decision
+/// reached two ways, and setting only one leaves this server sessionful in a way
+/// that is easy to miss. rmcp defaults `legacy_session_mode` to `true`, which
+/// routes any request whose negotiated protocol is older than 2026-07-28 through
+/// the session path — and a request with no `MCP-Protocol-Version` header at all
+/// is read as 2025-03-26, so a client that simply POSTs `tools/list` would be
+/// handed a 400 for the missing handshake. The flag turns that path off for
+/// every client, versioned or not; the manager is what stops rmcp minting a
+/// session even where the path is reachable (an SSE `GET`, a `DELETE`).
+///
+/// The cost is that `Mcp-Session-Id` is never issued, so a client that treated it
+/// as mandatory rather than optional has nothing to send. The 2025-06-18 spec
+/// makes it a MAY, and `tests/` pins that a client which handshakes anyway still
+/// gets its four tools answered.
 fn transport(
     svc: Arc<MemoryService<SqliteStore>>,
     bank: String,
-) -> StreamableHttpService<Server, LocalSessionManager> {
+) -> StreamableHttpService<Server, NeverSessionManager> {
     StreamableHttpService::new(
-        // Sync by rmcp's design: the service builds the session, the transport
-        // and the handshake around it. The factory cannot fail for a reason the
-        // caller can act on — the store is already open — so the only error case
-        // is left to the type rather than invented here.
+        // Sync by rmcp's design: the service builds the transport around whatever
+        // the factory returns. The factory cannot fail for a reason the caller
+        // can act on — the store is already open — so the only error case is
+        // left to the type rather than invented here.
         move || Ok(Server::over(svc.clone(), bank.clone())),
-        Default::default(),
-        StreamableHttpServerConfig::default(),
+        Arc::new(NeverSessionManager::default()),
+        StreamableHttpServerConfig::default().with_legacy_session_mode(false),
     )
 }
 
@@ -214,14 +231,16 @@ mod tests {
         reply["result"]["isError"] == json!(true)
     }
 
-    // The whole claim, end to end, on a real socket: handshake, the four tools,
-    // a retain and a recall into the bank the URL names, and the same four tool
-    // definitions stdio serves.
+    // The whole claim, end to end, on a real socket: the four tools, a retain
+    // and a recall into the bank the URL names, and the same four tool
+    // definitions stdio serves. The `initialize` at the top is deliberate even
+    // though the mount no longer requires it: it is the compat half, proving a
+    // client that still handshakes is answered and issued nothing to carry.
     #[tokio::test]
     async fn a_client_can_reach_the_four_tools_over_http_with_the_bank_in_the_path() {
         let (addr, _svc) = serving().await;
 
-        // initialize -> the session id every later request carries.
+        // initialize -> answered, and with no session id to carry forward.
         let init = json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": {
@@ -231,12 +250,10 @@ mod tests {
         });
         let (head, reply) = post(&addr, "/mcp/demo", 1, init, None).await;
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
-        let session = head
-            .lines()
-            .find_map(|l| l.strip_prefix("mcp-session-id: "))
-            .expect("a stateful streamable-HTTP handshake returns a session id")
-            .trim()
-            .to_string();
+        assert!(
+            !head.to_ascii_lowercase().contains("mcp-session-id"),
+            "a stateless mount issues no session id: {head}"
+        );
         assert_eq!(reply["result"]["serverInfo"]["name"], json!("memory-wire"), "{reply}");
         assert!(reply["result"]["capabilities"]["tools"].is_object(), "{reply}");
 
@@ -248,7 +265,7 @@ mod tests {
             "/mcp/demo",
             2,
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {} }),
-            Some(&session),
+            None,
         )
         .await;
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
@@ -265,7 +282,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 3, "method": "tools/call",
                 "params": { "name": RETAIN, "arguments": { "content": "auth uses jose middleware" } }
             }),
-            Some(&session),
+            None,
         )
         .await;
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
@@ -281,7 +298,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 4, "method": "tools/call",
                 "params": { "name": RECALL, "arguments": { "query": "jose" } }
             }),
-            Some(&session),
+            None,
         )
         .await;
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
@@ -294,6 +311,48 @@ mod tests {
         let svc = _svc;
         assert_eq!(svc.recall("demo", "jose", 2000).expect("recall").len(), 1);
         assert!(svc.recall("other", "jose", 2000).expect("recall").is_empty());
+    }
+
+    // The reason the mount exists in this shape: the 2026-07-28 revision has no
+    // initialize at all, so a client that POSTs a method cold — no handshake,
+    // no `Mcp-Session-Id`, no `MCP-Protocol-Version` header to say so — is the
+    // normal case rather than the edge case, and is answered the same way.
+    #[tokio::test]
+    async fn a_method_posted_with_no_handshake_and_no_session_id_is_served() {
+        let (addr, _svc) = serving().await;
+        for (id, method) in [(1, "tools/list"), (2, "resources/list"), (3, "prompts/list")] {
+            let (head, reply) = post(
+                &addr,
+                "/mcp",
+                id,
+                json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": {} }),
+                None,
+            )
+            .await;
+            assert!(head.starts_with("HTTP/1.1 200"), "{method} without a handshake: {head}");
+            assert!(
+                !head.to_ascii_lowercase().contains("mcp-session-id"),
+                "{method} was issued a session id: {head}"
+            );
+            assert!(reply.get("result").is_some(), "{method} produced no result: {reply}");
+            assert!(reply.get("error").is_none(), "{method} failed: {reply}");
+        }
+        // And the tools are the contract four, not a subset or a superset.
+        let (_, reply) = post(
+            &addr,
+            "/mcp",
+            4,
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {} }),
+            None,
+        )
+        .await;
+        let names: Vec<&str> = reply["result"]["tools"]
+            .as_array()
+            .expect("tools is an array")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        assert_eq!(names.len(), 4, "{names:?}");
     }
 
     // The decision `Server::resolve_bank` makes, over the wire: an argument that
@@ -309,12 +368,7 @@ mod tests {
             }
         });
         let (head, _) = post(&addr, "/mcp/pinned", 1, init, None).await;
-        let session = head
-            .lines()
-            .find_map(|l| l.strip_prefix("mcp-session-id: "))
-            .expect("session id")
-            .trim()
-            .to_string();
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
 
         // Agreeing: served, out of the pinned bank.
         let (_, reply) = post(
@@ -325,7 +379,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 2, "method": "tools/call",
                 "params": { "name": RETAIN, "arguments": { "bank": "pinned", "content": "agreed" } }
             }),
-            Some(&session),
+            None,
         )
         .await;
         assert!(!is_error(&reply), "a matching bank must be served: {reply}");
@@ -340,7 +394,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 3, "method": "tools/call",
                 "params": { "name": RETAIN, "arguments": { "bank": "elsewhere", "content": "smuggled" } }
             }),
-            Some(&session),
+            None,
         )
         .await;
         assert!(is_error(&reply), "a mismatched bank must be refused: {reply}");
@@ -363,12 +417,7 @@ mod tests {
             }
         });
         let (head, _) = post(&addr, "/mcp", 1, init, None).await;
-        let session = head
-            .lines()
-            .find_map(|l| l.strip_prefix("mcp-session-id: "))
-            .expect("session id")
-            .trim()
-            .to_string();
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
 
         let (_, reply) = post(
             &addr,
@@ -378,7 +427,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 2, "method": "tools/call",
                 "params": { "name": RETAIN, "arguments": { "bank": "chosen", "content": "by argument" } }
             }),
-            Some(&session),
+            None,
         )
         .await;
         assert!(!is_error(&reply), "{reply}");

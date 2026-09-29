@@ -38,7 +38,15 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # before/after is reported with the change rather than guessed at here. The
 # transport is additive: `memory-wire mcp` on stdio is the same `Server` over a
 # different transport, and the four tools are defined once in `src/mcp.rs`.
-rmcp = { version = "1.8", default-features = false, features = [
+#
+# 3.x is what implements MCP 2026-07-28 (SEP-2567), which removes server-side
+# session state: no `Mcp-Session-Id` to hand out, no handshake a client must run
+# before `tools/list`. `src/mcp_http.rs` turns that on by pairing
+# `NeverSessionManager` with `legacy_session_mode(false)`; both halves matter,
+# because the config flag alone still routes pre-2026-07-28 clients through the
+# session path and this server is shipped to three hosts that may well be on an
+# older revision.
+rmcp = { version = "3.5", default-features = false, features = [
     "server",
     "transport-io",
     "transport-streamable-http-server",
