@@ -830,7 +830,7 @@ pub(crate) fn apply(
     // session wants the tools *and* the injection, because an MCP tool exists
     // only when the model decides to call it.
     outcome = match host {
-        Host::Codex => merge(outcome, crate::connect_codex::apply(home, uninstall, data_root)),
+        Host::Codex => merge(outcome, crate::connect_codex::apply(home, uninstall, data_root, bank)),
         Host::Omp => merge(outcome, crate::connect_ext::apply(host, home, uninstall, data_root)),
         _ => outcome,
     };

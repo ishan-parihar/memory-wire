@@ -621,8 +621,11 @@ opaque message the HTTP surface returns, never a crash.
   "command": "memory-wire", "args": ["mcp", "--bank", "my-project"] } } }
 ```
 
-Bank-in-path scoping (`/mcp/:bank`) belongs to a future HTTP transport and is not
-built; the argument-resolution rule above is already the one that mode needs.
+Bank-in-path scoping (`/mcp/{bank}`) **is** built for HTTP, and `connect` writes it
+for Codex — the one host whose MCP entry is a `url` rather than an argv, so the
+URL is the only place the bank can live. The rule is the same one that mode needs:
+a bank named in the URL is pinned, and a call that also supplies a different one
+is refused rather than silently served.
 
 ## How it works
 
@@ -935,8 +938,7 @@ request in a default build; the cosine/rank kernel is likewise unused) · a `DEL
 the lifecycle responses (they serve `{content, created_at, id[, context]}`; tag
 filtering stays on `recall`) · `document_id` visible in any response · a `backup`
 subcommand (the `sqlite3 .backup` recipe is the interface) · Postgres/
-pgvector backend · LLM-backed `reflect` synthesis · bank-in-path scoping for MCP
-over HTTP (`/mcp` and `/mcp/{bank}`; stdio too) · `connect` for hosts outside the five
+pgvector backend · LLM-backed `reflect` synthesis · `connect` for hosts outside the five
 detected (claude-code, codex, copilot-cli, cursor, opencode). Gaps that need live
 LLMs/providers (Hindsight system-evals, agentmemory quality/real-embeddings) are
 tracked in `docs/BENCHMARK.md`.

@@ -60,7 +60,7 @@ enum Url {
 }
 
 /// Install or remove the Codex MCP entry. See the module docs.
-pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
+pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>) -> Outcome {
     let path = home.join(config_rel());
     let raw = match paths::read_or_empty(&path) {
         Ok(s) => s,
@@ -88,7 +88,7 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
         // Only ever undo our own write: a `url` that is not the one we installed
         // was changed by the user or another tool since, and removing it would
         // be the clobber this installer exists to avoid.
-        if !owned_by_us(found.as_ref()) {
+        if !owned_by_us(found.as_ref(), bank) {
             return Outcome::Skipped(if found.is_some() {
                 "config.toml: mcp_servers.memory-wire.url is not ours; left it alone".to_string()
             } else {
@@ -96,7 +96,7 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
             });
         }
         if let Err(e) =
-            write_url(&raw, &path, Url::Remove { restore: previous.clone() }, &mut events)
+            write_url(&raw, &path, Url::Remove { restore: previous.clone() }, &mut events, bank)
         {
             return Outcome::Failed(e);
         }
@@ -110,7 +110,7 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
         return Outcome::Unwired { backup: saved, events, notes };
     }
 
-    let url = mcp_url();
+    let url = mcp_url(bank);
     if found.as_ref().and_then(Entry::url) == Some(url.as_str()) {
         notes.push("config.toml: mcp_servers.memory-wire.url already current".to_string());
         return Outcome::Already { notes };
@@ -121,11 +121,11 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
     // us would strand whatever was there before.
     if let Some(was) = found.as_ref().and_then(|e| e.url()) {
         let was = was.to_string();
-        if let Err(e) = write_state(&path, was) {
+        if let Err(e) = write_state(&path, was, bank) {
             return Outcome::Failed(e);
         }
     }
-    if let Err(e) = write_url(&raw, &path, Url::Set(url), &mut events) {
+    if let Err(e) = write_url(&raw, &path, Url::Set(url), &mut events, bank) {
         return Outcome::Failed(e);
     }
     if previous.is_some() {
@@ -142,8 +142,20 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
 /// otherwise, so this is the one port literal in the tree again, and a user who
 /// already points their hooks at a non-default server gets the MCP entry for that
 /// same server. A trailing slash is trimmed so the join cannot produce `//mcp`.
-fn mcp_url() -> String {
-    format!("{}/mcp", paths::endpoint().trim_end_matches('/'))
+fn mcp_url(bank: Option<&str>) -> String {
+    // `paths::endpoint()` hands back an owned String; borrowing a slice straight out
+    // of it would dangle, so it is bound before the trim.
+    let endpoint = paths::endpoint();
+    let base = endpoint.trim_end_matches('/');
+    match bank.filter(|b| !b.is_empty()) {
+        // `POST /mcp/<bank>` pins the bank for the whole mount, and refuses a
+        // call that names a different one. Without the segment the mount falls
+        // back to the server default, so `connect --bank omp` would reach every
+        // other host and silently miss codex — the one host whose MCP entry is a
+        // URL rather than an argv, and therefore has nowhere else to put it.
+        Some(b) => format!("{base}/mcp/{b}"),
+        None => format!("{base}/mcp"),
+    }
 }
 
 /// Whether the entry in the file is still the one we installed.
@@ -152,8 +164,9 @@ fn mcp_url() -> String {
 /// its name proves nothing; the value we wrote is what identifies our write. A
 /// user who edits the `url` afterwards has made it theirs, and an uninstall that
 /// removed it would be deleting their change.
-fn owned_by_us(found: Option<&Entry>) -> bool {
-    found.and_then(Entry::url) == Some(mcp_url().as_str())
+fn owned_by_us(found: Option<&Entry>, bank: Option<&str>) -> bool {
+    let ours = mcp_url(bank);
+    found.and_then(Entry::url) == Some(ours.as_str())
 }
 
 /// The edit `op` asks for, applied to the document text and written back.
@@ -161,8 +174,14 @@ fn owned_by_us(found: Option<&Entry>) -> bool {
 /// `events` grows only when the file really changes, so a config already in the
 /// requested state falls through to `Already` rather than being rewritten — the
 /// same "a note is not a change" rule `connect.rs` applies to hook slots.
-fn write_url(raw: &str, path: &Path, op: Url, events: &mut Vec<String>) -> Result<(), String> {
-    let next = set_url(raw, &op).map_err(|e| format!("{}: {e}", path.display()))?;
+fn write_url(
+    raw: &str,
+    path: &Path,
+    op: Url,
+    events: &mut Vec<String>,
+    bank: Option<&str>,
+) -> Result<(), String> {
+    let next = set_url(raw, &op, bank).map_err(|e| format!("{}: {e}", path.display()))?;
     if next == raw {
         return Ok(());
     }
@@ -298,7 +317,7 @@ fn find_entry(text: &str) -> Result<Option<Entry>, String> {
 /// the host's own file already uses. Removing is deliberately narrower than
 /// deleting the table: a key this install did not write keeps its table, because
 /// a directory of someone else's configuration is not ours to empty.
-fn set_url(text: &str, op: &Url) -> Result<String, String> {
+fn set_url(text: &str, op: &Url, bank: Option<&str>) -> Result<String, String> {
     let Some(entry) = find_entry(text)? else {
         let Url::Set(v) = op else { return Ok(text.to_string()) };
         let mut out = text.to_string();
@@ -321,10 +340,10 @@ fn set_url(text: &str, op: &Url) -> Result<String, String> {
         (Some(i), Url::Set(v)) => {
             body[i] = preserve_comment(&body[i], &format!("url = \"{v}\""));
         }
-        (Some(i), Url::Remove { restore: Some(previous) }) if body_is_ours(&body[i]) => {
+        (Some(i), Url::Remove { restore: Some(previous) }) if body_is_ours(&body[i], bank) => {
             body[i] = preserve_comment(&body[i], &format!("url = \"{previous}\""));
         }
-        (Some(i), Url::Remove { restore: None }) if body_is_ours(&body[i]) => {
+        (Some(i), Url::Remove { restore: None }) if body_is_ours(&body[i], bank) => {
             body.remove(i);
         }
         // A value we did not write, or a key to remove that is not there: change
@@ -355,8 +374,8 @@ fn set_url(text: &str, op: &Url) -> Result<String, String> {
 }
 
 /// Whether this `url` line holds the value [`mcp_url`] produces.
-fn body_is_ours(line: &str) -> bool {
-    line.split('#').next().unwrap_or("").trim() == format!("url = \"{}\"", mcp_url())
+fn body_is_ours(line: &str, bank: Option<&str>) -> bool {
+    line.split('#').next().unwrap_or("").trim() == format!("url = \"{}\"", mcp_url(bank))
 }
 
 /// Rewrite a `key = value` line, keeping any trailing `# comment`.
@@ -381,7 +400,14 @@ fn state_previous_url(config: &Path) -> Result<Option<String>, String> {
 }
 
 /// Record the `url` we are about to displace, so `--uninstall` can put it back.
-fn write_state(config: &Path, previous: String) -> Result<(), String> {
+///
+/// `_bank` is underscore-prefixed rather than removed: the displaced url already
+/// carries its own bank in its path (`/mcp/omp`), so the value written here is
+/// self-describing and a separate `bank` field would only be able to disagree
+/// with it. It is kept in the signature so the call site reads the same as the
+/// other two writers and so a future bank-aware state file has the parameter to
+/// fill.
+fn write_state(config: &Path, previous: String, _bank: Option<&str>) -> Result<(), String> {
     let state = config.with_file_name(STATE_FILE);
     if let Some(first) = state_previous_url(config)? {
         if first != previous {
@@ -419,9 +445,15 @@ mod tests {
     /// Drive the TOML pass on its own, so a test is about `config.toml` and not
     /// about whatever the hooks pass happened to do in the same call.
     fn toml_only(home: &Path, uninstall: bool) -> Outcome {
+        toml_with_bank(home, uninstall, None)
+    }
+
+    /// The same pass with a `--bank` value, which is the only thing that changes
+    /// the url the Codex entry is given.
+    fn toml_with_bank(home: &Path, uninstall: bool, bank: Option<&str>) -> Outcome {
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
-        apply(home, uninstall, &data)
+        apply(home, uninstall, &data, bank)
     }
 
     /// A PATH lookup that finds nothing, so detection cannot depend on what is
@@ -442,8 +474,11 @@ url = \"http://127.0.0.1:9012/mcp\"
 \"gpt-5.6-sol\" = \"free-stack\"
 ";
 
+    /// The url every pre-`--bank` test is written against. Deliberately bank-less:
+    /// these tests were written to pin the default mount, and giving them a bank
+    /// would stop them testing that.
     fn ours() -> String {
-        mcp_url()
+        mcp_url(None)
     }
 
     // -- the TOML editor -------------------------------------------------
@@ -455,21 +490,21 @@ url = \"http://127.0.0.1:9012/mcp\"
 
     #[test]
     fn setting_the_url_leaves_every_other_line_byte_identical() {
-        let out = set_url(REAL, &Url::Set(ours())).expect("set");
+        let out = set_url(REAL, &Url::Set(ours()), None).expect("set");
         assert_eq!(out, format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", ours()));
     }
 
     #[test]
     fn a_reinstall_replaces_our_own_url_in_place() {
-        let first = set_url(REAL, &Url::Set(ours())).expect("install");
-        let second = set_url(&first, &Url::Set(ours())).expect("reinstall");
+        let first = set_url(REAL, &Url::Set(ours()), None).expect("install");
+        let second = set_url(&first, &Url::Set(ours()), None).expect("reinstall");
         assert_eq!(second, first, "an identical write is a no-op");
     }
 
     #[test]
     fn removing_our_table_takes_the_separating_blank_line_with_it() {
-        let installed = set_url(REAL, &Url::Set(ours())).expect("install");
-        let gone = set_url(&installed, &Url::Remove { restore: None }).expect("remove");
+        let installed = set_url(REAL, &Url::Set(ours()), None).expect("install");
+        let gone = set_url(&installed, &Url::Remove { restore: None }, None).expect("remove");
         assert_eq!(gone, REAL);
     }
 
@@ -477,12 +512,14 @@ url = \"http://127.0.0.1:9012/mcp\"
     fn removing_ours_puts_a_displaced_url_back_in_the_same_line() {
         let hand = format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"http://elsewhere/mcp\"\n");
         // We took it over…
-        let taken = set_url(&hand, &Url::Set(ours())).expect("take over");
+        let taken = set_url(&hand, &Url::Set(ours()), None).expect("take over");
         assert!(taken.contains(&ours()), "{taken}");
         // …and uninstall hands the user's value back rather than dropping the key.
-        let back = set_url(&taken, &Url::Remove {
-            restore: Some("http://elsewhere/mcp".to_string()),
-        })
+        let back = set_url(
+            &taken,
+            &Url::Remove { restore: Some("http://elsewhere/mcp".to_string()) },
+            None,
+        )
         .expect("restore");
         assert_eq!(back, hand, "the file is exactly as the user left it");
     }
@@ -493,11 +530,11 @@ url = \"http://127.0.0.1:9012/mcp\"
         // no-op and every byte survives — including when a restore is offered.
         let hand = format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"http://elsewhere/mcp\"\n");
         assert_eq!(
-            set_url(&hand, &Url::Remove { restore: None }).expect("remove"),
+            set_url(&hand, &Url::Remove { restore: None }, None).expect("remove"),
             hand
         );
         assert_eq!(
-            set_url(&hand, &Url::Remove { restore: Some("x".to_string()) }).expect("remove"),
+            set_url(&hand, &Url::Remove { restore: Some("x".to_string()) }, None).expect("remove"),
             hand
         );
     }
@@ -505,7 +542,7 @@ url = \"http://127.0.0.1:9012/mcp\"
     #[test]
     fn a_trailing_comment_on_our_url_line_survives_a_reinstall() {
         let pre = format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"http://old/mcp\"  # pinned\n");
-        let out = set_url(&pre, &Url::Set(ours())).expect("set");
+        let out = set_url(&pre, &Url::Set(ours()), None).expect("set");
         assert!(out.contains("# pinned"), "a user's comment was dropped: {out}");
     }
 
@@ -519,7 +556,7 @@ url = \"http://127.0.0.1:9012/mcp\"
         );
         let err = find_entry(&dup).expect_err("duplicate must refuse");
         assert!(err.contains("more than one"), "{err}");
-        assert!(set_url(&dup, &Url::Set(ours())).is_err(), "and does not edit");
+        assert!(set_url(&dup, &Url::Set(ours()), None).is_err(), "and does not edit");
     }
 
     #[test]
@@ -530,7 +567,7 @@ url = \"http://127.0.0.1:9012/mcp\"
         // `a_malformed_config_is_refused_and_left_byte_identical`.
         let broken = "model = \"gpt\n\n[mcp_servers.memory-wire]\nurl = \"http://x/mcp\"\n";
         let before = broken.as_bytes().to_vec();
-        assert!(set_url(broken, &Url::Set(ours())).is_err());
+        assert!(set_url(broken, &Url::Set(ours()), None).is_err());
         assert_eq!(broken.as_bytes(), before, "a refusal is not an edit");
     }
 
@@ -543,7 +580,7 @@ url = \"http://127.0.0.1:9012/mcp\"
             let err = find_entry(inline).expect_err("inline must refuse");
             assert!(err.contains("left untouched"), "{err}");
             // Refused, and the document is not rewritten on the way out.
-            assert!(set_url(inline, &Url::Set(ours())).is_err());
+            assert!(set_url(inline, &Url::Set(ours()), None).is_err());
         }
     }
 
@@ -552,7 +589,7 @@ url = \"http://127.0.0.1:9012/mcp\"
         let dotted = "memory-wire.url = \"http://x/mcp\"\n";
         let err = find_entry(dotted).expect_err("dotted must refuse");
         assert!(err.contains("not a table") || err.contains("not a shape"), "{err}");
-        assert!(set_url(dotted, &Url::Set(ours())).is_err(), "and does not edit");
+        assert!(set_url(dotted, &Url::Set(ours()), None).is_err(), "and does not edit");
     }
 
     #[test]
@@ -726,6 +763,95 @@ url = \"http://127.0.0.1:9012/mcp\"
 
     #[test]
     fn the_url_points_at_the_mcp_mount_on_the_one_default_endpoint() {
-        assert_eq!(mcp_url(), format!("{}/mcp", paths::endpoint().trim_end_matches('/')));
+        assert_eq!(mcp_url(None), format!("{}/mcp", paths::endpoint().trim_end_matches('/')));
+    }
+
+    // -- the bank in the URL ---------------------------------------------
+    //
+    // `POST /mcp/{bank}` pins the bank for the whole mount. Codex's entry is a
+    // `url` rather than an argv, so the bank has nowhere else to live: without the
+    // segment `connect --bank omp` reached every other host and silently missed
+    // codex.
+
+    #[test]
+    fn no_bank_is_the_bare_mount_and_carries_no_segment() {
+        let url = mcp_url(None);
+        assert_eq!(url, format!("{}/mcp", paths::endpoint().trim_end_matches('/')));
+        assert_eq!(url.matches("/mcp").count(), 1, "one `/mcp`, no bank after it: {url}");
+    }
+
+    #[test]
+    fn a_bank_is_a_path_segment_after_the_mount() {
+        assert_eq!(
+            mcp_url(Some("omp")),
+            format!("{}/mcp/omp", paths::endpoint().trim_end_matches('/'))
+        );
+    }
+
+    #[test]
+    fn an_empty_bank_is_not_a_bank() {
+        // `--bank ""` is what an absent flag looks like once it is a `String`. A
+        // trailing `/mcp/` would name a mount the server does not serve, and the
+        // mismatch would only show up as a failed tool call in a coding session.
+        assert_eq!(mcp_url(Some("")), mcp_url(None));
+        assert!(!mcp_url(Some("")).ends_with("/mcp/"), "an empty bank left a slash");
+    }
+
+    #[test]
+    fn a_banked_url_is_written_into_the_document() {
+        let url = mcp_url(Some("omp"));
+        let out = set_url(REAL, &Url::Set(url.clone()), Some("omp")).expect("set");
+        assert_eq!(
+            out,
+            format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{url}\"\n")
+        );
+        assert!(out.contains("/mcp/omp"), "{out}");
+    }
+
+    #[test]
+    fn an_entry_written_under_one_bank_is_not_ours_under_another() {
+        let text =
+            format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", mcp_url(Some("omp")));
+        let entry = find_entry(&text).expect("parseable").expect("the entry is there");
+
+        assert!(owned_by_us(Some(&entry), Some("omp")), "written by us, still ours");
+        assert!(!owned_by_us(Some(&entry), None), "the default mount did not write it");
+        assert!(!owned_by_us(Some(&entry), Some("other")), "a different bank did not write it");
+        assert!(!owned_by_us(None, Some("omp")), "no entry at all is not ours");
+    }
+
+    // Whether that last `false` is right is a product decision, not a detail, so
+    // it is pinned end to end: a bank change makes install unconditional and
+    // uninstall conditional. The asymmetry is deliberate — see `set_url`, where
+    // `Url::Set` never consults ownership and only `Url::Remove` does.
+
+    #[test]
+    fn a_bank_change_overwrites_on_install_and_refuses_on_uninstall() {
+        let home = tmp_home("bank-change");
+        write_config(&home, REAL);
+
+        assert!(matches!(toml_with_bank(&home, false, Some("omp")), Outcome::Wired { .. }));
+        assert!(read_config(&home).contains("/mcp/omp"), "the bank never reached the url");
+
+        // Install overwrites in place: the old entry is ours-or-not, `Set` writes.
+        assert!(matches!(toml_with_bank(&home, false, Some("other")), Outcome::Wired { .. }));
+        let now = read_config(&home);
+        assert!(now.contains("/mcp/other"), "{now}");
+        assert!(!now.contains("/mcp/omp"), "the previous bank's url survived: {now}");
+
+        // Uninstall does not: it removes only the url matching the bank it was
+        // called with, so asking for `omp` finds a value it did not write.
+        let before = read_config(&home);
+        let out = toml_with_bank(&home, true, Some("omp"));
+        assert!(matches!(out, Outcome::Skipped(_)), "a bank mismatch must refuse: {out:?}");
+        assert_eq!(read_config(&home), before, "and the file is byte-identical");
+
+        // The bank that did write it removes it — and the url it displaced during
+        // the bank change goes back, because that is what the state file owes.
+        assert!(matches!(toml_with_bank(&home, true, Some("other")), Outcome::Unwired { .. }));
+        let after = read_config(&home);
+        assert!(after.contains("/mcp/omp"), "the displaced url is back: {after}");
+        assert!(!after.contains("/mcp/other"), "our url survived: {after}");
+        std::fs::remove_dir_all(&home).ok();
     }
 }
