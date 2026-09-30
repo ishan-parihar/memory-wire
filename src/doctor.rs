@@ -67,9 +67,15 @@ pub struct Report {
     /// Server health.
     pub server: ServerState,
     /// The bank a pre-0.4.0 build derived here, when it differs from `bank` and
-    /// a bank of that name exists in the store. Carries the memories a user
+    /// that bank actually **holds memories**. Carries the memories a user
     /// upgrading this build would otherwise appear to have lost.
     pub legacy_bank: Option<String>,
+    /// The bank that does hold memories, when the resolved one holds none.
+    ///
+    /// `doctor` prints `banks N` and `memories M` side by side and never joined
+    /// them, so a store with 710 memories in it and a hook resolving to an empty
+    /// bank looked exactly like a working install that had nothing to say.
+    pub elsewhere: Option<(String, i64)>,
 }
 
 impl Report {
@@ -93,6 +99,15 @@ server     {}",
             count(self.memories),
             self.server.label()
         );
+        if let Some((other, n)) = &self.elsewhere {
+            out.push_str(&format!(
+                "\n  \
+finding    bank `{}` holds no memories; `{}` holds {n}.\n  \
+           A hook here resolves to `{}` and will recall nothing. Reach them with\n  \
+           `--bank {other}`, or set MEMORY_WIRE_BANK={other}.",
+                self.bank, other, self.bank
+            ));
+        }
         if let Some(legacy) = &self.legacy_bank {
             out.push_str(&format!(
                 "\n  \
@@ -150,6 +165,7 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         ),
     };
     let server = probe_server(endpoint);
+    let per_bank = bank_memory_counts(store);
     Report {
         endpoint: endpoint.to_string(),
         bank: bank.to_string(),
@@ -159,7 +175,8 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         banks,
         memories,
         server,
-        legacy_bank: legacy_bank_at(store, bank),
+        legacy_bank: legacy_bank_at(&per_bank, bank),
+        elsewhere: elsewhere_at(&per_bank, bank),
     }
 }
 
@@ -181,33 +198,70 @@ pub fn probe_server(endpoint: &str) -> ServerState {
     }
 }
 
-/// The bank name this directory used to resolve to, when that differs from the
-/// bank it resolves to now **and** a bank of the old name exists in the store.
+/// `(bank_id, memory count)` per bank, read-only, largest first.
 ///
-/// Read-only, like everything else here: it is one `SELECT` on the same
-/// read-only handle the counts use, and it answers a question rather than
-/// repairing anything. Both conditions matter. A different name with no bank
+/// One query, because two findings need it and the store may hold many banks.
+/// Empty when the file is missing, unreadable, or has no memories at all — every
+/// caller treats that as "nothing to report", never as an error.
+fn bank_memory_counts(store: &Path) -> Vec<(String, i64)> {
+    if !store.exists() {
+        return Vec::new();
+    }
+    let Ok(conn) = rusqlite::Connection::open_with_flags(
+        store,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    ) else {
+        return Vec::new();
+    };
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT bank_id, COUNT(*) FROM memories GROUP BY bank_id ORDER BY COUNT(*) DESC, bank_id",
+    ) else {
+        return Vec::new();
+    };
+    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .map(|rows| rows.flatten().collect())
+        .unwrap_or_default()
+}
+
+/// The bank this directory used to resolve to, when that differs from the bank it
+/// resolves to now **and** that bank still holds memories.
+///
+/// Read-only, like everything else here: it answers a question rather than
+/// repairing anything. Both conditions matter. A different name with no memories
 /// behind it is not an orphaned memory, it is just a fresh project; and an old
 /// bank that happens to still be the name this directory resolves to is not a
 /// migration at all.
-fn legacy_bank_at(store: &Path, bank: &str) -> Option<String> {
+///
+/// **Memories, not a `banks` row.** The row is the bug this replaces. A `banks`
+/// row is created on connect and by `retain`, so its presence says the bank was
+/// named at some point — not that anything was ever written. Counting rows in
+/// `banks` made this fire on a bank holding nothing and then tell the user their
+/// memories "were kept" there. Measured against a real store: the legacy-named
+/// bank had 0 rows while 710 memories sat in a third bank, so the warning named
+/// the wrong bank and promised a history that had not happened.
+fn legacy_bank_at(per_bank: &[(String, i64)], bank: &str) -> Option<String> {
     let legacy = paths::legacy_bank_in(&std::env::current_dir().ok()?);
-    if legacy == bank || !store.exists() {
+    if legacy == bank {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(
-        store,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .ok()?;
-    let found: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM banks WHERE id = ?1",
-            [&legacy],
-            |r| r.get(0),
-        )
-        .ok()?;
-    (found > 0).then_some(legacy)
+    per_bank
+        .iter()
+        .any(|(id, n)| id == &legacy && *n > 0)
+        .then_some(legacy)
+}
+
+/// The bank that actually holds memories, when the resolved one holds none.
+///
+/// The finding that answers "where is my corpus?" — a store with 710 memories in
+/// it and a hook resolving to an empty bank is a working install that recalls
+/// nothing, and nothing on the screen said so. Silent when the resolved bank has
+/// memories, and silent when no bank has any, because then there is nothing to
+/// point at.
+fn elsewhere_at(per_bank: &[(String, i64)], bank: &str) -> Option<(String, i64)> {
+    if per_bank.iter().any(|(id, n)| id == bank && *n > 0) {
+        return None;
+    }
+    per_bank.iter().find(|(_, n)| *n > 0).cloned()
 }
 
 /// On-disk size of the store, SQLite sidecars included.
@@ -504,6 +558,7 @@ mod tests {
             memories: Some(42),
             server: ServerState::Up,
             legacy_bank: None,
+            elsewhere: None,
         };
         assert_eq!(
             r.render(),
@@ -585,6 +640,101 @@ server     up"
         let r = collect_at("http://127.0.0.1:1", "derived-name", &store);
         assert_eq!(r.legacy_bank, None, "{r:?}");
         assert!(!r.render().contains("warning"), "{}", r.render());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The regression for the bug this finding was measured against.
+    ///
+    /// A `banks` row is created on connect and by `retain`, so the old check
+    /// fired on the row's existence and then told the user their memories "were
+    /// kept" in a bank that held none. Measured on a real store: the
+    /// legacy-named bank had 0 rows while 710 memories sat in a third bank, so
+    /// the warning named the wrong bank and promised a history that never
+    /// happened.
+    #[test]
+    fn a_legacy_bank_row_with_no_memories_should_stay_quiet() {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-emptylegacy-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let store = dir.join("memory.db");
+        let legacy = paths::legacy_bank_in(&std::env::current_dir().expect("cwd"));
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        // The bank exists as a row, and holds nothing.
+        svc.store.put_bank(&bank(&legacy)).expect("bank");
+
+        let r = collect_at("http://127.0.0.1:1", "derived-name", &store);
+        assert_eq!(r.legacy_bank, None, "an empty bank is not an orphan: {r:?}");
+        assert!(!r.render().contains("warning"), "{}", r.render());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A store holding memories and a hook resolving to an empty bank is a working
+    /// install that recalls nothing, and nothing on the screen said so. This is
+    /// the finding that answers "where is my corpus?".
+    #[test]
+    fn an_empty_resolved_bank_should_point_at_the_bank_that_has_the_memories() {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-elsewhere-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let store = dir.join("memory.db");
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        svc.store.put_bank(&bank("omp")).expect("bank");
+        for i in 0..3 {
+            svc.retain("omp", &format!("corpus memory {i}"), None).expect("retain");
+        }
+
+        let r = collect_at("http://127.0.0.1:1", "ishan-parihar-memory-wire", &store);
+        assert_eq!(r.elsewhere, Some(("omp".to_string(), 3)), "{r:?}");
+        let text = r.render();
+        assert!(text.contains("holds no memories"), "{text}");
+        assert!(text.contains("`omp` holds 3"), "{text}");
+        // Must name both ways out, or the finding is a complaint with no exit.
+        assert!(text.contains("--bank omp"), "{text}");
+        assert!(text.contains("MEMORY_WIRE_BANK=omp"), "{text}");
+
+        // Read-only, like every other finding here.
+        let after = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        assert_eq!(
+            after.bank_stats("ishan-parihar-memory-wire").expect("new bank").memories,
+            0,
+            "doctor must not move memories"
+        );
+        assert_eq!(after.bank_stats("omp").expect("omp").memories, 3);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The finding is only for a bank that is actually empty. A resolved bank with
+    /// memories in it is the normal case and must not be second-guessed.
+    #[test]
+    fn a_resolved_bank_with_memories_should_not_be_second_guessed() {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-notempty-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let store = dir.join("memory.db");
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        svc.retain("this-repo", "auth uses jose", None).expect("retain");
+        svc.retain("other-repo", "something else entirely", None).expect("retain");
+
+        let r = collect_at("http://127.0.0.1:1", "this-repo", &store);
+        assert_eq!(r.elsewhere, None, "{r:?}");
+        assert!(!r.render().contains("finding"), "{}", r.render());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// With no memories anywhere there is nothing to point at, so a fresh install
+    /// is not greeted by a finding about a corpus it does not have.
+    #[test]
+    fn an_empty_store_should_not_report_a_missing_corpus() {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-nostore-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let store = dir.join("memory.db");
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        svc.store.put_bank(&bank("fresh")).expect("bank");
+
+        let r = collect_at("http://127.0.0.1:1", "fresh", &store);
+        assert_eq!(r.elsewhere, None, "{r:?}");
+        assert!(!r.render().contains("finding"), "{}", r.render());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -2982,3 +2982,76 @@ needs a sudo password I do not have, so removal is the user's command to run; th
 exact sequence is in the handoff. Nothing writes to it any more — both harnesses
 that referenced it have been rewired — so the port is now serving a corpus nobody
 will add to, and the export is verified complete.
+
+## 26. v0.5.1: `doctor` was asserting a history that had not happened
+
+Three defects, all found by running the tool against the real store rather than by
+reading it, and all in the same area: what a hook resolves to, and what `doctor`
+says about it.
+
+### 26.1 The legacy-bank warning counted the wrong table
+
+`doctor` warned when a directory's bank name had changed and a bank of the old
+name existed, and told the user that bank "is where memories written before the
+switch were kept". The check was:
+
+```sql
+SELECT COUNT(*) FROM banks WHERE id = ?1
+```
+
+`banks`, not `memories`. A `banks` row is created on connect and by `retain`, so
+its presence says a bank was named at some point, not that anything was written
+to it. Measured on the real store: the legacy-named bank `memory-wire` held **0
+rows** while **710** memories sat in bank `omp`, so the warning named the wrong
+bank and promised a history that had not happened. A user following that sentence
+would open an empty bank and conclude memory-wire had lost their data.
+
+The doc comment ten lines above the query already stated the correct rule — "a
+different name with no bank behind it is not an orphaned memory" — and the query
+did not implement it. It now counts memories, and reads every bank in one query
+that a second finding also needs. Four tests cover it; the one that matters is
+`a_legacy_bank_row_with_no_memories_should_stay_quiet`.
+
+### 26.2 The finding that was missing
+
+`doctor` printed `banks 3` and `memories 710` on adjacent lines and never joined
+them. A store holding 710 memories with a hook resolving to an empty bank is a
+working install that recalls nothing, and nothing on screen said so — the same
+silent-empty-recall shape as the port-8888 collision in §25. It now reports:
+
+```
+finding    bank `ishan-parihar-memory-wire` holds no memories; `omp` holds 710.
+A hook here resolves to `ishan-parihar-memory-wire` and will recall nothing. Reach them with
+`--bank omp`, or set MEMORY_WIRE_BANK=omp.
+```
+
+Read-only like every other finding, and silent when the resolved bank has
+memories or when no bank has any.
+
+### 26.3 `connect --bank`, and why it is a flag and not an `env` block
+
+I recommended, before checking, that the fix was to set `MEMORY_WIRE_BANK` in each
+harnessed host's config. The resolution ladder does honour it — `resolve_bank_with`
+reads `env_bank()` at step 2, ahead of the git remote — but it reads the **process
+environment**, and whether a host propagates a JSON or TOML `env` key into a hook
+it spawns is per-host and undocumented. Claude Code's `settings.json` has an `env`
+key; that is verified for one host and not for `codex` or `copilot-cli`, and a
+config key that silently does nothing is the same failure as the
+`recallSynonyms` dial that reached nothing.
+
+`connect --bank <id>` bakes `--bank` into the hook command it was going to write
+anyway. It is already step 1 of the ladder, it works identically on all three
+hooked hosts, and it depends on nothing outside this binary. Both the path and the
+bank are shell-quoted. Absent by default, and a blank value writes no flag.
+
+### 26.4 Unresolved
+
+- One test failure observed once in the `--bin memory-wire` crate under a full
+  `cargo test --locked` run, at loadavg 22 on 24 cores. It did not recur in ten
+  subsequent runs (six bin-only, four full-suite) and the failing test was not
+  named before it passed again. **Not diagnosed.** It is not the known
+  `tests/daemon.rs` 5-second readiness assertion, which is load-sensitive by
+  design at loadavg 200+.
+- `Cargo.lock` had to be re-synced with `cargo update --offline` after the version
+  bump, which is §8.6 recurring: `--locked` refuses to fix a lock that disagrees
+  with `Cargo.toml`, and the stale binary then reports the old version.

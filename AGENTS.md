@@ -110,7 +110,7 @@ the wrong one is how claims drift.
 | which retrieval lever was tried and killed, and by what measurement | `docs/RERANKING_PLAN.md` §3, `docs/PERFORMANCE_PLAN.md` |
 | where the numbers came from, honestly | `eval/README.md`, and the artifact it names |
 | dependency versions and why they are pinned | `docs/VERSIONS.md` |
-| how a bank id is derived, and what can collide | `docs/BANK_IDENTITY.md` |
+| how a bank id is derived, what can collide, and why a hook recalls nothing | `docs/BANK_IDENTITY.md`; `memory-wire doctor` names the bank that holds the memories when the resolved one holds none |
 | the next iteration's plan and its gates | `docs/NEXT_ITERATION.md`, `docs/EXCEED_PLAN.md` |
 | the original audit this all came from | `docs/AUDIT.md` |
 

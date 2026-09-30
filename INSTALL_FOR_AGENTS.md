@@ -486,6 +486,17 @@ it — it stays read-only, and no automatic migration exists, because guessing
 wrong moves memories between namespaces silently. Full order and the recovery
 recipe: `docs/BANK_IDENTITY.md`.
 
+**If `doctor` prints a `finding` line, a hook here is recalling nothing.** It reads
+`bank <x> holds no memories; <y> holds <n>` — your memories are in `y` and this
+directory resolves to `x`. Reach them two ways: `connect --bank y` bakes
+`--bank y` into every hook command it writes (works on every hooked host, needs no
+env propagation), or set `MEMORY_WIRE_BANK=y` where the harness passes an
+environment to the hooks it spawns — verified for Claude Code's `settings.json`
+`env` key, not verified for `codex` or `copilot-cli`, so prefer the flag. A hook
+that recalls nothing exits 0 and prints nothing, by contract, so this finding is
+the only signal you will get; check it after any migration that changes which
+bank holds the corpus.
+
 #### MCP (stdio)
 
 ```bash

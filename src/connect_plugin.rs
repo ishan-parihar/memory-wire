@@ -589,13 +589,13 @@ mod tests {
     fn install(home: &Path) -> Outcome {
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
-        crate::connect::apply(Host::Hermes, "memory-wire", home, false, no_path, &data)
+        crate::connect::apply(Host::Hermes, "memory-wire", home, false, no_path, &data, None)
     }
 
     fn uninstall(home: &Path) -> Outcome {
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
-        crate::connect::apply(Host::Hermes, "memory-wire", home, true, no_path, &data)
+        crate::connect::apply(Host::Hermes, "memory-wire", home, true, no_path, &data, None)
     }
 
     /// A PATH lookup that finds nothing, so detection cannot depend on what
@@ -1051,7 +1051,7 @@ telemetry:
         let data = home.join("data");
 
         let Outcome::Wired { backup, .. } =
-            crate::connect::apply(Host::Hermes, "memory-wire", &home, false, no_path, &data)
+            crate::connect::apply(Host::Hermes, "memory-wire", &home, false, no_path, &data, None)
         else {
             panic!("expected a wired outcome");
         };

@@ -618,7 +618,7 @@ url = \"http://127.0.0.1:9012/mcp\"
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
 
-        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, false, no_path, &data);
+        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, false, no_path, &data, None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let hooks = std::fs::read_to_string(home.join(".codex").join("hooks.json"))
             .expect("hooks.json is wired");
@@ -631,13 +631,13 @@ url = \"http://127.0.0.1:9012/mcp\"
 
         // A second call changes neither file.
         let before = (read_config(&home), hooks);
-        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, false, no_path, &data);
+        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, false, no_path, &data, None);
         assert!(matches!(out, Outcome::Already { .. }), "a re-install must be Already: {out:?}");
         assert_eq!((read_config(&home), std::fs::read_to_string(home.join(".codex").join("hooks.json")).expect("read")), before);
 
         // Uninstall takes out the tools and reports the hooks it did not own —
         // `hooks.json` was created by this same call, so it goes too.
-        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, true, no_path, &data);
+        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, true, no_path, &data, None);
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         assert!(!home.join(".codex").join(STATE_FILE).exists(), "the state file survived");
         std::fs::remove_dir_all(&home).ok();

@@ -125,6 +125,12 @@ enum Cmd {
         /// already wired, and write nothing at all.
         #[arg(long)]
         list: bool,
+        /// Bake this bank into the hook commands that get written, so a host
+        /// reaches the intended memories instead of the one its directory
+        /// resolves to. Use it when the memories you want are in a shared bank
+        /// and the per-project bank is empty — `doctor` names the bank to use.
+        #[arg(long, value_name = "ID")]
+        bank: Option<String>,
     },
     /// Lifecycle hook (hosts call this; reads hook JSON on stdin).
     Hook {
@@ -242,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Daemon { action } => {
             std::process::exit(daemon::run(action));
         }
-        Cmd::Connect { agent, uninstall, guidelines, list } => {
+        Cmd::Connect { agent, uninstall, guidelines, list, bank } => {
             // A name that is not a host is a usage error, not a wiring failure,
             // so it goes out the same way a bad flag does: the reason and this
             // subcommand's own help together, for a caller to correct in one turn.
@@ -266,7 +272,7 @@ async fn main() -> anyhow::Result<()> {
             let failed = if guidelines {
                 write_guidelines()
             } else {
-                wire(hosts, uninstall)
+                wire(hosts, uninstall, bank.as_deref())
             };
             if failed {
                 std::process::exit(1);
@@ -362,7 +368,7 @@ fn list_hosts() {
 }
 
 /// Wire (or unwire) the selected hosts; returns true when any host was refused.
-fn wire(hosts: Vec<connect::Host>, uninstall: bool) -> bool {
+fn wire(hosts: Vec<connect::Host>, uninstall: bool, bank: Option<&str>) -> bool {
     let home = match paths::home() {
         Ok(h) => h,
         Err(e) => {
@@ -380,7 +386,7 @@ fn wire(hosts: Vec<connect::Host>, uninstall: bool) -> bool {
     let selected = if implicit { connect::IMPLICIT.to_vec() } else { hosts };
     let mut failed = false;
     for host in selected {
-        let outcome = connect::run(host, &exe, &home, uninstall);
+        let outcome = connect::run(host, &exe, &home, uninstall, bank);
         failed |= outcome.is_failure();
         println!("{}", outcome.render(host));
     }

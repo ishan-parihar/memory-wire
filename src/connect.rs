@@ -273,9 +273,31 @@ impl Host {
     }
 }
 
+/// The command string a hook entry runs, with the bank baked in when given.
+///
+/// Why the flag and not an `env` block in the host's config: `resolve_bank_with`
+/// does honour `MEMORY_WIRE_BANK`, but it reads the *process environment*, and
+/// whether a host propagates a JSON/TOML `env` key into a hook it spawns is
+/// per-host and undocumented. `--bank` is already accepted by the `hook`
+/// subcommand and is step 1 of the resolution ladder, so writing it into the
+/// command we were going to write anyway works identically on every hooked host
+/// and depends on nothing outside this binary. Both parts are quoted: the install
+/// path can contain a space, and so can a bank name the caller typed.
+fn hook_cmd(exe: &str, lifecycle: &str, bank: Option<&str>) -> String {
+    match bank.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => format!(
+            "{} hook {} --bank {}",
+            shell_quote(exe),
+            lifecycle,
+            shell_quote(b)
+        ),
+        None => format!("{} hook {lifecycle}", shell_quote(exe)),
+    }
+}
+
 impl Style {
     /// The entry to append for one lifecycle, or `None` for MCP-only hosts.
-    fn entry(self, exe: &str, lifecycle: &str) -> Option<Value> {
+    fn entry(self, exe: &str, lifecycle: &str, bank: Option<&str>) -> Option<Value> {
         match self {
             // Quoted like the Copilot `bash` field: an install path can contain
             // a space, and both are shell command strings.
@@ -283,13 +305,13 @@ impl Style {
                 "matcher": "",
                 "hooks": [{
                     "type": "command",
-                    "command": format!("{} hook {lifecycle}", shell_quote(exe)),
+                    "command": hook_cmd(exe, lifecycle, bank),
                     "timeout": HOOK_TIMEOUT,
                 }],
             })),
             Style::Copilot => Some(json!({
                 "type": "command",
-                "bash": format!("{} hook {lifecycle}", shell_quote(exe)),
+                "bash": hook_cmd(exe, lifecycle, bank),
                 "timeoutSec": HOOK_TIMEOUT,
             })),
             Style::Mcp | Style::Plugin => None,
@@ -570,11 +592,19 @@ fn copy_tree(src: &Path, dst_root: &Path, rel: &Path) -> Result<Option<PathBuf>,
 }
 
 /// Wire or unwire one host against the real environment.
-pub fn run(host: Host, exe: &str, home: &Path, uninstall: bool) -> Outcome {
-    apply(host, exe, home, uninstall, binary_on_path, &paths::data_dir(home))
+pub fn run(host: Host, exe: &str, home: &Path, uninstall: bool, bank: Option<&str>) -> Outcome {
+    apply(
+        host,
+        exe,
+        home,
+        uninstall,
+        binary_on_path,
+        &paths::data_dir(home),
+        bank,
+    )
 }
 
-// Six parameters, kept flat: `on_path` and `data_root` are the two injected
+// Seven parameters, kept flat: `on_path` and `data_root` are the two injected
 // probes (PATH lookup + data root) that let the wire/unwire path be tested for
 // both a detected and an undetected machine without touching the real PATH or
 // XDG dir. Bundling them into a context struct would not reduce the fields, only
@@ -597,6 +627,7 @@ pub(crate) fn apply(
     uninstall: bool,
     on_path: fn(&str) -> bool,
     data_root: &Path,
+    bank: Option<&str>,
 ) -> Outcome {
     if !detected_with(host, home, on_path) {
         return Outcome::Skipped("not detected on this machine".to_string());
@@ -648,7 +679,7 @@ pub(crate) fn apply(
         };
         edit_mcp(&mut root, key, (!uninstall).then(|| entry(exe)))
     } else {
-        edit_hooks(&mut root, style, exe, uninstall)
+        edit_hooks(&mut root, style, exe, uninstall, bank)
     };
     let Edit { events, notes, already } = match edit {
         Ok(e) => e,
@@ -755,7 +786,13 @@ fn parts(o: Outcome) -> (bool, bool, Option<PathBuf>, Vec<String>, Vec<String>) 
 }
 
 /// Add or remove our five hook entries under `hooks`.
-fn edit_hooks(root: &mut Value, style: Style, exe: &str, uninstall: bool) -> Result<Edit, Refusal> {
+fn edit_hooks(
+    root: &mut Value,
+    style: Style,
+    exe: &str,
+    uninstall: bool,
+    bank: Option<&str>,
+) -> Result<Edit, Refusal> {
     match root.get("hooks") {
         Some(v) if v.is_object() => {}
         Some(_) => return Err("`hooks` is not an object; left untouched".to_string()),
@@ -778,7 +815,7 @@ fn edit_hooks(root: &mut Value, style: Style, exe: &str, uninstall: bool) -> Res
             let desired = if uninstall {
                 None
             } else {
-                style.entry(exe, ev.lifecycle)
+                style.entry(exe, ev.lifecycle, bank)
             };
             match hooks.get_mut(ev.name) {
                 None => {
@@ -1002,7 +1039,7 @@ mod tests {
             "reading the state must leave the file byte-identical"
         );
 
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let wired = std::fs::read_to_string(home.join(&rel)).expect("read");
         assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=yes"));
@@ -1020,7 +1057,7 @@ mod tests {
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
 
-        let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(first, Outcome::Wired { .. }), "{:?}", first);
         assert_eq!(count_ours(&home, &rel), 5, "exactly one entry per event");
         let doc = read_config(&home, &rel);
@@ -1028,7 +1065,7 @@ mod tests {
         assert_eq!(entries.len(), 2, "foreign hook kept, ours added");
         assert!(entries.iter().any(|e| e.to_string().contains("/opt/other/hook.sh")));
 
-        let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
         assert_eq!(count_ours(&home, &rel), 5, "re-install must not stack entries");
         std::fs::remove_dir_all(&home).ok();
@@ -1043,7 +1080,7 @@ mod tests {
             &rel,
             r#"{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/old/dir/memory-wire hook stop","timeout":5}]}]}}"#,
         );
-        let out = apply(Host::ClaudeCode, "/new/dir/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::ClaudeCode, "/new/dir/memory-wire", &home, false, no_path, &home.join("data"), None);
         let Outcome::Wired { events, .. } = &out else {
             panic!("{out:?}");
         };
@@ -1061,7 +1098,7 @@ mod tests {
         let rel = Host::ClaudeCode.config_rel();
         let broken = "{ \"hooks\": { oops";
         write_config(&home, &rel, broken);
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
         assert!(out.is_failure());
         assert_eq!(
@@ -1083,9 +1120,9 @@ mod tests {
         let home = tmp_home("unwire");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
-        apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
 
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &home.join("data"));
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         assert_eq!(count_ours(&home, &rel), 0, "all our entries removed");
         let doc = read_config(&home, &rel);
@@ -1096,8 +1133,98 @@ mod tests {
         // The event keys we created and emptied are pruned.
         assert!(doc["hooks"].get("Stop").is_none(), "{doc}");
 
-        let again = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &home.join("data"));
+        let again = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &home.join("data"), None);
         assert!(matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }), "{again:?}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// Our own entry under one event, located by MARKER the way the other tests
+    /// do: index 0 is not ours when the host already had hooks.
+    fn our_entry(doc: &Value, event: &str) -> Value {
+        doc["hooks"][event]
+            .as_array()
+            .unwrap_or_else(|| panic!("{event} is not an array"))
+            .iter()
+            .find(|e| e.to_string().contains(MARKER))
+            .unwrap_or_else(|| panic!("no memory-wire entry under {event}"))
+            .clone()
+    }
+
+    /// The command string out of one of our entries. The two hook styles nest it
+    /// differently -- Claude wraps it in an inner `hooks` array, Copilot puts it
+    /// on the entry -- so one helper reads both rather than each test guessing.
+    fn cmd_of(entry: &Value, field: &str) -> String {
+        entry
+            .get("hooks")
+            .and_then(|v| v.get(0))
+            .and_then(|v| v.get(field))
+            .or_else(|| entry.get(field))
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("no {field} in {entry}"))
+            .to_string()
+    }
+
+    /// The finding this flag exists for. A hook command is written once and then
+    /// run by a host we do not control, forever, with no way to pass it a bank --
+    /// so if the memories live in a shared bank and the per-project bank is empty,
+    /// the only way to reach them is to bake `--bank` into the command we wrote.
+    #[test]
+    fn a_named_bank_should_be_baked_into_every_written_hook_command() {
+        for (host, field) in [(Host::ClaudeCode, "command"), (Host::CopilotCli, "bash")] {
+            let home = tmp_home(&format!("bank-{field}"));
+            let rel = host.config_rel();
+            write_config(&home, &rel, "{}");
+            let out = apply(
+                host,
+                "/bin/memory-wire",
+                &home,
+                false,
+                no_path,
+                &home.join("data"),
+                Some("omp"),
+            );
+            assert!(matches!(out, Outcome::Wired { .. }), "{host:?} {out:?}");
+            let doc = read_config(&home, &rel);
+            for ev in EVENTS {
+                let cmd = cmd_of(&our_entry(&doc, ev.name), field);
+                assert!(
+                    cmd.ends_with(&format!("hook {} --bank omp", ev.lifecycle)),
+                    "{host:?} {} wrote {cmd:?}",
+                    ev.name
+                );
+            }
+            std::fs::remove_dir_all(&home).ok();
+        }
+    }
+
+    /// Absent by default. A wiring must not grow a `--bank` nobody asked for,
+    /// because the flag is baked into a command the user will later read.
+    #[test]
+    fn without_a_named_bank_the_command_should_be_unchanged() {
+        let home = tmp_home("bank-default");
+        let rel = Host::ClaudeCode.config_rel();
+        write_config(&home, &rel, "{}");
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        let doc = read_config(&home, &rel);
+        let cmd = cmd_of(&our_entry(&doc, "SessionStart"), "command");
+        assert_eq!(cmd, "/bin/memory-wire hook session-start");
+        assert!(!cmd.contains("--bank"), "no flag nobody asked for: {cmd}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// A blank `--bank` is not a bank. It must not write `--bank ''`, which the
+    /// ladder would read as unset and fall through -- looking like it had worked.
+    #[test]
+    fn a_blank_bank_should_write_no_flag() {
+        let home = tmp_home("bank-blank");
+        let rel = Host::ClaudeCode.config_rel();
+        write_config(&home, &rel, "{}");
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), Some("   "));
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        let doc = read_config(&home, &rel);
+        let cmd = cmd_of(&our_entry(&doc, "SessionStart"), "command");
+        assert_eq!(cmd, "/bin/memory-wire hook session-start");
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -1106,7 +1233,7 @@ mod tests {
         let home = tmp_home("copilot");
         let rel = Host::CopilotCli.config_rel();
         write_config(&home, &rel, r#"{"hooks":{"SessionStart":[{"type":"command","bash":"bash '/x.sh'","timeoutSec":10}]}}"#);
-        let out = apply(Host::CopilotCli, "/opt/my tools/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::CopilotCli, "/opt/my tools/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         let ours = doc["hooks"]["SessionStart"]
@@ -1129,7 +1256,7 @@ mod tests {
         let home = tmp_home("quote");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
-        let out = apply(Host::ClaudeCode, "/opt/my tools/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::ClaudeCode, "/opt/my tools/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         for ev in EVENTS {
@@ -1178,13 +1305,13 @@ mod tests {
         assert!(!binary_on_path("memory-wire-definitely-not-installed"));
         assert!(!detected_with(Host::Cursor, &home, no_path));
 
-        let skipped = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let skipped = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(&skipped, Outcome::Skipped(w) if w.contains("not detected")), "{skipped:?}");
 
         std::fs::create_dir_all(home.join(Host::Cursor.detect_rel())).expect("mkdir");
         assert!(detected_with(Host::Cursor, &home, no_path));
         // Detected is enough now: an MCP-only host is wired, not skipped.
-        let wired = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let wired = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(wired, Outcome::Wired { .. }), "{wired:?}");
         assert!(!MCP_ONLY_REASON.contains("no MCP server"), "stale reason: {MCP_ONLY_REASON}");
         std::fs::remove_dir_all(&home).ok();
@@ -1216,19 +1343,19 @@ mod tests {
             );
             let data = home.join("data");
 
-            let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
             assert!(matches!(first, Outcome::Wired { .. }), "{}: {first:?}", host.id());
             let doc = read_config(&home, &rel);
             assert_eq!(doc[key][MARKER], entry, "{} entry shape", host.id());
             assert_eq!(doc[key].as_object().expect("map").len(), 2, "{} foreign server kept", host.id());
             assert_eq!(our_entries(&doc, key), 1, "{}: one server per file", host.id());
 
-            let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
             assert!(matches!(second, Outcome::Already { .. }), "{}: {second:?}", host.id());
             assert_eq!(our_entries(&doc, key), 1, "{}: a re-install must not stack", host.id());
 
             // A moved binary replaces the stale command rather than adding one.
-            let moved = apply(host, "/new/dir/memory-wire", &home, false, no_path, &data);
+            let moved = apply(host, "/new/dir/memory-wire", &home, false, no_path, &data, None);
             assert!(matches!(moved, Outcome::Wired { .. }), "{}: {moved:?}", host.id());
             let doc = read_config(&home, &rel);
             assert_eq!(our_entries(&doc, key), 1, "{}: {moved:?}", host.id());
@@ -1238,13 +1365,13 @@ mod tests {
                 host.id()
             );
 
-            let out = apply(host, "/new/dir/memory-wire", &home, true, no_path, &data);
+            let out = apply(host, "/new/dir/memory-wire", &home, true, no_path, &data, None);
             assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
             let doc = read_config(&home, &rel);
             assert_eq!(our_entries(&doc, key), 0, "{}: our entry removed", host.id());
             assert!(doc[key]["other"]["url"] == json!("http://127.0.0.1:9/mcp"), "{doc}");
 
-            let again = apply(host, "/new/dir/memory-wire", &home, true, no_path, &data);
+            let again = apply(host, "/new/dir/memory-wire", &home, true, no_path, &data, None);
             assert!(
                 matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }),
                 "{}: {again:?}",
@@ -1289,7 +1416,7 @@ mod tests {
         std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("mkdir");
         write_config(&home, &rel, live_shape);
 
-        let first = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data);
+        let first = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data, None);
         assert!(matches!(first, Outcome::Wired { .. }), "{first:?}");
         let doc = read_config(&home, &rel);
         assert_eq!(
@@ -1317,7 +1444,7 @@ mod tests {
             "an http entry must survive intact: {doc}"
         );
 
-        let second = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data);
+        let second = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data, None);
         assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
         assert_eq!(
             our_entries(&read_config(&home, &rel), "mcpServers"),
@@ -1325,7 +1452,7 @@ mod tests {
             "a re-install must not stack"
         );
 
-        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data);
+        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data, None);
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         assert_eq!(our_entries(&doc, "mcpServers"), 0, "our key removed");
@@ -1336,7 +1463,7 @@ mod tests {
         );
         assert_eq!(doc["enabledServers"], json!(["sourcehound", "cloakctl"]), "{doc}");
 
-        let again = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data);
+        let again = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data, None);
         assert!(
             matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }),
             "{again:?}"
@@ -1354,7 +1481,7 @@ mod tests {
         let broken = "{ \"mcpServers\": { \"memory-wire\": oops";
         write_config(&home, &rel, broken);
         std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("mkdir");
-        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
         assert!(out.is_failure());
         assert_eq!(
@@ -1399,7 +1526,7 @@ mod tests {
         let broken = r#"{"mcp": ["not","an","object"]}"#;
         write_config(&home, &rel, broken);
         std::fs::create_dir_all(home.join(Host::Opencode.detect_rel())).expect("mkdir");
-        let out = apply(Host::Opencode, "/bin/memory-wire", &home, false, no_path, &home.join("data"));
+        let out = apply(Host::Opencode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
         assert_eq!(
             std::fs::read_to_string(home.join(&rel)).expect("read"),
@@ -1419,9 +1546,9 @@ mod tests {
             let data = home.join("data");
             std::fs::create_dir_all(home.join(host.detect_rel())).expect("mkdir");
 
-            apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
             assert!(home.join(&rel).is_file(), "{}: install created the config", host.id());
-            let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data);
+            let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data, None);
             assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
             assert!(
                 !home.join(&rel).exists(),
@@ -1435,8 +1562,8 @@ mod tests {
                 &rel,
                 &format!(r#"{{"{}":{{"other":{{"url":"x"}}}}}}"#, host.mcp_spec().expect("spec").0),
             );
-            apply(host, "/bin/memory-wire", &home, false, no_path, &data);
-            apply(host, "/bin/memory-wire", &home, true, no_path, &data);
+            apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
+            apply(host, "/bin/memory-wire", &home, true, no_path, &data, None);
             let doc = read_config(&home, &rel);
             assert_eq!(
                 our_entries(&doc, host.mcp_spec().expect("spec").0),
@@ -1456,9 +1583,9 @@ mod tests {
         let rel = Host::ClaudeCode.config_rel();
         std::fs::create_dir_all(home.join(Host::ClaudeCode.detect_rel())).expect("mkdir");
         let data = home.join("data");
-        apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data);
+        apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data, None);
         assert!(home.join(&rel).is_file());
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &data);
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &data, None);
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         assert!(!home.join(&rel).exists(), "an empty residue file must be deleted");
         std::fs::remove_dir_all(&home).ok();
@@ -1476,7 +1603,7 @@ mod tests {
             std::fs::create_dir_all(home.join(host.detect_rel())).expect("mkdir");
             let data = home.join("data");
 
-            let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
             assert!(matches!(first, Outcome::Wired { .. }), "{}: {first:?}", host.id());
             let doc = read_config(&home, &rel);
             for ev in EVENTS {
@@ -1506,7 +1633,7 @@ mod tests {
             }
             assert_eq!(count_ours(&home, &rel), 5, "{}: five entries", host.id());
 
-            let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data);
+            let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
             assert!(matches!(second, Outcome::Already { .. }), "{}: {second:?}", host.id());
             assert_eq!(
                 count_ours(&home, &rel),
@@ -1515,7 +1642,7 @@ mod tests {
                 host.id()
             );
 
-            let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data);
+            let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data, None);
             assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
             // This config held nothing but our five entries, so pruning them
             // leaves no residue to write: the file is removed rather than
@@ -1559,7 +1686,7 @@ mod tests {
             r#"{"hooks":{"SessionStart":"legacy-string-hook"}}"#,
         );
         let data = home.join("data");
-        let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data);
+        let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data, None);
         let Outcome::Wired { events, notes, .. } = &first else {
             panic!("{first:?}");
         };
@@ -1577,7 +1704,7 @@ mod tests {
         let backups = data.join("backups");
         let n_backups = std::fs::read_dir(&backups).expect("readdir").count();
 
-        let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data);
+        let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data, None);
         let Outcome::Already { notes } = &second else {
             panic!("{second:?}");
         };
