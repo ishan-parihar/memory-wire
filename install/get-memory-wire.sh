@@ -82,11 +82,37 @@ if [ "$UNINSTALL" -eq 1 ]; then
 fi
 
 # --- resolve version --------------------------------------------------------
+# Two ways to learn the latest tag, tried in order, because failing the first one
+# must not be reported as "there is no release" -- which is what this used to do
+# when the API rate-limited the call. The assertion was false and the installer
+# said it anyway, on the one path every first-time user takes.
+#
+#   1. The REST API, authenticated when a token happens to be in the env. This is
+#      authoritative but costs quota, and the unauthenticated limit for a shared
+#      egress IP is small enough to hit by accident.
+#   2. The plain /releases/latest redirect. Not the API, so it costs no quota at
+#      all, and it carries the same information: HTTP 302 to /releases/tag/vX.Y.Z.
 if [ "$MW_VERSION" = latest ] && [ -z "${MW_LOCAL_ASSET:-}" ]; then
-  MW_VERSION=$(curl -fsSL "https://api.github.com/repos/$MW_REPO/releases/latest" 2>/dev/null \
+  _mw_auth=""
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    _mw_auth="Authorization: Bearer $GITHUB_TOKEN"
+  elif [ -n "${GH_TOKEN:-}" ]; then
+    _mw_auth="Authorization: token $GH_TOKEN"
+  fi
+  # shellcheck disable=SC2086 # deliberate word-splitting of the optional header
+  MW_VERSION=$(curl -fsSL ${_mw_auth:+-H "$_mw_auth"} \
+    "https://api.github.com/repos/$MW_REPO/releases/latest" 2>/dev/null \
     | sed -n 's/.*"tag_name" *: *"\([^"]*\)".*/\1/p' | head -1) || MW_VERSION=''
-  [ -n "$MW_VERSION" ] || die "no published release for $MW_REPO.
-  Static fallback: pin a tag, e.g.  MW_VERSION=v0.3.0  sh get-memory-wire.sh"
+
+  if [ -z "$MW_VERSION" ]; then
+    MW_VERSION=$(curl -fsSI "https://github.com/$MW_REPO/releases/latest" 2>/dev/null \
+      | sed -n 's#.*/releases/tag/\(v[^/[:space:]]*\).*#\1#p' | head -1) || MW_VERSION=''
+  fi
+
+  [ -n "$MW_VERSION" ] || die "could not determine the latest release of $MW_REPO.
+  Both the GitHub API and the /releases/latest redirect failed, so this is a
+  network or rate-limit problem, not an absent release.
+  Retry, or pin a known-good tag:  MW_VERSION=v0.6.1  sh get-memory-wire.sh"
 fi
 
 # --- candidates -------------------------------------------------------------
@@ -263,8 +289,23 @@ fi
 # restart is the user's decision. `ps` fails open — a box without it gets no
 # warning, which is not a failed install.
 if [ -n "$OLD_VER" ]; then
+  # Only a `serve` process is holding the old inode in a way that matters. A
+  # long-lived `mcp` stdio server is spawned by an agent harness, exits with its
+  # client, and cannot be stopped with `daemon stop` — reporting it would tell the
+  # user to restart something they do not own and cannot restart.
+  #
+  # The path is matched anywhere in argv with `serve` as the field *after* it, not
+  # as `$2`. A shebang script runs as `interpreter script args`, so argv is
+  # `/bin/sh /opt/.../memory-wire serve` and `$2` is `/bin/sh`; the same is true of
+  # any wrapper such as `mise` or `nix`. Anchoring on `$2` matched the bare case
+  # only and would silently drop the warning for a wrapped install — which is the
+  # exact failure this message exists to prevent.
   SERVING=$(ps -eo pid=,args= 2>/dev/null | awk -v p="$BIN_PATH" -v me=$$ '
-    $1 != me && index($2, p) == 1 { print $1 }')
+    $1 != me {
+      for (i = 2; i <= NF; i++)
+        if ($i == p && $(i + 1) == "serve") { print $1; break }
+    }' \
+    | paste -sd, - 2>/dev/null || true)
   if [ -n "$SERVING" ]; then
     printf '\n  a server is still running the old %s (pid %s): it kept the old\n' \
       "$OLD_VER" "$SERVING" >&2

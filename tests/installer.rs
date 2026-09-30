@@ -13,7 +13,29 @@
 //! not start and was told the install had worked.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output};
+
+/// Kills a stand-in server and removes its scratch directory **even when the test
+/// panics**. Without this the assertions between spawn and cleanup were the only
+/// thing standing between a failure and a leaked `sleep 600`: five processes and
+/// nine directories had already accumulated on this machine from earlier failing
+/// runs, which is the cost of an `assert!` placed before the cleanup it should
+/// follow. `Drop` runs during unwinding, so the cleanup cannot be skipped by a
+/// failed assertion.
+struct Cleanup {
+    child: Option<Child>,
+    dir: PathBuf,
+}
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        if let Some(mut c) = self.child.take() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
 
 const INSTALLER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/install/get-memory-wire.sh");
 
@@ -241,16 +263,46 @@ fn version_report_should_say_which_direction_the_install_went() {
 #[test]
 fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
     let dir = scratch("serving");
-    let sleeper = ["/bin/sleep", "/usr/bin/sleep"]
-        .into_iter()
-        .find(|p| Path::new(p).is_file())
-        .expect("a sleep binary to stand in for the running server");
-    // Staged and renamed, not copied into place: exec'ing a file that a write
-    // fd may still be open on is ETXTBSY, which would fail the setup rather than
+    // Taken at the top so every path below — including an assertion failure —
+    // kills the stand-in and removes the directory.
+    let mut cleanup = Cleanup { child: None, dir: dir.clone() };
+    // The stand-in must carry the real argv shape, because the installer decides what
+    // is a "running server" from the process's arguments: `$3` must be `serve`.
+    // A copied `/bin/sleep 600` had `$3 == "600"` and was therefore correctly
+    // ignored -- the test had stopped exercising the reporting it exists for.
+    // It also has to answer `--version`, because the installer reads the old
+    // version before it replaces anything, and a script that only blocked would
+    // hang that call.
+    //
+    // It blocks on an unwritten fifo rather than on `sleep`, which is the only
+    // form that satisfies both requirements at once. `sleep 600` forks a child,
+    // so `Child::kill` kills the wrapper and orphans the sleeper -- one survived
+    // a passing run. `exec sleep 600` fixes that but replaces argv with
+    // `sleep 600`, and the installer identifies a running server from argv, so
+    // the process stops being findable. `read` from a fifo blocks *in the shell
+    // itself*: no child to orphan, argv intact, and `kill` lands on the process
+    // the test actually spawned.
+    let hold = dir.join("hold");
+    std::process::Command::new("mkfifo")
+        .arg(&hold)
+        .status()
+        .expect("create the fifo the stand-in blocks on");
+    let old_binary = format!(
+        "#!/bin/sh\ncase \"$1\" in --version) echo 'memory-wire 0.5.0'; exit 0;; esac\nread line < {}\n",
+        hold.display()
+    );
+    // Staged and renamed, not written in place: exec'ing a file a write fd may
+    // still be open on is ETXTBSY, which would fail the setup rather than
     // anything the installer does.
     let staged = dir.join("bin").join("memory-wire.staged");
-    std::fs::copy(sleeper, &staged).expect("stage the old binary");
+    std::fs::write(&staged, old_binary).expect("stage the old binary");
     std::fs::rename(&staged, bin(&dir)).expect("put the old binary in place");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(bin(&dir), std::fs::Permissions::from_mode(0o755))
+            .expect("make the old binary executable");
+    }
 
     // Spawning can transiently fail with ETXTBSY while the test harness's other
     // threads are writing and exec'ing in the same process — six sequential
@@ -262,7 +314,7 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
     let mut server = None;
     let mut last_err = None;
     for attempt in 0..50 {
-        match Command::new(bin(&dir)).arg("600").spawn() {
+        match Command::new(bin(&dir)).arg("serve").spawn() {
             Ok(child) => {
                 server = Some(child);
                 break;
@@ -274,7 +326,8 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
             Err(e) => panic!("start the old server: {e}"),
         }
     }
-    let mut server = server.unwrap_or_else(|| panic!("start the old server: ETXTBSY 50x: {last_err:?}"));
+    let server = server.unwrap_or_else(|| panic!("start the old server: ETXTBSY 50x: {last_err:?}"));
+    cleanup.child = Some(server);
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     let assets = release_dir(&dir, &[("linux-x86_64", works("0.6.0"))]);
@@ -284,6 +337,7 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
 
     // It named the situation, and it named this process, and it did not act:
     // restarting a daemon is the user's call, because it may be under systemd.
+    let server = cleanup.child.as_mut().expect("the stand-in server is live");
     assert!(log.contains("a server is still running the old"), "{log}");
     assert!(log.contains(&format!("(pid {})", server.id())), "{log}");
     assert!(log.contains("daemon stop &&"), "{log}");
@@ -293,7 +347,6 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
     );
     assert_eq!(installed_version(&dir), "memory-wire 0.6.0", "{log}");
 
-    let _ = server.kill();
-    let _ = server.wait();
-    std::fs::remove_dir_all(&dir).ok();
+    // Cleanup happens in `Cleanup::drop`, including on the panic path above.
+    drop(cleanup);
 }
