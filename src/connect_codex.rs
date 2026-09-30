@@ -137,7 +137,8 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
 /// The URL Codex should dial: the endpoint the rest of the tree already resolves,
 /// plus the MCP mount.
 ///
-/// `paths::endpoint()` is `MEMORY_WIRE_URL` when set and `http://127.0.0.1:8888`
+/// `paths::endpoint()` is `MEMORY_WIRE_URL` when set, else a running daemon's
+/// recorded address, else `http://127.0.0.1:8888`
 /// otherwise, so this is the one port literal in the tree again, and a user who
 /// already points their hooks at a non-default server gets the MCP entry for that
 /// same server. A trailing slash is trimmed so the join cannot produce `//mcp`.

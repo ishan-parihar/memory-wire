@@ -3055,3 +3055,87 @@ bank are shell-quoted. Absent by default, and a blank value writes no flag.
 - `Cargo.lock` had to be re-synced with `cargo update --offline` after the version
   bump, which is §8.6 recurring: `--locked` refuses to fix a lock that disagrees
   with `Cargo.toml`, and the stale binary then reports the old version.
+
+## 27. A harness sweep, and the two gaps only running it could find
+
+Every host was exercised against the live server and the real 710-row corpus,
+not against fixtures: each hook command was read out of that host's own config
+and run, each MCP entry was launched as the host would launch it, and hermes was
+loaded through hermes' own loader. Two implementation gaps surfaced that reading
+the code had not.
+
+### 27.1 The hooks never read the daemon's address (`INTEGRATION_PLAN.md` P0.1)
+
+Found live: a memory-wire daemon 7 hours into serving `palimpsest.db` on
+`127.0.0.1:18899`, while every hook POSTed to `127.0.0.1:8888`, where nothing was
+listening. `hook prompt` returned **0 bytes and exit 0** — the never-fail contract
+behaving correctly for a failure, which is why nothing said so.
+
+`paths::endpoint()` was `MEMORY_WIRE_URL` else the default port. It now resolves
+in three steps: an explicit `MEMORY_WIRE_URL`, then the address a running daemon
+recorded in `serve.json`, then the default. Ordering is argued in the code: a
+person's explicit URL outranks a file, and a recorded daemon outranks the default
+because it is evidence a server was started where the default is only a guess. A
+stale `serve.json` costs a refused connection, which is what the default would
+have cost anyway, so the change can lose nothing.
+
+The resolution is a pure `endpoint_from(url, state_path)` so all four rules are
+testable without touching the process environment — `cargo test` shares one
+process across parallel threads, and my first attempt at these tests set
+`XDG_DATA_HOME` and `MEMORY_WIRE_URL`, which raced the suite and broke an
+unrelated test. Five tests. The existing port-literal test now asserts
+`default_endpoint()`, because "the default" and "the endpoint to use" are no
+longer the same question.
+
+### 27.2 `--bank` reached the hooks but not the MCP argv
+
+Measured on all three stdio hosts: `resources/list` returned **0**, always. The
+four tools take `bank` as an argument and MCP's `resources/list` takes no
+parameters at all, so over stdio — which has no URL to read a bank from — the
+whole resources surface was permanently empty. With `--bank omp` in the argv the
+same call returns 100 `memory://omp/…` entries, and a `tools/call` naming a
+*different* bank still succeeds: it is a default, not a lock. `connect --bank`
+now writes it into the MCP argv as well as the hook commands.
+
+`codex` is deliberately left alone. Its MCP is a `url`, and the HTTP mount
+**pins** the bank from the path — verified, `/mcp/omp` refuses `bank: other`
+rather than silently preferring. Pinning a multi-bank user would be a
+regression traded for a browsable resource list, so codex keeps `/mcp` and an
+empty `resources/list`.
+
+### 27.3 What the sweep found that was not a gap
+
+Four were my test's fault and are recorded because each would have read as a
+product defect: codex hooks live in `.codex/hooks.json`, not `config.toml`;
+copilot's in `.copilot/settings.json`, not `github-copilot/hooks.json`;
+opencode stores `command` as an argv array while cursor and omp use
+`command` + `args`; and the write hooks require `transcript_path` and correctly
+decline without one. The last one is a hook handed nothing, and inventing a
+memory from an empty payload would be noise.
+
+### 27.4 Damage I caused and repaired
+
+Cleaning up 19 probe rows, I matched on `content LIKE '%sweep-%'` and deleted
+**22**. Three were real corpus rows containing the word "sweep" from earlier
+conversations of my own — `project:kosmos`, `project:mindstrata` and
+`project:the-undercurrent`. Restored from the pre-cleanup backup with their tags;
+`memories` and `memories_fts` are both 714, `integrity_check` is `ok`, and
+"in backup not live" is exactly the 19 probes. A looser pattern than the data
+deserves is the lesson, and the dry run I *did* run counted rows without
+reading them.
+
+### 27.5 Per-host verdicts
+
+| host | mechanism | result |
+|---|---|---|
+| claude-code | 5 hooks | read 1256 / 4836 bytes, all 3 writes landed |
+| codex | 5 hooks + HTTP MCP url | same, and `mcp_servers.memory-wire` present |
+| copilot-cli | 5 hooks | same |
+| cursor | MCP stdio | 4 tools, 4/4 annotated, retain→recall, 100 resources |
+| opencode | MCP stdio | same |
+| omp | MCP stdio | same, tools namespaced `memory_wire_memory_*` to omp |
+| hermes | `MemoryProvider` plugin | 6/6 methods, `is_available()` true, 4 tool schemas |
+
+Daemon: second start refused with exit 1 and left the running one alone; status 0
+while serving and 1 while not; `doctor --strict` 0; stop removed the state file;
+restart came back `ok` and the hooks followed it, 4752 bytes.

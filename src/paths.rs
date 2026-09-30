@@ -43,13 +43,75 @@ pub fn home() -> Result<PathBuf, String> {
         .ok_or_else(|| "neither HOME nor USERPROFILE is set".to_string())
 }
 
-/// Server endpoint: `MEMORY_WIRE_URL` when set, else [`DEFAULT_ADDR`] as a URL.
+/// The default endpoint, as a URL. The literal lives here and nowhere else;
+/// [`endpoint`] is what a client should actually *use*.
+pub fn default_endpoint() -> String {
+    format!("http://{DEFAULT_ADDR}")
+}
+
+/// Server endpoint: `MEMORY_WIRE_URL` when set, else the address a running
+/// daemon recorded, else [`default_endpoint`].
+///
+/// The middle step is the fix for a silent, total recall failure. `daemon start
+/// --addr X` writes X into `serve.json` and `daemon status` reads it back, but
+/// the hooks never did — they went to [`default_endpoint`] whatever the daemon
+/// was doing. Measured on a live machine: a daemon 7 hours into serving
+/// `palimpsest.db` on `127.0.0.1:18899`, hooks POSTing to a dead
+/// `127.0.0.1:8888`, and `hook prompt` returning 0 bytes with exit 0. The
+/// never-fail contract is right that a memory server being down must not put an
+/// error in front of a model, and that is exactly why nothing said so.
+///
+/// Ordering, and why: an explicit `MEMORY_WIRE_URL` is a person telling us where
+/// the server is and outranks a file. A recorded daemon outranks the default
+/// because it is evidence a server was actually started, where the default is
+/// only a guess. A stale `serve.json` costs a refused connection, which is what
+/// the default would have cost anyway — so this can lose nothing.
 pub fn endpoint() -> String {
-    std::env::var("MEMORY_WIRE_URL")
+    let url = std::env::var("MEMORY_WIRE_URL")
         .ok()
         .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| format!("http://{DEFAULT_ADDR}"))
+        .filter(|v| !v.is_empty());
+    endpoint_from(url.as_deref(), &daemon_state_path())
+}
+
+/// The resolution, as a pure function of its two inputs.
+///
+/// Split out so every rule above can be tested without touching the process
+/// environment: `cargo test` runs tests in parallel threads and `set_var` is
+/// process-global, so a test that sets `MEMORY_WIRE_URL` to prove precedence
+/// races every other test that reads it. The ambient version is `endpoint()`.
+fn endpoint_from(url: Option<&str>, state: &Path) -> String {
+    if let Some(u) = url {
+        return u.to_string();
+    }
+    daemon_addr_at(state).map_or_else(default_endpoint, |a| format!("http://{a}"))
+}
+
+/// Where a detached server records itself.
+fn daemon_state_path() -> PathBuf {
+    memory_wire::store::default_db_path()
+        .parent()
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+        .join("serve.json")
+}
+
+/// The `--addr` recorded in a state file, or `None` when there is no file or it
+/// does not parse as one.
+///
+/// Read-only and total: a missing, unreadable, malformed, or empty-`addr` state
+/// file is `None`, never an error, because a hook has no way to report one. Only
+/// the `addr` field is decoded rather than the whole `ServeState` — the daemon's
+/// type lives in the binary crate and one string is all the resolution needs.
+fn daemon_addr_at(state: &Path) -> Option<String> {
+    /// The `addr` field of `serve.json`, and nothing else.
+    #[derive(serde::Deserialize)]
+    struct AddrOnly {
+        addr: String,
+    }
+
+    let text = std::fs::read_to_string(state).ok()?;
+    let parsed: AddrOnly = serde_json::from_str(&text).ok()?;
+    Some(parsed.addr.trim().to_string()).filter(|a| !a.is_empty())
 }
 
 /// XDG data directory: `$XDG_DATA_HOME/memory-wire`, else
@@ -636,5 +698,84 @@ mod tests {
         let repo = t.repo("My Repo", "https://github.com/acme/api.git");
         assert_eq!(legacy_bank_in(&repo), "my-repo");
         assert_ne!(legacy_bank_in(&repo), resolve_bank_in(&repo));
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+
+    /// The regression. A daemon on a non-default port and a hook pointed at the
+    /// default is a total, silent recall failure: measured on a live machine, a
+    /// server 7 hours into serving one database on `127.0.0.1:18899` while
+    /// `hook prompt` returned 0 bytes and exit 0.
+    ///
+    /// Every case goes through `endpoint_from` with an explicit state path, so
+    /// nothing here reads the machine's real `serve.json` or mutates the
+    /// environment -- `cargo test` shares one process across parallel threads.
+    fn state_file(tag: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mw-endpoint-{tag}-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp");
+        let p = dir.join("serve.json");
+        std::fs::write(&p, body).expect("write state");
+        p
+    }
+
+    const RECORDED: &str = r#"{"pid":1,"addr":"127.0.0.1:18899","db":"/x/y.db","started_at":0}"#;
+
+    #[test]
+    fn a_recorded_daemon_outranks_the_default_port() {
+        let p = state_file("recorded", RECORDED);
+        assert_eq!(endpoint_from(None, &p), "http://127.0.0.1:18899");
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// An explicit URL is a person telling us where the server is. It outranks
+    /// the file, or the file would silently redirect a deliberate override.
+    #[test]
+    fn an_explicit_url_outranks_the_recorded_daemon() {
+        let p = state_file("explicit", RECORDED);
+        assert_eq!(
+            endpoint_from(Some("http://127.0.0.1:9999"), &p),
+            "http://127.0.0.1:9999"
+        );
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// Nothing recorded and nothing set: the documented default, unchanged, so
+    /// every client that assumed it still gets it on a machine with no daemon.
+    #[test]
+    fn with_nothing_recorded_the_default_still_answers() {
+        let p = state_file("default", "");
+        assert_eq!(endpoint_from(None, &p), "http://127.0.0.1:8888");
+        assert_eq!(endpoint_from(None, &p), default_endpoint());
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// A hook cannot report an error, so every unusable state file must read as
+    /// "no daemon" rather than as a failure or, worse, as a bogus address.
+    #[test]
+    fn an_unusable_state_file_falls_back_to_the_default() {
+        for body in [
+            "",
+            "not json",
+            "{}",
+            r#"{"pid":1}"#,
+            r#"{"addr":""}"#,
+            r#"{"addr":"   "}"#,
+        ] {
+            let p = state_file("bad", body);
+            assert_eq!(endpoint_from(None, &p), "http://127.0.0.1:8888", "for {body:?}");
+            std::fs::remove_dir_all(p.parent().unwrap()).ok();
+        }
+    }
+
+    /// A state file that does not exist at all is the common case, not an error.
+    #[test]
+    fn a_missing_state_file_is_not_a_failure() {
+        let p = std::env::temp_dir().join("mw-endpoint-absent-serve.json");
+        std::fs::remove_file(&p).ok();
+        assert_eq!(endpoint_from(None, &p), "http://127.0.0.1:8888");
     }
 }

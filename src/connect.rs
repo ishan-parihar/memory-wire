@@ -28,7 +28,11 @@ pub const MARKER: &str = "memory-wire";
 const HOOK_TIMEOUT: u64 = 5;
 
 /// Where an MCP-only host keeps its server map, and the entry shape it wants.
-type McpSpec = (&'static str, fn(&str) -> Value);
+///
+/// The builder takes the bank as well as the executable so it can put
+/// `--bank` in the argv; see [`mcp_args`] for why that matters and why it is a
+/// default rather than a restriction.
+type McpSpec = (&'static str, fn(&str, Option<&str>) -> Value);
 
 /// An agent host this installer can wire.
 ///
@@ -250,14 +254,29 @@ impl Host {
     /// `command`/`args` pair — an entry written in another host's shape is
     /// silently ignored.
     fn mcp_spec(self) -> Option<McpSpec> {
+        // `--bank` is appended to `mcp` when one is given, and it is a *default*,
+        // not a lock: measured, a stdio server started with `--bank omp` serves
+        // `resources/list` from `omp` while a `tools/call` naming any other bank
+        // still succeeds. That matters because the tools take `bank` as an
+        // argument and the MCP `resources/list` method takes no parameters at
+        // all -- over stdio there is no URL to read a bank from, so without this
+        // flag the resources surface is permanently empty on a stdio host. With
+        // it, `resources/list` returns the bank's memories and nothing is
+        // restricted that was not restricted before.
         match self {
             Host::Cursor => Some((
                 "mcpServers",
-                |exe: &str| json!({ "command": exe, "args": ["mcp"] }),
+                |exe: &str, bank: Option<&str>| {
+                    json!({ "command": exe, "args": mcp_args(bank) })
+                },
             )),
             Host::Opencode => Some((
                 "mcp",
-                |exe: &str| json!({ "type": "local", "command": [exe, "mcp"], "enabled": true }),
+                |exe: &str, bank: Option<&str>| {
+                    let mut argv = vec![exe.to_string()];
+                    argv.extend(mcp_args(bank));
+                    json!({ "type": "local", "command": argv, "enabled": true })
+                },
             )),
             // `type` is what omp's own mcp-schema asks for (every live stdio entry
             // carries it), and `command` is the absolute install path rather than a
@@ -266,11 +285,28 @@ impl Host {
             // `cloakctl` entry is spelled the same way.
             Host::Omp => Some((
                 "mcpServers",
-                |exe: &str| json!({ "type": "stdio", "command": exe, "args": ["mcp"] }),
+                |exe: &str, bank: Option<&str>| {
+                    json!({ "type": "stdio", "command": exe, "args": mcp_args(bank) })
+                },
             )),
             _ => None,
         }
     }
+}
+
+/// `["mcp", "--bank", id]` for an MCP stdio command, or just `["mcp"]`.
+///
+/// One place, because three hosts spell the same argv and a bank flag that
+/// reached one of them but not the others would be a silent partial fix: the two
+/// that got it would browse resources and the one that did not would see an
+/// empty list with no error.
+fn mcp_args(bank: Option<&str>) -> Vec<String> {
+    let mut args = vec!["mcp".to_string()];
+    if let Some(b) = bank.map(str::trim).filter(|b| !b.is_empty()) {
+        args.push("--bank".to_string());
+        args.push(b.to_string());
+    }
+    args
 }
 
 /// The command string a hook entry runs, with the bank baked in when given.
@@ -677,7 +713,7 @@ pub(crate) fn apply(
         let Some((key, entry)) = host.mcp_spec() else {
             return Outcome::Skipped(MCP_ONLY_REASON.to_string());
         };
-        edit_mcp(&mut root, key, (!uninstall).then(|| entry(exe)))
+        edit_mcp(&mut root, key, (!uninstall).then(|| entry(exe, bank)))
     } else {
         edit_hooks(&mut root, style, exe, uninstall, bank)
     };
@@ -1225,6 +1261,70 @@ mod tests {
         let doc = read_config(&home, &rel);
         let cmd = cmd_of(&our_entry(&doc, "SessionStart"), "command");
         assert_eq!(cmd, "/bin/memory-wire hook session-start");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// The gap this closes. Measured on the live machine: with no `--bank` in the
+    /// argv, all three stdio hosts served `resources/list` -> 0, because the MCP
+    /// `resources/list` method takes no parameters and a stdio server has no URL
+    /// to read a bank from. With it, the same call returns the bank's memories --
+    /// and a `tools/call` naming a *different* bank still succeeds, so this is a
+    /// default and not a lock.
+    #[test]
+    fn a_named_bank_should_reach_the_mcp_argv_as_well_as_the_hooks() {
+        for (host, path) in [
+            (Host::Cursor, &["mcpServers", "memory-wire", "args"][..]),
+            (Host::Opencode, &["mcp", "memory-wire", "command"][..]),
+            (Host::Omp, &["mcpServers", "memory-wire", "args"][..]),
+        ] {
+            let home = tmp_home(&format!("mcpbank-{}", host.id()));
+            let rel = host.config_rel();
+            write_config(&home, &rel, "{}");
+            let out = apply(
+                host,
+                "/bin/memory-wire",
+                &home,
+                false,
+                no_path,
+                &home.join("data"),
+                Some("omp"),
+            );
+            assert!(matches!(out, Outcome::Wired { .. }), "{host:?} {out:?}");
+            let doc = read_config(&home, &rel);
+            let argv: Vec<String> = {
+                let mut node = &doc;
+                for key in path {
+                    node = &node[*key];
+                }
+                match node {
+                    Value::Array(a) => a
+                        .iter()
+                        .map(|v| v.as_str().unwrap_or_default().to_string())
+                        .collect(),
+                    other => vec![other.as_str().unwrap_or_default().to_string()],
+                }
+            };
+            let joined = argv.join(" ");
+            assert!(
+                joined.contains("--bank omp"),
+                "{host:?} wrote {joined:?} with no bank in the argv"
+            );
+            assert!(joined.contains("mcp"), "{host:?} lost the subcommand: {joined:?}");
+            std::fs::remove_dir_all(&home).ok();
+        }
+    }
+
+    /// Absent by default, same as the hooks: a bank nobody asked for must not
+    /// appear in a config the user will later read.
+    #[test]
+    fn without_a_named_bank_the_mcp_argv_should_be_just_mcp() {
+        let home = tmp_home("mcpbank-default");
+        let rel = Host::Omp.config_rel();
+        write_config(&home, &rel, "{}");
+        let out = apply(Host::Omp, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        let doc = read_config(&home, &rel);
+        assert_eq!(doc["mcpServers"]["memory-wire"]["args"], json!(["mcp"]));
         std::fs::remove_dir_all(&home).ok();
     }
 

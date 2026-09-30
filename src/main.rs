@@ -1849,16 +1849,12 @@ mod tests {
         // that stays.
         assert_eq!(paths::DEFAULT_ADDR, "127.0.0.1:8888");
 
-        // And the URL a client resolves to with no override must be that same
-        // address. Guarded on the override being absent, because that is the one
-        // input `endpoint()` reads and the test must not depend on the ambient
-        // environment.
-        let overridden = std::env::var("MEMORY_WIRE_URL")
-            .map(|v| !v.trim().is_empty())
-            .unwrap_or(false);
-        if !overridden {
-            assert_eq!(paths::endpoint(), format!("http://{}", paths::DEFAULT_ADDR));
-        }
+        // And the URL a client falls back to with no override must be that same
+        // address. Asserted on `default_endpoint()` rather than `endpoint()`,
+        // because `endpoint()` also consults a running daemon's `serve.json` --
+        // which is the point of it, and which would make this test depend on
+        // whether a daemon happens to be up on the machine running it.
+        assert_eq!(paths::default_endpoint(), format!("http://{}", paths::DEFAULT_ADDR));
     }
 
     // The drain, driven directly instead of by signalling a real process.
