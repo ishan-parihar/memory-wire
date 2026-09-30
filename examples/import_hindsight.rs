@@ -85,23 +85,25 @@ fn timestamp_of(block: &str) -> Option<String> {
     re.captures(block).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
 }
 
-/// Normalise a Hindsight timestamp to the RFC 3339 form `created_at` expects.
+/// Normalise an export timestamp to the RFC 3339 form `created_at` expects.
 ///
-/// Hindsight emits `2026-09-22T20:26:23.270960+00:00` — a `+00:00` offset, and
-/// fractional seconds of arbitrary precision. The store compares `created_at`
-/// as bytes, so a mixed set would sort wrongly; trimming to milliseconds with a
-/// `Z` suffix keeps every row in one comparable format.
+/// Two shapes have to be accepted, because two different exporters produce them:
+/// Hindsight emits `2026-09-22T20:26:23.270960+00:00` — a `+00:00` offset — while
+/// agent-memory emits `2026-07-29T15:52:56Z` — an explicit `Z`. Both may carry
+/// fractional seconds of arbitrary precision.
+///
+/// The store compares `created_at` as bytes, so a mixed set sorts wrongly; and the
+/// suffix has to be stripped exactly once. An earlier version of this stripped the
+/// `Z` and then restored the original string on the non-offset branch, which
+/// appended a second `Z` and stored `...:56ZZ`. It went unnoticed because every
+/// Hindsight timestamp took the `+00:00` branch. Only the racknerd export, whose
+/// timestamps end in `Z`, ever reached the other path.
 fn normalise_timestamp(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
-    let (body, offset) = match trimmed.strip_suffix("+00:00") {
-        Some(b) => (b, true),
-        None => (trimmed.strip_suffix('Z').unwrap_or(trimmed), false),
-    };
-    let body = if offset {
-        body
-    } else {
-        trimmed
-    };
+    let body = trimmed
+        .strip_suffix("+00:00")
+        .or_else(|| trimmed.strip_suffix('Z'))
+        .unwrap_or(trimmed);
     // Cut the fraction to at most 3 digits, which is what RFC 3339 calls for.
     let (secs, frac) = match body.split_once('.') {
         Some((s, f)) => {
@@ -198,10 +200,20 @@ struct Args {
     /// of the two and a chunk is never larger than it claims to be.
     #[arg(long, default_value_t = 24_000)]
     chunk_bytes: usize,
+    /// Source system the export came from, used as the `document_id` namespace.
+    ///
+    /// This is a flag rather than a hardcoded `hindsight` because the same
+    /// importer now also reads an agent-memory export, and hardcoding it
+    /// labelled 6,674 agent-memory records as hindsight-sourced in both the
+    /// `document_id` and the user-visible `context`. It stays part of the id
+    /// because it is what makes a re-run upsert instead of duplicate, so the
+    /// default is the value earlier runs already wrote.
+    #[arg(long, default_value = "hindsight")]
+    source: String,
     /// Report the shape of the import without writing anything.
     #[arg(long, default_value_t = false)]
     dry_run: bool,
-    /// Hindsight export JSON files: an array of document objects.
+    /// Export JSON files: an array of document objects.
     files: Vec<PathBuf>,
 }
 
@@ -322,21 +334,22 @@ fn main() -> anyhow::Result<()> {
 
         let chunks = chunk_document(text, args.chunk_bytes);
         for (i, chunk) in chunks.iter().enumerate() {
-            let document_id = if chunks.len() > 1 {
-                format!("hindsight:{source_id}#{i}")
-            } else {
-                format!("hindsight:{source_id}")
-            };
+              let document_id = if chunks.len() > 1 {
+                  format!("{}:{source_id}#{i}", args.source)
+              } else {
+                  format!("{}:{source_id}", args.source)
+              };
             let stamp = chunk
                 .stamp
                 .clone()
                 .or_else(|| doc.get("created_at").and_then(Value::as_str).map(str::to_string))
                 .as_deref()
                 .and_then(normalise_timestamp);
-            let context = format!(
-                "imported from hindsight bank doc {source_id}, session {session}, part {}",
-                i + 1
-            );
+              let context = format!(
+                  "imported from {} doc {source_id}, session {session}, part {}",
+                  args.source,
+                  i + 1
+              );
             let memory = Memory {
                 id: uuid::Uuid::new_v4().to_string(),
                 bank_id: args.bank.clone(),
@@ -367,4 +380,66 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("{failed} of {} writes failed", written + failed);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The regression: a `Z`-suffixed input used to come out as `...:56ZZ`,
+    /// because the strip was undone on the non-offset branch and a second `Z`
+    /// appended. Only the agent-memory export on racknerd ever reached that
+    /// branch, so no earlier test could have caught it.
+    #[test]
+    fn normalise_timestamp_strips_the_suffix_exactly_once() {
+        assert_eq!(
+            normalise_timestamp("2026-07-29T15:52:56Z").as_deref(),
+            Some("2026-07-29T15:52:56Z")
+        );
+        assert_eq!(
+            normalise_timestamp("2026-09-22T20:26:23.270960+00:00").as_deref(),
+            Some("2026-09-22T20:26:23.270Z")
+        );
+        assert_eq!(
+            normalise_timestamp("2026-09-23T09:26:21.069Z").as_deref(),
+            Some("2026-09-23T09:26:21.069Z")
+        );
+        assert_eq!(
+            normalise_timestamp("2026-09-23T09:26:21").as_deref(),
+            Some("2026-09-23T09:26:21Z")
+        );
+    }
+
+    /// Chunking is the one transformation that can silently lose text, so the
+    /// invariant is pinned: concatenating a document's chunks reproduces the
+    /// source exactly.
+    #[test]
+    fn chunk_document_is_lossless() {
+        let turn = |n: usize| {
+            let role = if n % 2 == 0 { "user" } else { "assistant" };
+            format!(
+                "[role: {role}]\n[timestamp: 2026-07-29T15:52:56Z]\n{}\n",
+                "x".repeat(400)
+            )
+        };
+        let small = turn(0);
+        assert_eq!(chunk_document(&small, 24_000).len(), 1, "small docs whole");
+
+        let big: String = (0..40).map(turn).collect();
+        let chunks = chunk_document(&big, 2_000);
+        assert!(chunks.len() > 1, "an oversized document must be split");
+        let joined: String = chunks.iter().map(|c| c.text).collect();
+        assert_eq!(joined, big, "chunks must reproduce the source exactly");
+    }
+
+    /// A document with no turn headers is indivisible; cutting it on a byte count
+    /// would be worse than storing it whole.
+    #[test]
+    fn chunk_document_leaves_headerless_text_whole() {
+        let prose = "no turn markers here. ".repeat(1_000);
+        assert!(prose.len() > 2_000);
+        let chunks = chunk_document(&prose, 2_000);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].text, prose);
+    }
 }
