@@ -5,9 +5,11 @@
 #
 # Env: MW_REPO=<owner>/<repo> (defaults to this repo), MW_VERSION=<tag>
 # (default "latest" via the GitHub API), MW_INSTALL_DIR=<dir> (default
-# ~/.local/bin), MW_LOCAL_ASSET=<file> (install a local .tar.gz, skip the network).
+# ~/.local/bin), MW_LOCAL_ASSET=<file|dir> (install a local .tar.gz, or a
+# directory of them named as release assets, and skip the network).
 # Release assets are memory-wire-<target>.tar.gz, <target> in linux-x86_64
-# linux-aarch64 macos-x86_64 macos-aarch64.
+# linux-x86_64-musl linux-aarch64 macos-x86_64 macos-aarch64. The musl build is
+# static and is what gets installed when the glibc build will not start.
 #
 # Flags:
 #   --db <path>   echo the serve/daemon lines with this --db
@@ -87,23 +89,53 @@ if [ "$MW_VERSION" = latest ] && [ -z "${MW_LOCAL_ASSET:-}" ]; then
   Static fallback: pin a tag, e.g.  MW_VERSION=v0.3.0  sh get-memory-wire.sh"
 fi
 
-ASSET="$BIN-$TARGET.tar.gz"
+# --- candidates -------------------------------------------------------------
+# The glibc build is made on glibc 2.44 and refuses to start below 2.39, so on
+# an older host it downloads, installs, and dies on first run with "GLIBC_2.39
+# not found" — while the installer has already said it succeeded. The musl build
+# is static and has no floor, so it is the fallback.
+#
+# $TARGET is first and is the only candidate wherever no musl build is published,
+# so a healthy host takes the path it always took and prints the same lines.
+# scripts/build-release.sh builds linux-x86_64-musl and no aarch64-musl, so the
+# extra candidate is added where one exists — never by appending "-musl" to
+# whatever $TARGET happens to be.
+CANDIDATES="$TARGET"
+case "$TARGET" in
+  linux-x86_64) CANDIDATES="$TARGET $TARGET-musl" ;;
+esac
 
 # --- fetch ------------------------------------------------------------------
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
-if [ -n "${MW_LOCAL_ASSET:-}" ]; then
-  [ -f "$MW_LOCAL_ASSET" ] || die "MW_LOCAL_ASSET not a file: $MW_LOCAL_ASSET"
-  cp "$MW_LOCAL_ASSET" "$TMP/$ASSET"
-else
+
+# Stage one candidate into $TMP and verify it, or return non-zero so the next
+# candidate is tried. The download and the checksum happen here for every
+# candidate alike, so no asset can reach an install unverified.
+fetch() {
+  ASSET="$BIN-$1.tar.gz"
+  if [ -n "${MW_LOCAL_ASSET:-}" ]; then
+    # A directory is a mirror of the release directory, which is what makes the
+    # fallback testable without a network; a plain file is the documented
+    # single-asset hook and is offered to each candidate in turn.
+    if [ -d "$MW_LOCAL_ASSET" ]; then
+      [ -f "$MW_LOCAL_ASSET/$ASSET" ] || return 1
+      cp "$MW_LOCAL_ASSET/$ASSET" "$TMP/$ASSET"
+    else
+      [ -f "$MW_LOCAL_ASSET" ] || die "MW_LOCAL_ASSET not a file: $MW_LOCAL_ASSET"
+      cp "$MW_LOCAL_ASSET" "$TMP/$ASSET"
+    fi
+    return 0
+  fi
+
   URL="https://github.com/$MW_REPO/releases/download/$MW_VERSION/$ASSET"
   printf 'downloading %s\n' "$URL"
-  curl -fsSL "$URL" -o "$TMP/$ASSET" || die "download failed: $URL
-  Check MW_REPO=<owner>/<repo> and MW_VERSION=<tag>, or build locally:
-    cargo build --release && cp target/release/$BIN $BIN_PATH"
+  curl -fsSL "$URL" -o "$TMP/$ASSET" || return 1
 
   # Verify the download against the checksum the release publishes alongside it.
-  # A missing .sha256 is not fatal (older releases predate it); a MISMATCH is.
+  # A missing .sha256 is not fatal (older releases predate it); a MISMATCH is, and
+  # stays fatal for a fallback candidate too — a corrupt musl tarball is still a
+  # corrupt tarball, not a reason to try something else.
   if curl -fsSL "$URL.sha256" -o "$TMP/$ASSET.sha256" 2>/dev/null; then
     if command -v sha256sum >/dev/null 2>&1; then
       (cd "$TMP" && sha256sum -c "$ASSET.sha256" >/dev/null 2>&1) \
@@ -117,16 +149,131 @@ else
       printf 'checksum ok\n'
     fi
   fi
+}
+
+# Try the candidates in order and keep the first that actually starts. The only
+# honest test of an ELF is running it, so this probes `--version` against the
+# staged copy in $TMP — never `ldd --version`, which is a version comparison in
+# a locale-dependent format answering a question the executable answers exactly.
+# The probe must happen before the mv: once the file is at $BIN_PATH an
+# unusable binary is indistinguishable from an installed one.
+CHOSEN=""
+PROBE_ERR=""
+for cand in $CANDIDATES; do
+  ASSET="$BIN-$cand.tar.gz"
+  # Clear the previous candidate's files. Without this a fallback that fails to
+  # extract would leave the earlier candidate's $TMP/$BIN to be probed.
+  rm -f "$TMP/$BIN" "$TMP/$ASSET" "$TMP/$ASSET.sha256"
+
+  fetch "$cand" || continue
+  tar -xzf "$TMP/$ASSET" -C "$TMP" "$BIN" 2>/dev/null \
+    || tar -xzf "$TMP/$ASSET" -C "$TMP" || continue
+  if [ ! -f "$TMP/$BIN" ]; then
+    printf '  %s did not contain a %s executable\n' "$ASSET" "$BIN" >&2
+    continue
+  fi
+  chmod +x "$TMP/$BIN"
+
+  if PROBE_OUT=$("$TMP/$BIN" --version 2>&1); then
+    CHOSEN="$cand"
+    break
+  fi
+  PROBE_ERR=$(printf '%s\n' "$PROBE_OUT" | head -1)
+  printf '  %s does not run on this host: %s\n' "$ASSET" "$PROBE_ERR" >&2
+done
+
+if [ -z "$CHOSEN" ]; then
+  die "no memory-wire asset runs on this host (tried: $CANDIDATES).
+  Last failure: ${PROBE_ERR:-no asset could be fetched}
+  The linux-x86_64 build needs glibc >= 2.39 and refuses to start on an older
+  libc with GLIBC_2.39 not found; the musl build is static and has no floor, so
+  both failing means neither fits this box. Check what you have:
+    ldd --version | head -1
+  Or install a build you already have, skipping the network:
+    MW_LOCAL_ASSET=<file.tar.gz> MW_INSTALL_DIR=<dir> sh get-memory-wire.sh
+  Or build from source:
+    cargo build --release && cp target/release/$BIN $BIN_PATH"
 fi
 
 # --- install ----------------------------------------------------------------
 mkdir -p "$MW_INSTALL_DIR"
-tar -xzf "$TMP/$ASSET" -C "$TMP" "$BIN" 2>/dev/null \
-  || tar -xzf "$TMP/$ASSET" -C "$TMP"
-[ -f "$TMP/$BIN" ] || die "asset $ASSET did not contain a '$BIN' executable"
+
+# The version a binary reports, or empty when it reports nothing usable. The last
+# field is the version, but only if it looks like one — a banner carrying no
+# version must read as unknown, not as the binary's own name. Read from the
+# executable rather than from the release tag, so the two cannot disagree.
+version_of() {
+  "$1" --version 2>/dev/null | awk '{print $NF}' | sed 's/^[vV]//' \
+    | grep -E '^[0-9][0-9.]*$' || true
+}
+
+# What is on disk right now, read from that binary before the mv overwrites it,
+# and tolerant of its absence: a first install has nothing to report.
+OLD_VER=""
+if [ -x "$BIN_PATH" ]; then
+  OLD_VER=$(version_of "$BIN_PATH")
+fi
+
 mv "$TMP/$BIN" "$BIN_PATH"
 chmod +x "$BIN_PATH"
-printf 'installed %s -> %s\n' "$BIN-$TARGET" "$BIN_PATH"
+NEW_VER=$(version_of "$BIN_PATH")
+printf 'installed %s -> %s\n' "$BIN-$CHOSEN" "$BIN_PATH"
+
+# --- what changed ------------------------------------------------------------
+# The gap this closes is the silence, not the version number: an upgrade, a
+# downgrade and a no-op used to print one identical line, so a user who pinned an
+# old tag had no way to see they had gone backwards.
+#
+# awk for the comparison because it is already assumed present, and this has to
+# work on a box holding nothing but the tools the install itself needs. Prints 1
+# when $1 is newer than $2, 0 when equal, -1 when older.
+ver_cmp() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    na = split(a, A, "."); nb = split(b, B, ".")
+    n = (na > nb ? na : nb)
+    for (i = 1; i <= n; i++) {
+      x = (i <= na ? A[i] : 0) + 0
+      y = (i <= nb ? B[i] : 0) + 0
+      if (x != y) { print(x > y ? 1 : -1); exit }
+    }
+    print 0
+  }'
+}
+
+if [ -z "$NEW_VER" ]; then
+  printf 'installed, but %s --version printed nothing\n' "$BIN_PATH" >&2
+elif [ -z "$OLD_VER" ]; then
+  printf 'version %s (first install — nothing was here to replace)\n' "$NEW_VER"
+elif [ "$OLD_VER" = "$NEW_VER" ]; then
+  printf 'version %s -> %s (no change)\n' "$OLD_VER" "$NEW_VER"
+else
+  case "$(ver_cmp "$NEW_VER" "$OLD_VER")" in
+    1)  printf 'version %s -> %s (upgrade)\n' "$OLD_VER" "$NEW_VER" ;;
+    -1) printf 'version %s -> %s (DOWNGRADE)\n' "$OLD_VER" "$NEW_VER" ;;
+    *)  printf 'version %s -> %s (no change)\n' "$OLD_VER" "$NEW_VER" ;;
+  esac
+fi
+
+# Is anything still executing this path? rename(2) over a running executable does
+# not return ETXTBSY on Linux — the old inode survives as the running process's
+# image and only the directory entry moves — so the mv above replaced the file
+# without interrupting anything, and a server that was already up is still
+# serving the old code. Saying so is the installer's job. Restarting it is not:
+# the daemon may be under a supervisor this script cannot introspect, and a
+# restart is the user's decision. `ps` fails open — a box without it gets no
+# warning, which is not a failed install.
+if [ -n "$OLD_VER" ]; then
+  SERVING=$(ps -eo pid=,args= 2>/dev/null | awk -v p="$BIN_PATH" -v me=$$ '
+    $1 != me && index($2, p) == 1 { print $1 }')
+  if [ -n "$SERVING" ]; then
+    printf '\n  a server is still running the old %s (pid %s): it kept the old\n' \
+      "$OLD_VER" "$SERVING" >&2
+    printf '  inode when the file was replaced, so it must be restarted to serve %s.\n' \
+      "$NEW_VER" >&2
+    printf '    %s daemon stop && %s daemon start\n' "$BIN_PATH" "$BIN_PATH" >&2
+    printf '  (if a supervisor started it: restart that unit)\n' >&2
+  fi
+fi
 
 # --- handoff ----------------------------------------------------------------
 case ":$PATH:" in

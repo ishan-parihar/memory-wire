@@ -821,14 +821,30 @@ curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/inst
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
 defaults, which resolve to this repo and its latest published release
-(`v0.5.0`, assets `memory-wire-linux-x86_64.tar.gz` and
-`memory-wire-linux-aarch64.tar.gz`; no macOS asset — `libsqlite3-sys` links
-CoreFoundation, so those must be built on a Mac).
+(`v0.6.0`, assets `memory-wire-linux-x86_64.tar.gz`,
+`memory-wire-linux-aarch64.tar.gz` and `memory-wire-linux-x86_64-musl.tar.gz`;
+no macOS asset — `libsqlite3-sys` links CoreFoundation, so those must be built
+on a Mac). `MW_LOCAL_ASSET` takes either a single `.tar.gz` or a **directory**
+mirroring the release layout, which is how the fallback below is exercised
+offline.
 
-**The published release is `v0.5.0` and this tree is it.** `v0.5.0` was published
-2026-09-29T20:37:13Z from a local build on this machine, not by GitHub Actions.
-`Cargo.toml` says `0.5.0` and `HEAD` is the `v0.5.0` tag, so the version string
-and the tree agree — check `git log v0.5.0..HEAD --oneline | wc -l` for any
+**On `linux-x86_64` the installer probes what it downloaded and falls back to the
+static musl asset if the glibc build cannot start.** The `linux-x86_64` asset is
+built on glibc 2.44 and needs **≥ 2.39**, so on an older host it downloads,
+verifies, installs, and dies on first run with ``GLIBC_2.39 not found`` — having
+printed success. The installer now runs `--version` against the staged copy
+before it is allowed anywhere near the install path, and on failure tries
+`memory-wire-linux-x86_64-musl.tar.gz`, which is static and has no floor. If
+every candidate fails the error names the glibc requirement and both candidates.
+The gnu asset is still tried first on every platform, so a healthy host takes
+exactly the path it always did. Measured on racknerd (Debian 12, glibc 2.36):
+the probe rejected the gnu asset with the real `GLIBC_2.39` message and the
+install completed on musl. `docs/CONSISTENCY.md` §29 has the record.
+
+**The published release is `v0.6.0` and this tree is it.** `v0.6.0` was published
+2026-09-30T14:31:49Z from a local build on this machine, not by GitHub Actions.
+`Cargo.toml` says `0.6.0` and `HEAD` is the `v0.6.0` tag, so the version string
+and the tree agree — check `git log v0.6.0..HEAD --oneline | wc -l` for any
 distance. Nothing described in this README's `embed` paragraphs is in any
 published release: those shipped the lexical arm only, with the `embed` feature
 absent, and the dense arm still ships at weight 0.0. The tree-versus-release

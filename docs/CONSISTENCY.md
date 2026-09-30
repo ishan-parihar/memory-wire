@@ -3216,3 +3216,163 @@ product faults: `pgrep -f "memory-wire serve"` matches the invoking `bash -c`
 command line, and `ss -ltn | grep 8888` returned nothing while a server was
 bound. The first is the self-match already recorded for this project; the second
 means the port must be checked with `lsof -i :8888` or `ss -ltnp`.
+---
+
+## 29. The musl asset shipped but the installer could never reach it
+
+**§25 recorded the glibc floor as a property of the published asset. This is the
+other half: the floor was discovered, a static build was made and published, and
+the install path still could not use it. A fix that ships an artifact nothing can
+install is not a fix.**
+
+### What was wrong
+
+`install/get-memory-wire.sh` computed `ASSET="$BIN-$TARGET.tar.gz"` from
+`TARGET="$os-$arch"` and never mentioned musl. `v0.6.0` publishes
+`memory-wire-linux-x86_64-musl.tar.gz` beside the gnu asset, and it is verified and
+runnable — `DT_NEEDED` = 0, static-pie. On a host with glibc below 2.39 the
+installer therefore downloaded the gnu asset, verified its checksum, wrote it to
+`~/.local/bin`, printed `installed memory-wire-linux-x86_64`, and exited 0. The
+binary failed on first execution with ``version `GLIBC_2.39' not found``.
+
+There is no test for the installer at all, which is why this shipped: nothing in
+the gate executed `install/get-memory-wire.sh`.
+
+### Why a version parse was rejected
+
+The obvious fix reads `ldd --version` and compares. That is a version comparison
+in a locale-dependent text format answering a question the executable answers
+exactly. The installer instead **runs** each candidate — `--version`, against the
+staged copy in `$TMP`, before anything is allowed near `$BIN_PATH`. The probe
+must precede the `mv`: once an unusable binary is at the install path it is
+indistinguishable from a good one.
+
+### What shipped
+
+- `CANDIDATES` is `$TARGET`, plus `$TARGET-musl` for `linux-x86_64` only.
+  `scripts/build-release.sh:49` builds `linux-x86_64-musl` and **no**
+  `aarch64-musl`, so the extra candidate is added where one exists and never by
+  appending `-musl` to whatever `$TARGET` happens to be.
+- Candidates are tried in order; the first that starts is installed. The gnu
+  asset stays first everywhere, so a healthy host takes the path it always did
+  and prints the lines it always printed.
+- A `.sha256` **mismatch still aborts** for a fallback candidate too. A corrupt
+  musl tarball is a corrupt tarball, not a reason to try something else.
+- If every candidate fails, the error names both candidates, the probe's actual
+  stderr, `glibc >= 2.39`, and the `MW_LOCAL_ASSET` escape hatch.
+- `MW_LOCAL_ASSET` also accepts a **directory** mirroring the release layout. A
+  single file cannot express "gnu fails, musl works", so without this the
+  fallback is untestable offline. A plain file behaves exactly as before.
+
+### Measured, on the host that motivated it
+
+racknerd, Debian 12, glibc 2.36, x86_64 — real `curl` from GitHub, real
+downloads, no fixtures:
+
+```text
+downloading …/v0.6.0/memory-wire-linux-x86_64.tar.gz
+checksum ok
+  memory-wire-linux-x86_64.tar.gz does not run on this host:
+    /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found
+downloading …/v0.6.0/memory-wire-linux-x86_64-musl.tar.gz
+checksum ok
+installed memory-wire-linux-x86_64-musl -> /home/nerd/.local/bin/memory-wire
+version 0.5.1 -> 0.6.0 (upgrade)
+```
+
+Result on that host: **0.6.0, 9,218,992 B, `DT_NEEDED` = 0**, the systemd unit
+byte-untouched, `hermes.db` unchanged at 7,811,072 B, and `GET /health` answering
+`ok` *during* the swap.
+
+### Replacing a binary that is running
+
+Verified rather than assumed, and the result decided the design: `mv` over a
+**running ELF succeeds** on this kernel — `rename(2)` does not return ETXTBSY, and
+the live process keeps its old now-deleted inode. So the install needs to stop
+nothing. `ETXTBSY` is real but it belongs to `execve`/`open`-for-write, not to
+rename.
+
+That is why version skew is a **warning** and not an automatic restart: the
+installer names the running pid, the version it is still serving, and the command
+— and then leaves it alone, because that process may be under a supervisor the
+script cannot introspect. On racknerd it is a systemd user unit, so the restart
+was done by hand.
+
+### The version report
+
+`OLD_VER` is read from the existing binary's `--version` **before** the `mv`, and
+only if it matches `^[0-9][0-9.]*$` — without that guard a banner carrying no
+version yields the program name as the version, which is what the first smoke
+test did. Comparison is `awk`, already assumed present. The four cases:
+`first install`, `upgrade`, `no change`, `DOWNGRADE`.
+
+Known limit: a pre-release suffix is truncated, so `0.6.0-rc.1` compares as
+`0.6.0`. Fine for a published tag, wrong for a release candidate.
+
+### The test, and a flake that was mine to find
+
+`tests/installer.rs` is new — the first test this installer has ever had. Five
+tests, real `sh`, real `tar`, real tarballs, no network: the fallback is chosen;
+the gnu asset still wins and `-musl` never appears in the output; every candidate
+failing names the floor and writes no binary; all four version cases; and a
+running server is reported by pid and **not** stopped.
+
+Teeth were demonstrated, not asserted: deleting the musl branch makes 2 of the 5
+fail; restoring makes them pass. The control test stayed green throughout, which
+is what makes it a control.
+
+**The builder reported 527 passed / 0 failed. My own run had `installer` at 4
+passed / 1 failed.** Roughly 25% of runs, parallel-only, 6/6 clean under
+`--test-threads=1`, failing at `tests/installer.rs` in the *fixture* with
+`Text file busy` — the spawn of the stand-in server, before the installer runs.
+600 sequential copy→rename→exec iterations on tmpfs never reproduced it, so it is
+contention in the test harness rather than in the installer. Fixed with a bounded
+retry on ETXTBSY in the fixture only; **20/20 clean after**. The product path was
+never implicated, and the retry is documented as a harness artifact at the call
+site so it is not mistaken for tolerance of a real failure.
+
+Gate after the fix, run here and not quoted from the builder: **527 passed, 0
+failed**; `cargo clippy --all-targets --all-features --locked -- -D warnings` exit
+0; `cargo doc` exit 0.
+
+The +43 tests between the 0.5.1 gate and here are four real commits, including
+`b531a22` (the pi/omp extension host) — not a phantom count.
+
+### A retraction: the racknerd bank split is not what I first called it
+
+I reported the seven banks in `hermes.db` as a blocker requiring the user's
+consolidation decision, on two grounds. **Both grounds were wrong**, and I had
+asserted them without measuring.
+
+**"Something is actively writing, so merging is unsafe."** Nothing was writing.
+The open `hermes.db-wal` fds are SQLite holding its own file open, not evidence
+of traffic; the decisive measurement is the newest row, `2026-09-30T04:46Z`
+against a clock reading ~15:36Z — **about eleven hours idle**. I read an open file
+descriptor as an active writer, which is the same class of error as reading an
+empty `grep` window as an absent key earlier in the same session.
+
+**"The corpus is split with no obvious right bank."** The banks are not fragments
+of one corpus. Read, they are successive stages of a pipeline:
+
+| bank | rows | shape of a row |
+|---|---|---|
+| `hermes-observations` | 1052 | `[2026-07-30T23:24:17Z] conversation: …` — raw transcript |
+| `hermes-memories` | 661 | `LESSON: …` — distilled from those transcripts |
+| `hermes-concepts` | 102 | `Concept: Google Storage Free Tier — current_usage=135%` |
+| `memory-wire` | 726 | plugin/architecture notes, unrelated in origin |
+
+Consolidating these would put a raw observation next to its own distillation next
+to the concept extracted from it — flattening a deliberate hierarchy, not repairing
+a mess. The row *counts* differ because the stages differ, not because rows were
+scattered.
+
+So the correct action is to leave them alone, and that is a conclusion rather than
+a deferral. What remains true is the original diagnosis: a hook in a directory
+whose git remote derives `ishan-parihar-reddit-httpx` recalls nothing, `doctor`
+says so, and the two remedies it names are the only two — `--bank`, or
+`MEMORY_WIRE_BANK`.
+
+The underlying limitation is worth naming rather than leaving implied: **recall is
+per-bank, and there is no cross-bank query.** A user whose memory is staged across
+`observations → memories → concepts` gets one stage per call. That is a product
+gap, not a configuration error, and it is not fixable by choosing a bank.
