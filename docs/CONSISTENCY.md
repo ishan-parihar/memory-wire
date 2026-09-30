@@ -3139,3 +3139,80 @@ reading them.
 Daemon: second start refused with exit 1 and left the running one alone; status 0
 while serving and 1 while not; `doctor --strict` 0; stop removed the state file;
 restart came back `ok` and the hooks followed it, 4752 bytes.
+
+## 28. omp and pi are two harnesses, and the injection API is not MCP
+
+### 28.1 `pi` was a whole host we did not support
+
+Asked to build a native plugin for "pi and omp", I checked whether `pi` was
+omp's legacy name. It is not: `pi` is a **separate harness**, `/home/ishanp/.local/bin/pi`
+v0.87.1, a 111-byte bash wrapper around `mise x pi`, with its own `~/.pi/agent/`
+tree. `omp` is `/home/ishanp/.local/bin/omp` v18.3.0, a 275 MB single-file ELF.
+Both are installed here; memory-wire supported neither natively.
+
+The omp binary contains `T.omp || T.pi` — an explicit `.omp`-prefers-`.pi`
+fallback — which is why the two were previously conflated.
+
+### 28.2 The two harnesses discover extensions differently
+
+- **omp**: flat `.ts` files in `~/.omp/agent/extensions/*.ts`
+- **pi**: `~/.pi/agent/extensions/<dir>/index.ts` (agentmemory's own adapter says
+  so in a comment: "pi auto-discovers `~/.pi/agent/extensions/*/index.ts`")
+
+### 28.3 The injection mechanism, and how it was found
+
+Not from the omp binary, which required a lot of guessing. The answer came from
+**agentmemory's working extension**, `_audit/agentmemory/integrations/pi/index.ts:335`:
+
+```ts
+pi.on("before_agent_start", async (event, ctx) => {
+  const prompt = event.prompt;
+  const results = await recall(prompt);
+  return { systemPrompt: [event.systemPrompt, TOOL_GUIDANCE, recallBlock]
+                         .filter(Boolean).join("\n\n") };
+});
+```
+
+Returning `{ systemPrompt }` **replaces** the system prompt, so an implementation
+that forgets to re-include `event.systemPrompt` silently erases the harness's own
+instructions. `before_agent_start` is present in the omp 18.3.0 binary (11
+string occurrences), so the pi contract transfers. Their note describes it as
+"recall on agent start, capture on agent end" against a REST API — the same shape
+we need.
+
+A methodological note, because it cost real effort: my first pass at the event
+list used `grep -xE` over `strings` output, which silently dropped
+`before_agent_start` and `tool_result` because they appear inside longer strings
+rather than alone on a line. An exact-match filter over a bag-of-strings search
+is the wrong tool; substring counting is correct.
+
+Also established and worth keeping: the omp binary **embeds its own
+documentation set** (`extensions.md`, `hooks.md`, `memory.md`,
+`extension-loading.md`, `skills/authoring-extensions.md`), and its native
+`memory.backend` slot is closed to third parties — backends are bundled modules
+inside `@oh-my-pi/pi-coding-agent` with no `registerMemoryBackend` symbol. MCP
+remains the only tool surface for both harnesses; the extension adds **injection**
+on top of it, which MCP-only could never provide.
+
+### 28.4 racknerd is on 0.5.1, and it exposed a defect in `doctor`
+
+Deployed 0.5.1 as a static musl build (10,793,320 B, `NEEDED=0`) to
+`racknerd`, preserving the running server's exact argv including its `--db`.
+A `systemd --user` unit `memory-wire.service` owns the process
+(`Restart=on-failure`, `MemoryMax=128M`, `enabled` + `active`) and respawned it
+after my own start attempt, which is how I learned it exists. `daemon status`
+correctly reports exit 1 there: the host uses systemd, not `memory-wire daemon`.
+
+**`doctor` inspects the wrong file when the server was started with `--db`.** On
+racknerd the live server serves `hermes.db` (7,811,072 B) while `doctor` reports
+`memory.db` (11,767,808 B, 1,684 memories) — two different files. So the
+diagnostic confidently described a store nothing is serving, and its headline
+counts (banks 2, memories 1684) are not the live corpus (7,459 rows across 7
+banks). This is the same failure class as the bank-mismatch defect fixed in 0.5.1:
+a diagnostic that reports something true and irrelevant. Not fixed here; recorded.
+
+Two of my own probe methods were wrong on that host and both would have read as
+product faults: `pgrep -f "memory-wire serve"` matches the invoking `bash -c`
+command line, and `ss -ltn | grep 8888` returned nothing while a server was
+bound. The first is the self-match already recorded for this project; the second
+means the port must be checked with `lsof -i :8888` or `ss -ltnp`.
