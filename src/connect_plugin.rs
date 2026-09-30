@@ -1078,6 +1078,9 @@ telemetry:
         assert!(home.join(".hermes/config.yaml").is_file());
     }
 
+    /// The name resolves to a host, and the host is reachable by name even though
+    /// a bare `connect` does not wire it — which is the only thing being asked of
+    /// an excluded host.
     #[test]
     fn hermes_is_one_of_the_hosts_a_bare_connect_wires() {
         assert!(

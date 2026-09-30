@@ -68,9 +68,29 @@ pub enum Host {
     /// global memory slot unasked is exactly the hazard that keeps `Hermes` out of
     /// [`IMPLICIT`]. An MCP key under `mcpServers` is purely additive: it displaces
     /// nothing, which is why OMP is in the implicit set and hermes is not.
+    ///
+    /// OMP also gets a native **extension** (`~/.omp/agent/extensions/memory-wire.ts`,
+    /// see [`crate::connect_ext`]), because an MCP tool only exists when the model
+    /// decides to call it — so on an MCP-only host a memory is invisible until the
+    /// model thinks to look. The two are additive: the MCP entry is left in place and
+    /// neither replaces the other, and `--uninstall` removes both.
     Omp,
     /// hermes-agent (`~/.hermes/config.yaml` plus `~/.hermes/plugins/`).
     Hermes,
+    /// pi (`~/.pi/agent/extensions/memory-wire/index.ts`).
+    ///
+    /// A separate harness from [`Host::Omp`], not its old name. The two are
+    /// conflated because the omp binary contains an explicit
+    /// `T.omp || T.pi` config fallback; they are not the same program, and they
+    /// do not discover extensions the same way. pi takes **no** config entry and
+    /// **no** MCP key — its whole integration surface is the extension, which is
+    /// why it is [`Style::Extension`] rather than a variant of either of the two
+    /// surfaces above.
+    ///
+    /// It is in [`IMPLICIT`] for the same reason omp is: the install creates one
+    /// new file under a directory we would otherwise have to create anyway, and
+    /// displaces nothing. Unlike [`Host::Hermes`] it holds no single global slot.
+    Pi,
 }
 
 /// Every host, in report order.
@@ -82,18 +102,24 @@ pub const ALL: &[Host] = &[
     Host::Opencode,
     Host::Omp,
     Host::Hermes,
+    Host::Pi,
 ];
 
 /// The hosts a bare `memory-wire connect` wires without being asked.
 ///
-/// Deliberately not [`ALL`]. The other six are additive: a hook entry or an MCP key
-/// added to a JSON file, leaving whatever was already there working. Hermes activates
-/// exactly one memory provider, so wiring it moves a single global slot — from
-/// `agentmemory` to us, on this machine, unasked. A bare `connect` should not trade
-/// one memory system for another; `connect hermes` is one word longer and says what
-/// it does. OMP has the same single-slot `memory.backend` and the same reason for
-/// leaving it untouched; see the [`Host::Omp`] doc for why its MCP entry is still
-/// additive, and therefore implicit.
+/// Deliberately not [`ALL`]. Every host here is additive: a hook entry, an MCP key
+/// or an extension file added to a directory, leaving whatever was already there
+/// working. [`Host::Hermes`] is the one exception — it activates exactly one memory
+/// provider, so wiring it moves a single global slot, from `agentmemory` to us, on
+/// this machine, unasked. A bare `connect` should not trade one memory system for
+/// another; `connect hermes` is one word longer and says what it does. OMP has the
+/// same single-slot `memory.backend` and the same reason for leaving *that* untouched;
+/// see the [`Host::Omp`] doc for why its MCP entry and extension are still additive,
+/// and therefore implicit. Pi has no such slot at all: its whole surface is a new file.
+///
+/// One rule keeps this list honest: a host is implicit when wiring it can only add,
+/// and named-only when it can take something away. That is why the note `main.rs`
+/// prints for the hosts left out can keep naming exactly one hazard.
 pub const IMPLICIT: &[Host] = &[
     Host::ClaudeCode,
     Host::Codex,
@@ -101,6 +127,7 @@ pub const IMPLICIT: &[Host] = &[
     Host::Cursor,
     Host::Opencode,
     Host::Omp,
+    Host::Pi,
 ];
 
 /// Resolve a host list: one name, several separated by commas or spaces, or the
@@ -175,6 +202,12 @@ enum Style {
     /// install is a copy of an embedded tree plus one scalar edit, which is what
     /// [`crate::connect_plugin`] is for.
     Plugin,
+    /// The host imports a **source file** out of a directory it owns, and the
+    /// file *is* the registration — no manifest, no key, nothing to merge. This
+    /// is [`crate::connect_ext`], and it is a whole surface rather than a second
+    /// half of one, so it branches before the JSON read the way [`Style::Plugin`]
+    /// does.
+    Extension,
 }
 
 impl Host {
@@ -188,6 +221,7 @@ impl Host {
             Host::Opencode => "opencode",
             Host::Omp => "omp",
             Host::Hermes => "hermes",
+            Host::Pi => "pi",
         }
     }
 
@@ -205,6 +239,10 @@ impl Host {
             // file `backup` must preserve before the first write, and it is what
             // the report line names.
             Host::Hermes => ".hermes/config.yaml",
+            // pi reads no config for this. The extension file is named here for
+            // the same two reasons as the line above, and because it is the only
+            // answer this method can give a host whose whole surface is one file.
+            Host::Pi => ".pi/agent/extensions/memory-wire/index.ts",
         };
         PathBuf::from(s)
     }
@@ -219,6 +257,7 @@ impl Host {
             Host::Opencode => ".config/opencode",
             Host::Omp => ".omp",
             Host::Hermes => ".hermes",
+            Host::Pi => ".pi",
         }
     }
 
@@ -232,6 +271,7 @@ impl Host {
             Host::Opencode => "opencode",
             Host::Omp => "omp",
             Host::Hermes => "hermes",
+            Host::Pi => "pi",
         }
     }
 
@@ -242,6 +282,7 @@ impl Host {
             Host::CopilotCli => Style::Copilot,
             Host::Cursor | Host::Opencode | Host::Omp => Style::Mcp,
             Host::Hermes => Style::Plugin,
+            Host::Pi => Style::Extension,
         }
     }
 
@@ -350,7 +391,7 @@ impl Style {
                 "bash": hook_cmd(exe, lifecycle, bank),
                 "timeoutSec": HOOK_TIMEOUT,
             })),
-            Style::Mcp | Style::Plugin => None,
+            Style::Mcp | Style::Plugin | Style::Extension => None,
         }
     }
 }
@@ -446,6 +487,10 @@ fn wired_with(host: Host, home: &Path) -> bool {
     if host.style() == Style::Plugin {
         return home.join(host.detect_rel()).join("plugins").join(MARKER).is_dir();
     }
+    // The extension host is its own file and nothing else.
+    if host.style() == Style::Extension {
+        return crate::connect_ext::installed(host, home);
+    }
     let Ok(raw) = paths::read_or_empty(&home.join(host.config_rel())) else {
         return false;
     };
@@ -456,9 +501,15 @@ fn wired_with(host: Host, home: &Path) -> bool {
         // The MCP hosts are keyed by the server name we register under, so the
         // key is the check. The hook hosts are recognised the way every other
         // pass recognises them: by the marker inside the entry.
-        Style::Mcp => host.mcp_spec().is_some_and(|(key, _)| {
-            root.get(key).and_then(Value::as_object).is_some_and(|m| m.contains_key(MARKER))
-        }),
+        Style::Mcp => {
+            // OMP answers "or" rather than "and", because it has two additive
+            // surfaces: an MCP-only omp wired by an earlier build is genuinely
+            // connected, and reporting `wired=no` there would be a false negative
+            // the user has no way to act on. `connect omp` still installs both.
+            host.mcp_spec().is_some_and(|(key, _)| {
+                root.get(key).and_then(Value::as_object).is_some_and(|m| m.contains_key(MARKER))
+            }) || crate::connect_ext::installed(host, home)
+        }
         _ => EVENTS
             .iter()
             .any(|ev| root.pointer(&format!("/hooks/{}", ev.name)).is_some_and(is_ours)),
@@ -671,13 +722,17 @@ pub(crate) fn apply(
     let style = host.style();
 
     // One enum, two install surfaces. `Style::Plugin` is not a JSON edit at all —
-    // it copies a directory and moves one scalar in a YAML document — so it
-    // branches before the read below, which has nothing to parse for that host.
-    // Keying the split on `Style` rather than on `host == Host::Hermes` is the
-    // point: every other arm of the enum stays on the shared JSON path, and a
-    // future plugin-shaped host is a new variant rather than a new side door.
+    // it copies a directory and moves one scalar in a YAML document — and
+    // `Style::Extension` writes a single source file, so both branch before the
+    // read below, which has nothing to parse for either host. Keying the split on
+    // `Style` rather than on `host == Host::Hermes` is the point: every other arm
+    // of the enum stays on the shared JSON path, and a future plugin-shaped or
+    // extension-shaped host is a new variant rather than a new side door.
     if style == Style::Plugin {
         return crate::connect_plugin::apply(host, home, uninstall, data_root);
+    }
+    if style == Style::Extension {
+        return crate::connect_ext::apply(host, home, uninstall, data_root);
     }
 
     let rel = host.config_rel();
@@ -765,15 +820,20 @@ pub(crate) fn apply(
         }
     })();
 
-    // Codex is the one host with a second file in a second format. Its hooks live
-    // in `hooks.json`, above, and its MCP servers in `config.toml` — a TOML
-    // document this crate has no parser for, so it is a surgical text edit in
-    // `connect_codex`. Additive rather than a replacement: a Codex session needs
-    // both the hooks and the tools, and the HTTP MCP endpoint is the only
-    // transport Codex can reach.
-    if host == Host::Codex {
-        outcome = merge(outcome, crate::connect_codex::apply(home, uninstall, data_root));
-    }
+    // Two hosts have a second file in a second format, merged into one report
+    // line. Codex's hooks live in `hooks.json`, above, and its MCP servers in
+    // `config.toml` — a TOML document this crate has no parser for, so it is a
+    // surgical text edit in `connect_codex`. OMP's MCP entry is in
+    // `mcp.json`, above, and its extension is a TypeScript file this crate
+    // writes whole from an embedded template. Both are additive rather than a
+    // replacement: a Codex session needs the hooks *and* the tools, and an omp
+    // session wants the tools *and* the injection, because an MCP tool exists
+    // only when the model decides to call it.
+    outcome = match host {
+        Host::Codex => merge(outcome, crate::connect_codex::apply(home, uninstall, data_root)),
+        Host::Omp => merge(outcome, crate::connect_ext::apply(host, home, uninstall, data_root)),
+        _ => outcome,
+    };
     outcome
 }
 
@@ -1014,6 +1074,176 @@ mod tests {
         );
         assert!(ALL.contains(&Host::Hermes), "hermes is still reachable by name");
         assert_eq!(ALL.len(), IMPLICIT.len() + 1, "every other host stays implicit");
+    }
+
+    /// The rule the [`IMPLICIT`] doc is derived from, stated as a test so adding a
+    /// host cannot quietly break it. Implicit means *can only add*: a new file in
+    /// a directory, a key beside what is already there. Named-only means it can
+    /// take something away, and that is the only reason hermes is excluded.
+    #[test]
+    fn pi_is_implicit_because_its_install_can_only_add() {
+        assert!(
+            IMPLICIT.contains(&Host::Pi),
+            "pi's whole surface is a new file under a directory, so it displaces nothing"
+        );
+        assert!(
+            !IMPLICIT.contains(&Host::Hermes),
+            "hermes holds a single global provider slot, so it is named-only"
+        );
+        // And pi really is a separate host rather than omp under another name:
+        // the two resolve to different homes and different extension layouts.
+        assert_ne!(Host::Pi.id(), Host::Omp.id());
+        assert_ne!(Host::Pi.config_rel(), Host::Omp.config_rel());
+        assert_ne!(Host::Pi.detect_rel(), Host::Omp.detect_rel());
+    }
+
+    /// `connect omp` writes **two** additive surfaces, and neither displaces the
+    /// other: an omp that had the MCP entry from an earlier build keeps it and
+    /// gains the extension beside it. A foreign server in the same map is the
+    /// third party neither pass may touch.
+    #[test]
+    fn connect_omp_should_keep_its_mcp_entry_and_add_the_extension() {
+        let home = tmp_home("omp-both");
+        std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("omp home");
+        // A server of somebody else's, so `mcp.json` survives our uninstall —
+        // on a first install ours is the only key, and an emptied config is
+        // removed by the shared path rather than rewritten as `{}`.
+        write_config(
+            &home,
+            &Host::Omp.config_rel(),
+            r#"{"mcpServers":{"cloakctl":{"type":"stdio","command":"/bin/cloakctl"}}}"#,
+        );
+        let out = apply(
+            Host::Omp,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None
+        );
+        let Outcome::Wired { events, .. } = &out else {
+            panic!("{out:?}");
+        };
+        assert!(
+            events.iter().any(|e| e == "mcpServers"),
+            "the MCP entry is still written: {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| e.contains("memory-wire.ts")),
+            "the extension is written too: {events:?}"
+        );
+        let doc = read_config(&home, &Host::Omp.config_rel());
+        assert!(doc["mcpServers"]["memory-wire"]["args"].is_array(), "{doc}");
+        assert!(
+            doc["mcpServers"]["cloakctl"].is_object(),
+            "a foreign server is untouched: {doc}"
+        );
+        let ext = home.join(crate::connect_ext::extension_rel(Host::Omp).expect("rel"));
+        assert_eq!(std::fs::read_to_string(&ext).expect("read"), crate::connect_ext::SOURCE);
+
+        // And uninstall takes back only our two, leaving the foreign one.
+        let out = apply(
+            Host::Omp,
+            "/bin/memory-wire",
+            &home,
+            true,
+            no_path,
+            &home.join("data"),
+            None
+        );
+        assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
+        assert!(!ext.exists(), "the extension is removed");
+        let doc = read_config(&home, &Host::Omp.config_rel());
+        assert!(
+            doc["mcpServers"].get("memory-wire").is_none(),
+            "our MCP entry is removed: {doc}"
+        );
+        assert!(
+            doc["mcpServers"]["cloakctl"].is_object(),
+            "and nobody else's was: {doc}"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// An omp wired by an earlier build — MCP only, no extension — is genuinely
+    /// connected and must not read as `wired=no`, which would be a false negative
+    /// the user has no way to act on.
+    #[test]
+    fn an_mcp_only_omp_still_reads_as_wired() {
+        let home = tmp_home("omp-mcponly");
+        let rel = Host::Omp.config_rel();
+        std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("omp home");
+        write_config(
+            &home,
+            &rel,
+            r#"{"mcpServers":{"memory-wire":{"type":"stdio","command":"/old/memory-wire","args":["mcp"]}}}"#,
+        );
+        assert_eq!(listing_fields(&home, Host::Omp), ["detected=yes", "wired=yes"]);
+        assert_eq!(listing_fields(&home, Host::Pi), ["detected=no", "wired=no"]);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// `wired` has to be read out of the file for pi too, and reading it must not
+    /// create anything — pi's install is a directory we would otherwise have to
+    /// conjure up.
+    #[test]
+    fn listing_should_read_pis_state_without_writing_it() {
+        let home = tmp_home("pi-list");
+        std::fs::create_dir_all(home.join(Host::Pi.detect_rel())).expect("pi home");
+        let before = read_dir_names(&home);
+        assert!(listing(Host::Pi, &home, no_path).contains("detected=yes wired=no"));
+        assert_eq!(read_dir_names(&home), before, "a listing writes nothing");
+
+        let out = apply(
+            Host::Pi,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None
+        );
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        assert_eq!(listing_fields(&home, Host::Pi), ["detected=yes", "wired=yes"]);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// A foreign file at pi's path reads as *not* wired, so `--list` tells the
+    /// truth about a path we are refusing to write.
+    #[test]
+    fn a_foreign_pi_extension_does_not_read_as_wired() {
+        let home = tmp_home("pi-foreign");
+        std::fs::create_dir_all(home.join(Host::Pi.detect_rel())).expect("pi home");
+        let path = home.join(crate::connect_ext::extension_rel(Host::Pi).expect("rel"));
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&path, "// my own extension\n").expect("write");
+        assert_eq!(listing_fields(&home, Host::Pi), ["detected=yes", "wired=no"]);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// The `detected=` / `wired=` fields of one `connect --list` line, split out
+    /// rather than matched as a substring: `detected` is padded to three columns
+    /// so the columns line up, which means `no` is followed by *two* spaces and
+    /// `yes` by one. A substring assertion over the padded line would pass for
+    /// `yes` and silently fail for `no` — the half that matters here.
+    fn listing_fields(home: &Path, host: Host) -> Vec<String> {
+        listing(host, home, no_path)
+            .split_whitespace()
+            .skip(1)
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Names directly under `home`, sorted — the "nothing was created" snapshot.
+    fn read_dir_names(home: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(home)
+            .expect("home")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
     }
 
     fn parse(v: &[&str]) -> Result<Vec<Host>, String> {

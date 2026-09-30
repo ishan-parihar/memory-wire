@@ -1,6 +1,7 @@
 mod cli_home;
 mod connect;
 mod connect_codex;
+mod connect_ext;
 mod connect_plugin;
 mod daemon;
 mod doctor;
@@ -1490,6 +1491,33 @@ mod tests {
         assert_eq!(fields("codex"), ["codex", "detected=yes", "wired=yes"]);
         assert_eq!(fields("claude-code"), ["claude-code", "detected=yes", "wired=no"]);
         assert_eq!(fields("hermes"), ["hermes", "detected=no", "wired=no"]);
+        // pi and omp take an extension as well as a config, and a host with
+        // neither surface on this machine still has to be named.
+        assert_eq!(fields("pi"), ["pi", "detected=no", "wired=no"]);
+        assert_eq!(fields("omp"), ["omp", "detected=no", "wired=no"]);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// pi and omp take an extension as well as a config, and a host with neither
+    /// surface on this machine still has to be named. An omp home directory with
+    /// no `mcp.json` and no extension is the "detected but not wired" state, read
+    /// off the real tree rather than stubbed.
+    #[test]
+    fn the_extension_hosts_are_named_by_connect_list_too() {
+        let home = cli_scratch("list-ext");
+        std::fs::create_dir_all(home.join(".omp")).expect("mkdir");
+        let (out, err, code) = connect_run(&["connect", "--list"], &home);
+        assert_eq!(code, 0, "{err}");
+        let fields = |id: &str| -> Vec<String> {
+            out.lines()
+                .find(|l| l.starts_with(id))
+                .unwrap_or_else(|| panic!("{id} missing from:\n{out}"))
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(fields("omp"), ["omp", "detected=yes", "wired=no"]);
+        assert_eq!(fields("pi"), ["pi", "detected=no", "wired=no"]);
         std::fs::remove_dir_all(&home).ok();
     }
 

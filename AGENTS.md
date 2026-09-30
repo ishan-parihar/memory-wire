@@ -107,6 +107,7 @@ the wrong one is how claims drift.
 | what is still open, and what is deliberately not being done | `docs/INTEGRATION_GAPS.md` — written at `eec026f`, partly stale; verify each row against the binary |
 | what we install into each agent harness, and what is quietly broken | `docs/INTEGRATION_AUDIT.md` — findings ranked F1–F7, each verified or explicitly marked unverified |
 | how to make the harness integration correct rather than merely present | `docs/INTEGRATION_PLAN.md` — two open decisions block Phase 1 |
+| why a hook injected something irrelevant, and why adding a score threshold is the wrong fix | `docs/OPEN_HOOK_RECALL_RELEVANCE.md` — diagnosed, deliberately unfixed |
 | which retrieval lever was tried and killed, and by what measurement | `docs/RERANKING_PLAN.md` §3, `docs/PERFORMANCE_PLAN.md` |
 | where the numbers came from, honestly | `eval/README.md`, and the artifact it names |
 | dependency versions and why they are pinned | `docs/VERSIONS.md` |

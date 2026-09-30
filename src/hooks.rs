@@ -329,12 +329,66 @@ fn server_preamble_at(endpoint: &str, bank: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Recalled memories, or `None` when the server is unreachable.
-fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<String>> {
+/// One recalled memory, as the server's ranking scored it.
+///
+/// The `score` is the fused RRF value the ranking used — `Σ wᵢ/(k + rankᵢ)` over
+/// the streams the memory ranked in — and it is a function of **ranks alone**.
+/// Nothing in it grows when a match is better in any absolute sense, so it says
+/// how a memory stood against this query's other candidates and never that
+/// anything is relevant. A query whose every hit is wrong still has a top hit,
+/// and that hit scores the same as a genuinely good one: measured on a live
+/// server, a bank of quantitative-trading notes recalled for a
+/// Telegram-agentic-loop query returned a top hit at **99.4% of the maximum
+/// score the formula can produce**.
+///
+/// It is carried here so a relevance decision is *possible* at the only place
+/// that could make one. This function used to deserialise `Vec<String>` and
+/// discard it, and then emit the top [`MAX_LINES`] unconditionally — so the
+/// ranking's quality was unjudgeable one line before the text was injected, and
+/// a conversation about one subject received a page of another.
+///
+/// **No decision is made on it, and none should be added without a dev set.**
+/// The 99.4% above is why: the cut that would reject that set also rejects a
+/// good one, because there is no separation to cut on. Any threshold here is a
+/// fitted constant, which `AGENTS.md` §1 forbids acquiring without a dev set.
+/// `docs/OPEN_HOOK_RECALL_RELEVANCE.md` carries the whole argument, including
+/// what a dev set would have to look like.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ScoredHit {
+    /// The memory's content, exactly as the ranking returned it.
+    content: String,
+    /// Fused RRF score, or `None` when the server answered with the default bare
+    /// shape. Both are the same ranking; only the reporting differs.
+    score: Option<f64>,
+}
+
+/// One entry of a recall response, in either of the two shapes the server serves.
+///
+/// `format: "full"` is opt-in, so the bare array of content strings is the
+/// *default* and stays the default for every build that predates it — and a
+/// hook and a server are separately installed, separately upgraded binaries.
+/// A new hook against an old server gets bare strings, and the alternative to
+/// reading them is a hook that silently injects nothing at all, which is a
+/// regression in an integration that used to work.
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum WireHit {
+    /// `format: "full"`: `{id, score, content}`.
+    Scored { content: String, score: Option<f64> },
+    /// The default: a bare content string, unscored.
+    Bare(String),
+}
+
+/// Recalled memories, or `None` when the server is unreachable or its answer is
+/// not a recall this build can read.
+fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> {
     if query.trim().is_empty() {
         return None;
     }
-    let body = json!({ "query": query, "budget": BUDGET }).to_string();
+    // `format: "full"` is what puts the score on the wire. It is the documented
+    // opt-in for exactly this — a caller that has to judge what it got back —
+    // and it changes nothing else about the response's contents or ordering.
+    let body = json!({ "query": query, "budget": BUDGET, "format": "full" }).to_string();
     let resp = http::post_json(
         &format!("{endpoint}/banks/{bank}/recall"),
         &body,
@@ -344,15 +398,37 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<String>> {
     if !resp.ok() {
         return None;
     }
-    serde_json::from_str::<Vec<String>>(&resp.body).ok()
+    // Unparseable is `None`, not an error: the module's contract is that no
+    // failure here reaches the host. A response shape this build does not
+    // recognise is indistinguishable, from in here, from a server that is down.
+    let hits: Vec<ScoredHit> = serde_json::from_str::<Vec<WireHit>>(&resp.body)
+        .ok()?
+        .into_iter()
+        .map(|hit| match hit {
+            WireHit::Scored { content, score } => ScoredHit { content, score },
+            WireHit::Bare(content) => ScoredHit { content, score: None },
+        })
+        .collect();
+    // The scores, on stderr, at a level that is off by default. Nothing branches
+    // on this and nothing is gated by it — it is the ranking as the server
+    // measured it, which is the one thing that was unobservable before and is
+    // the first input a relevance policy would need. `RUST_LOG=debug memory-wire
+    // hook prompt` is how to see it; the module's own test pins that no log
+    // level reaches the host's stdout, so this can never reach the model.
+    tracing::debug!(
+        "recall: {} hit(s), scores {:?}",
+        hits.len(),
+        hits.iter().map(|h| h.score).collect::<Vec<_>>()
+    );
+    Some(hits)
 }
 
 /// Recalled memories as plain text.
-fn recall_section(bank: &str, hits: &[String]) -> String {
+fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
     let mut out = format!("\n### memory-wire recall — `{bank}`\n\n");
     for hit in hits.iter().take(MAX_LINES) {
         out.push_str("- ");
-        out.push_str(hit);
+        out.push_str(&hit.content);
         out.push('\n');
     }
     if hits.len() > MAX_LINES {
@@ -917,9 +993,131 @@ mod tests {
 
     #[test]
     fn recall_section_should_cap_lines() {
-        let hits: Vec<String> = (0..MAX_LINES + 3).map(|i| format!("hit {i}")).collect();
+        let hits: Vec<ScoredHit> = (0..MAX_LINES + 3)
+            .map(|i| ScoredHit { content: format!("hit {i}"), score: Some(0.0) })
+            .collect();
         let out = recall_section("b", &hits);
         assert!(out.contains(&format!("- hit {}", MAX_LINES - 1)));
         assert!(out.contains("…and 3 more"), "{out}");
+    }
+
+    // The test with teeth, and the core of the fix. The defect this closes is an
+    // *information* loss, not a bad decision, so an assertion on the rendered
+    // section could never have caught it: the rendered text is identical either
+    // way. This asserts on the parsed value, and asserts it exactly — the score
+    // is a passthrough, so any arithmetic done on the client surfaces here as a
+    // mismatch instead of hiding inside a rendering assertion.
+    //
+    // Exactness is available because both sides are correctly rounded: the f64
+    // literal below and serde's float parse land on the same bit pattern. It is
+    // rank 1 in the BM25 stream at `k = 60`, i.e. `1/(k+1)`, and it is written
+    // out rather than computed so the test cannot re-implement the thing it is
+    // testing.
+    #[test]
+    fn the_score_should_survive_the_client_boundary() {
+        const RRF_RANK_ONE: f64 = 0.016393442622950818;
+        let body = format!(
+            r#"[{{"id":"m1","score":{RRF_RANK_ONE},"content":"auth uses jose"}},
+                {{"id":"m2","score":0.0139,"content":"rate limit is token bucket"}}]"#
+        );
+        let (ep, rx) = canned(vec![("/recall", String::leak(body))]);
+
+        let hits = recall_at(&ep, "demo", "how does auth work").expect("a recall this build can read");
+        assert_eq!(hits.len(), 2, "{hits:?}");
+
+        // The score itself, on the value the renderer is handed — not on stdout.
+        assert_eq!(hits[0].score, Some(RRF_RANK_ONE), "the score must survive");
+        assert_eq!(hits[0].content, "auth uses jose");
+        assert_eq!(hits[1].score, Some(0.0139), "and for every hit, not just the first");
+        assert_eq!(hits[1].content, "rate limit is token bucket");
+
+        // `format: "full"` is what puts the score on the wire at all, so it is
+        // load-bearing rather than decorative: drop it and the server answers
+        // with bare strings and there is nothing left to carry.
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert!(
+            seen[0].contains(r#""format":"full""#),
+            "the hook must ask for the scored shape: {:?}",
+            seen[0]
+        );
+    }
+
+    // Through the renderer too, so the score is provably reaching the function
+    // that owns the emit decision rather than sitting in a struct field nobody
+    // calls. Byte-identical output to the bare-shape case is the point: the fix
+    // changes what the hook knows, and must not change what it says.
+    #[test]
+    fn a_scored_recall_should_render_exactly_as_the_bare_one_did() {
+        let bare = recall_section("demo", &[plain("one"), plain("two")]);
+        let scored = recall_section(
+            "demo",
+            &[
+                ScoredHit { content: "one".into(), score: Some(0.016) },
+                ScoredHit { content: "two".into(), score: Some(0.014) },
+            ],
+        );
+        assert_eq!(bare, scored);
+        assert_eq!(bare, "\n### memory-wire recall — `demo`\n\n- one\n- two\n");
+    }
+
+    fn plain(content: &str) -> ScoredHit {
+        ScoredHit { content: content.to_string(), score: None }
+    }
+
+    // Version skew is the whole reason `WireHit::Bare` exists: `format: "full"`
+    // is opt-in, so a hook paired with a server that predates it gets the default
+    // bare array. Ruled the other way this becomes a hook that silently injects
+    // nothing — a regression in an integration that used to work, and one the
+    // never-fail contract would hide completely.
+    #[test]
+    fn a_bare_response_should_still_parse_and_render() {
+        let (ep, _rx) = canned(vec![("/recall", r#"["one","two"]"#)]);
+        let hits = recall_at(&ep, "demo", "auth").expect("the default shape is still a recall");
+        assert_eq!(hits.len(), 2, "{hits:?}");
+        assert_eq!(hits[0].content, "one");
+        assert_eq!(hits[0].score, None, "unscored is None, not a guess at 0.0");
+        assert_eq!(
+            prompt_at(&ep, "demo", &json!({ "prompt": "auth" })),
+            "\n### memory-wire recall — `demo`\n\n- one\n- two\n"
+        );
+    }
+
+    // The never-fail contract against every way a recall response can fail to be
+    // a recall this build can read. The requirement is threefold and all three
+    // matter: no output, no error, exit 0. Run through the compiled binary so
+    // argv, stdin, stdout and the exit code are all in scope, because the
+    // requirement is about what a host observes rather than about a return value.
+    #[test]
+    fn a_response_this_build_cannot_read_should_yield_no_output_and_exit_zero() {
+        // Each entry probes a different way `Vec<WireHit>` rejects a body, so a
+        // future loosening of the parser is caught per-stage rather than by the
+        // first case that happens to still fail.
+        let broken = [
+            "not json",
+            r#"{"hits":[]}"#,
+            r#"[{"id":"m1","score":0.5}]"#,
+            "[1,2,3]",
+            r#"[["one"]]"#,
+            r#"[{"content":"hal"#,
+            r#"[{"content":"one","score":"high"}]"#,
+        ];
+        for body in broken {
+            let (ep, _rx) = canned(vec![("/recall", String::leak(body.to_string()))]);
+            assert!(
+                recall_at(&ep, "demo", "auth").is_none(),
+                "{body:?} is not a recall this build can read"
+            );
+
+            let got = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), &ep, "trace");
+            assert_eq!(got.code, Some(0), "{body:?}: {}", got.stderr);
+            assert_eq!(got.stdout, "", "{body:?}: nothing, and no error either");
+        }
+
+        // A 2xx with a body that is not a recall: same outcome as no server.
+        let (ep, _rx) = canned(vec![("/recall", "nope")]);
+        let got = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), &ep, "trace");
+        assert_eq!(got.code, Some(0), "{}", got.stderr);
+        assert_eq!(got.stdout, "", "an unreadable body is silence, not an error");
     }
 }

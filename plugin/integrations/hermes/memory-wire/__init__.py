@@ -203,24 +203,45 @@ def _retain(base: str, bank: str, content: str, tag: str, context: str = "") -> 
     return isinstance(out, dict)
 
 
-def _recall(base: str, bank: str, query: str) -> Optional[List[str]]:
-    """Memories for *query*, or ``None`` when the server is unreachable.
+def _recall(base: str, bank: str, query: str) -> Optional[List[Dict[str, Any]]]:
+    """Memories for *query* as ``{"content", "score"}`` dicts, or ``None`` when the
+    server is unreachable.
 
     ``None`` and ``[]`` mean different things on purpose: the first is "no
     answer available", the second is "the answer is that there is nothing".
     ``prefetch`` collapses them, because a model cannot act on that difference.
+
+    ``format: "full"`` is what puts ``score`` on the wire; without it the route
+    serves a bare array of content strings and there is no score to carry. The
+    bare shape is still accepted, because ``format`` is opt-in and a plugin can
+    outlive the server build it was installed against.
+
+    ``score`` is the fused RRF value the ranking used, and it is *relative*: the
+    top hit of a set that has nothing to do with the query scores well by
+    construction, because BM25 is min-max normalised per query. It is carried so
+    a relevance decision is possible; nothing branches on it, because a cut on
+    this number is a fitted constant and no dev set exists to choose one. See
+    ``docs/OPEN_HOOK_RECALL_RELEVANCE.md``.
     """
     if not query.strip():
         return None
     out = _request(
         base,
         f"/banks/{bank}/recall",
-        {"query": query, "budget": BUDGET},
+        {"query": query, "budget": BUDGET, "format": "full"},
         method="POST",
     )
     if not isinstance(out, list):
         return None
-    return [hit for hit in out if isinstance(hit, str) and hit.strip()]
+    hits = []
+    for hit in out:
+        # A scored entry is an object; a bare one is the content itself.
+        content = hit if isinstance(hit, str) else (hit.get("content") if isinstance(hit, dict) else None)
+        if not isinstance(content, str) or not content.strip():
+            continue
+        score = hit.get("score") if isinstance(hit, dict) else None
+        hits.append({"content": content, "score": score if isinstance(score, float) else None})
+    return hits
 
 
 # ---------------------------------------------------------------------------
@@ -356,10 +377,18 @@ class MemoryWireProvider(MemoryProvider):
         took it positionally would be called correctly and then be wrong about
         which argument it received.
 
-        Returns "" for a blank query, an unreachable server, an empty bank, and
-        a server that errored. Hermes wraps this in its own thread with an 8s
+        Returns "" for a blank query, an unreachable server, an empty bank, and a
+        server that errored. Hermes wraps this in its own thread with an 8s
         deadline and logs a warning if we exceed it, so one TIMEOUT is the whole
         cost of a down server.
+
+        The top ``MAX_LINES`` are injected unconditionally. Each carries its
+        fused RRF ``score`` — see :func:`_recall` for what it is and why nothing
+        branches on it yet — and the ranking is *relative*, so this emits the best
+        of whatever set the bank offered, relevant or not. That is the defect
+        ``docs/OPEN_HOOK_RECALL_RELEVANCE.md`` records; the score now reaches
+        this function so the policy half is possible, and the policy half needs a
+        labelled dev set this repo does not have.
         """
         if not _valid_url(self._base):
             return ""
@@ -368,7 +397,7 @@ class MemoryWireProvider(MemoryProvider):
             return ""
         out = f"### memory-wire recall — `{self._bank}`\n\n"
         for hit in hits[:MAX_LINES]:
-            out += f"- {hit}\n"
+            out += f"- {hit['content']}\n"
         if len(hits) > MAX_LINES:
             out += f"- …and {len(hits) - MAX_LINES} more\n"
         return out
