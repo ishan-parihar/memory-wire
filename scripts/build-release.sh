@@ -46,13 +46,14 @@ done
 
 # target -> rust triple. Asset names must stay byte-identical to what
 # install/get-memory-wire.sh asks for, or the installer 404s on that platform.
-ALL_TARGETS="linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64"
+ALL_TARGETS="linux-x86_64 linux-x86_64-musl linux-aarch64 macos-x86_64 macos-aarch64"
 triple_for() {
   case "$1" in
-    linux-x86_64)  echo x86_64-unknown-linux-gnu  ;;
-    linux-aarch64) echo aarch64-unknown-linux-gnu ;;
-    macos-x86_64)  echo x86_64-apple-darwin       ;;
-    macos-aarch64) echo aarch64-apple-darwin      ;;
+    linux-x86_64)      echo x86_64-unknown-linux-gnu  ;;
+    linux-x86_64-musl) echo x86_64-unknown-linux-musl ;;
+    linux-aarch64)     echo aarch64-unknown-linux-gnu ;;
+    macos-x86_64)      echo x86_64-apple-darwin       ;;
+    macos-aarch64)     echo aarch64-apple-darwin      ;;
     *) die "unknown target: $1" ;;
   esac
 }
@@ -61,13 +62,24 @@ triple_for() {
 HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
 command -v cargo >/dev/null || die "cargo not on PATH"
 
+# Does this target build with plain `cargo build`, without cargo-zigbuild?
+# Two cases: the triple IS this host (no cross at all), and musl (a different
+# host triple that needs no libc headers, because its static CRT is built in).
+plain_cargo() {
+  [ "$(triple_for "$1")" = "$HOST_TRIPLE" ] || [ "$1" = "linux-x86_64-musl" ]
+}
+
 # Preflight the cross-compiler. Checked per target rather than against the FIRST
 # entry: an earlier version compared the host against linux-x86_64 only, so on a
 # Linux box the check never fired and a missing cargo-zigbuild surfaced mid-loop
 # as a raw cargo error instead of the install hint.
+#
+# musl is deliberately excluded from this requirement by plain_cargo below: it is
+# a different host triple but needs no libc headers from zig, so demanding
+# cargo-zigbuild for a musl-only run would be a false precondition.
 needs_cross=0
 for t in $ALL_TARGETS; do
-  [ "$(triple_for "$t")" = "$HOST_TRIPLE" ] || needs_cross=1
+  plain_cargo "$t" || needs_cross=1
 done
 if [ "$needs_cross" -eq 1 ] && ! command -v cargo-zigbuild >/dev/null; then
   die "cargo-zigbuild is required to cross-compile ($(echo $ALL_TARGETS | tr ' ' ',') includes a non-host target).
@@ -147,7 +159,15 @@ for t in $ALL_TARGETS; do
   # cargo-zigbuild for cross targets; plain cargo when the triple IS this host,
   # because zigbuild adds a wrapper for no benefit and occasionally trips on
   # build scripts that inspect the compiler.
-  if [ "$triple" = "$HOST_TRIPLE" ]; then
+  #
+  # musl is the second plain-cargo case, and it is the whole reason the asset
+  # exists: x86_64-unknown-linux-musl defaults to a static CRT, so plain cargo
+  # yields a static-pie binary with DT_NEEDED=0 and no glibc floor at all. That
+  # is what lets the binary start on a Debian 12 / glibc 2.36 box, where the gnu
+  # asset refuses with `version 'GLIBC_2.39' not found`. Routing it through
+  # zigbuild would put a dynamic link step back in the path that is supposed to
+  # have none.
+  if plain_cargo "$t"; then
     cargo build --release --locked --target "$triple" || { failed="$failed $t"; continue; }
   else
     cargo zigbuild --release --locked --target "$triple" || { failed="$failed $t"; continue; }
