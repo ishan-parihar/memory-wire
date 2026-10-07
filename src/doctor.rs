@@ -76,6 +76,14 @@ pub struct Report {
     /// them, so a store with 710 memories in it and a hook resolving to an empty
     /// bank looked exactly like a working install that had nothing to say.
     pub elsewhere: Option<(String, i64)>,
+    /// Bank ids baked into the installed harness surfaces, as `(surface, bank)`.
+    ///
+    /// Populated only by [`collect`]; [`collect_at`] is the store/server half
+    /// and stays hermetic so tests never read the real home. The finding the
+    /// render makes of them is the split-brain: recall injected under one bank
+    /// while the same harness's MCP tools read another, each invisible to the
+    /// other.
+    pub harness_banks: Vec<(&'static str, String)>,
 }
 
 impl Report {
@@ -119,8 +127,25 @@ was moved:\n  \
 reach them,\n  \
            or read them back out of bank `{legacy}` and retain them into `{0}` \
 yourself.\n  \
-           See docs/BANK_IDENTITY.md.",
+            See docs/BANK_IDENTITY.md.",
                 self.bank, legacy
+            ));
+        }
+        let distinct: std::collections::BTreeSet<&str> =
+            self.harness_banks.iter().map(|(_, b)| b.as_str()).collect();
+        if distinct.len() > 1 {
+            let surfaces = self
+                .harness_banks
+                .iter()
+                .map(|(s, b)| format!("{s} `{b}`"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            out.push_str(&format!(
+                "\n  \
+warning    memory-wire surfaces disagree on the bank: {surfaces}.\n  \
+           The injected recall and the MCP tools in a harness then read and\n  \
+           write different namespaces, each invisible to each other. Reconnect\n  \
+           with one explicit bank: `memory-wire connect --bank <id> omp opencode`"
             ));
         }
         out
@@ -139,11 +164,22 @@ yourself.\n  \
 
 /// Collect a report for the ambient environment.
 pub fn collect() -> Report {
-    collect_at(
+    let mut report = collect_at(
         &paths::endpoint(),
         &paths::resolve_bank(),
         &memory_wire::store::default_db_path(),
-    )
+    );
+    if let Ok(home) = paths::home() {
+        report.harness_banks = harness_banks_at(&home);
+    }
+    if let Some(b) = std::env::var("MEMORY_WIRE_BANK")
+        .ok()
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty())
+    {
+        report.harness_banks.push(("MEMORY_WIRE_BANK", b));
+    }
+    report
 }
 
 /// Collect a report for explicit inputs.
@@ -177,6 +213,7 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         server,
         legacy_bank: legacy_bank_at(&per_bank, bank),
         elsewhere: elsewhere_at(&per_bank, bank),
+        harness_banks: Vec::new(),
     }
 }
 
@@ -262,6 +299,69 @@ fn elsewhere_at(per_bank: &[(String, i64)], bank: &str) -> Option<(String, i64)>
         return None;
     }
     per_bank.iter().find(|(_, n)| *n > 0).cloned()
+}
+
+/// Bank ids baked into the installed harness surfaces, as `(surface, bank)`.
+///
+/// Only surfaces memory-wire itself installs: the extension/plugin files are
+/// ours exactly when the file carries the `DEFAULT_BANK` declaration this
+/// crate bakes at `connect --bank` time, and the MCP entries are ours by the
+/// server-name key, so neither read can attribute somebody else's file to us.
+fn harness_banks_at(home: &Path) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    for (surface, rel) in [
+        ("omp extension", ".omp/agent/extensions/memory-wire.ts"),
+        ("opencode plugin", ".config/opencode/plugins/memory-wire.ts"),
+    ] {
+        if let Some(bank) = default_bank_at(&home.join(rel)) {
+            out.push((surface, bank));
+        }
+    }
+    for (surface, rel, master) in [
+        ("omp mcp entry", ".omp/agent/mcp.json", "mcpServers"),
+        ("opencode mcp entry", ".config/opencode/opencode.json", "mcp"),
+    ] {
+        if let Some(bank) = mcp_bank_at(&home.join(rel), master) {
+            out.push((surface, bank));
+        }
+    }
+    out
+}
+
+/// The `DEFAULT_BANK` baked into an installed extension/plugin file, or `None`.
+///
+/// Only our templates carry that declaration, so the string match doubles as
+/// the marker check. A `"` in a hostile bank id would misread here; bank ids
+/// are slug-like by construction and the trade for a non-failing read is right.
+fn default_bank_at(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix("var DEFAULT_BANK = \"")?;
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    })
+}
+
+/// The `--bank` value in our MCP entry of a host config, or `None` — cursor,
+/// omp and opencode all spell a local stdio server as a `command`/`args` argv
+/// built by `connect`'s `mcp_args`, so both key names are scanned. An entry
+/// for a *different* server in the same map is untouched: the get is keyed on
+/// our marker, not on the file.
+fn mcp_bank_at(path: &Path, master: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let root: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let entry = root.get(master)?.get(crate::connect::MARKER)?;
+    for field in ["args", "command"] {
+        let Some(args) = entry.get(field).and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for (i, arg) in args.iter().enumerate() {
+            if arg.as_str() == Some("--bank") {
+                return args.get(i + 1)?.as_str().map(String::from);
+            }
+        }
+    }
+    None
 }
 
 /// On-disk size of the store, SQLite sidecars included.
@@ -396,6 +496,73 @@ mod tests {
 
     // The bug this fixes: a 2xx is not a health check. Anything else listening
     // on 8888 answers 200, and `doctor` used to call that "up".
+    fn blank_report() -> Report {
+        Report {
+            endpoint: "http://127.0.0.1:8888".to_string(),
+            bank: "memory-wire".to_string(),
+            store: PathBuf::from("/tmp/mw-doctor-blank.db"),
+            store_bytes: 0,
+            store_state: StoreState::Ok,
+            banks: Some(1),
+            memories: Some(1),
+            server: ServerState::Up,
+            legacy_bank: None,
+            elsewhere: None,
+            harness_banks: Vec::new(),
+        }
+    }
+
+    fn tmp_home(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mw-doctor-{tag}-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).expect("tmp home");
+        dir
+    }
+
+    #[test]
+    fn harness_bank_surfaces_are_read_from_the_files_connect_wrote() {
+        let home = tmp_home("surfaces");
+        std::fs::create_dir_all(home.join(".omp/agent/extensions")).expect("mkdir");
+        std::fs::write(
+            home.join(".omp/agent/extensions/memory-wire.ts"),
+            "// memory-wire\nvar DEFAULT_BANK = \"memory-wire\";\n",
+        )
+        .expect("ext");
+        std::fs::create_dir_all(home.join(".config/opencode")).expect("mkdir");
+        std::fs::write(
+            home.join(".config/opencode/opencode.json"),
+            r#"{"mcp":{"memory-wire":{"command":["memory-wire","mcp","--bank","omp"],"type":"local"}}}"#,
+        )
+        .expect("cfg");
+        let banks = harness_banks_at(&home);
+        assert_eq!(
+            banks,
+            vec![
+                ("omp extension", "memory-wire".to_string()),
+                ("opencode mcp entry", "omp".to_string()),
+            ]
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn a_surface_bank_conflict_should_warn_and_agreement_should_stay_quiet() {
+        let mut report = blank_report();
+        report.harness_banks = vec![
+            ("omp extension", "memory-wire".to_string()),
+            ("omp mcp entry", "omp".to_string()),
+        ];
+        let text = report.render();
+        assert!(text.contains("disagree"), "{text}");
+        assert!(text.contains("`omp`"), "{text}");
+        let mut fine = blank_report();
+        fine.harness_banks = vec![
+            ("omp extension", "omp".to_string()),
+            ("omp mcp entry", "omp".to_string()),
+        ];
+        assert!(!fine.render().contains("disagree"));
+    }
+
     #[test]
     fn a_foreign_two_hundred_should_not_count_as_the_server() {
         let ep = foreign("200 OK", "<html>some other service</html>");
@@ -559,6 +726,7 @@ mod tests {
             server: ServerState::Up,
             legacy_bank: None,
             elsewhere: None,
+            harness_banks: Vec::new(),
         };
         assert_eq!(
             r.render(),

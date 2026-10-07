@@ -134,3 +134,30 @@ one half of a failure class should not be surprised by the other.
   the rendered string.
 - Cost: report injected characters per turn before and after, on a real
   conversation, not a benchmark. The whole point is a user-visible behaviour.
+
+## Status update (2026-10-08): mitigated by mechanism, not by threshold
+
+Verification work on opencode/OMP ("Continue"-style prompts returned irrelevant
+recall) shipped three changes. None adds a score cut — the conclusion reached
+above (a threshold is a fitted constant) still stands.
+
+- **Session-aware recall query** (extension v2 + opencode plugin): prompts
+  under 160 chars borrow the previous turn's answer into the recall query, so
+  what ranks is the work being continued instead of the literal word
+  "Continue". Lives in `plugin/integrations/extension/memory-wire.ts`
+  (`before_agent_start`) and `plugin/integrations/opencode-plugin/memory-wire.ts`
+  (`experimental.chat.system.transform`). Mechanism, not a filter: nothing is
+  dropped on a score.
+- **Provenance label**: the injected block now opens with
+  `(recalled by relevance from bank \`<id>\`, unverified)`, so a
+  best-of-irrelevant set can no longer read as a verified one.
+- **Retention discipline**: turns with no answer or a bare-acknowledgement
+  answer are no longer retained, and `document_id = "turn-" + hash(prompt)`
+  makes a repeated ask replace its row rather than pile up identical question
+  texts. Verified live: bank `omp` gained `turn-*`-keyed rows carrying real
+  answers, including an `asked: continue` row with substance.
+
+**Residual, said out loud:** the borrowed-answer signal is in-process state; a
+fresh harness process (headless `opencode run`, restarted TUI) recalls with the
+prompt alone on its first turn. And the scoring gating question stays OPEN by
+decision, not neglect.

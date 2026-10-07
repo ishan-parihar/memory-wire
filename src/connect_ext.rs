@@ -67,15 +67,37 @@ pub(crate) const SOURCE: &str =
 /// installed copy from another.
 const VERSION_MARKER: &str = "MEMORY_WIRE_EXTENSION_VERSION";
 
+/// The template line the install-time bank is baked into.
+const DEFAULT_BANK_LINE: &str = "var DEFAULT_BANK = \"memory-wire\";";
+
+/// The template as it lands on disk: the `connect --bank` value baked into
+/// `DEFAULT_BANK`, or the embedded bytes when no bank was given.
+///
+/// The same rendering feeds the idempotence compare in `apply`, so a reconnect
+/// with the same bank stays `already-wired` and one with a different bank is a
+/// real replace — and the extension and the MCP entry of the same install can
+/// no longer disagree on the namespace. The escaping is a backstop for a
+/// hostile value; bank ids are slug-like.
+fn baked(bank: Option<&str>) -> String {
+    match bank.map(str::trim).filter(|b| !b.is_empty()) {
+        None => SOURCE.to_string(),
+        Some(b) => SOURCE.replace(
+            DEFAULT_BANK_LINE,
+            &format!("var DEFAULT_BANK = \"{}\";", b.replace('\\', "\\\\").replace('"', "\\\"")),
+        ),
+    }
+}
+
 /// Install or uninstall this host's extension file. See the module docs.
 ///
 /// A `None` from [`extension_rel`] means the host has no extension surface, and
 /// that is a [`Outcome::Skipped`] rather than a failure: nothing to get wrong.
-pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path) -> Outcome {
+pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>) -> Outcome {
     let Some(rel) = extension_rel(host) else {
         return Outcome::Skipped("no extension surface for this host".to_string());
     };
     let path = home.join(&rel);
+    let source = baked(bank);
     let current = version(SOURCE).unwrap_or("?");
 
     if uninstall {
@@ -115,7 +137,7 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path) -> Outc
                 path.display()
             ));
         }
-        if have == SOURCE {
+        if have == source {
             return Outcome::Already {
                 notes: vec![format!("extension v{current}")],
             };
@@ -131,7 +153,7 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path) -> Outc
             return Outcome::Failed(format!("{}: {e}", parent.display()));
         }
     }
-    if let Err(e) = paths::write_atomic(&path, SOURCE) {
+    if let Err(e) = paths::write_atomic(&path, &source) {
         return Outcome::Failed(format!("{}: {e}", path.display()));
     }
 
@@ -374,8 +396,24 @@ mod tests {
     /// The template has to declare one — a marker nothing reads is a comment — and
     /// a line that merely mentions the word is not a declaration, case included.
     #[test]
+    fn the_connect_bank_is_baked_into_the_extension() {
+        let home = tmp_home("bank-baked");
+        apply(Host::Omp, &home, false, &home.join("data"), Some("omp"));
+        let file = read_ext(&home, Host::Omp);
+        assert!(file.contains("var DEFAULT_BANK = \"omp\";"), "bank baked: {file}");
+        // A reconnect with the same bank then reports already-wired, because
+        // the idempotence compare runs against the same rendering.
+        let out = apply(Host::Omp, &home, false, &home.join("data"), Some("omp"));
+        assert!(matches!(out, Outcome::Already { .. }), "{out:?}");
+        let out = apply(Host::Omp, &home, false, &home.join("data"), Some("other"));
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        assert!(read_ext(&home, Host::Omp).contains("var DEFAULT_BANK = \"other\";"));
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
     fn the_version_is_read_out_of_the_marker_rather_than_declared_here() {
-        assert_eq!(version(SOURCE), Some("1"), "the template declares no readable version");
+        assert_eq!(version(SOURCE), Some("2"), "the template declares no readable version");
         assert_eq!(version("// MEMORY_WIRE_EXTENSION_VERSION: 3"), Some("3"));
         assert_eq!(version("const V = 1; // MEMORY_WIRE_EXTENSION_VERSION 12"), Some("12"));
         // Tolerating the `v` prefix and leading zeros is deliberate: a template

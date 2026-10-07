@@ -2,6 +2,7 @@ mod cli_home;
 mod connect;
 mod connect_codex;
 mod connect_ext;
+mod connect_opencode;
 mod connect_plugin;
 mod daemon;
 mod doctor;

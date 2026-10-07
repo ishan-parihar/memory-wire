@@ -350,3 +350,32 @@ It is not free. Our extension would have to either call the REST API (like the h
 plugin) or embed an MCP client, and it would need to hook the same lifecycle moments. That
 is the same trade already recorded as **rejected** for hermes in §2/F7 — an MCP client in
 TypeScript is less bad than one in Python, but it is still a client.
+
+## Addendum (2026-10-08) — harness surfaces: what changed after the original audit
+
+The audit's table holds, with two surfaces now having a second additive piece:
+
+- **opencode gained a plugin.** `memory-wire connect opencode` writes
+  `~/.config/opencode/plugins/memory-wire.ts` beside the MCP entry — recall is
+  injected via `experimental.chat.system.transform` and the turn retain rides
+  `session.idle`. [V] probed live on 1.18.34: a flat file in
+  `~/.config/opencode/plugins/` loads with no config entry, a pushed system
+  string reached the model verbatim, and `session.idle` carries
+  `properties.sessionID`.
+- **omp/pi/opencode now share one bank by construction.** `connect --bank`
+  bakes the value into the extension/plugin's `DEFAULT_BANK`; before this, the
+  extension files defaulted to bank `memory-wire` while the same install's MCP
+  entry pointed at whatever `--bank` the user gave — the split-brain where the
+  injected recall and the model's tools read different namespaces. [C]
+  `src/connect_ext.rs::baked`, `src/connect_opencode.rs::baked`.
+- **`doctor` reports the disagreement.** Harness surfaces disagreeing on the
+  bank (omp extension, opencode plugin, both MCP entries, `MEMORY_WIRE_BANK`)
+  now renders a `warning` naming every surface and its bank. [C]
+  `src/doctor.rs::harness_banks_at`.
+- **Retention discipline** (extension v2 + plugin): no prompt-only retains;
+  `document_id = "turn-" + hash(prompt)` dedupes repeated asks. The audit's
+  original "what it gains" column for omp still says "context injected"; the
+  extension version covered here is v2.
+
+The capability matrix in §1 grows one row worth naming explicitly: opencode is
+no longer MCP-only.

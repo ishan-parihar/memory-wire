@@ -1,5 +1,5 @@
 // memory-wire native memory extension for omp and pi.
-// MEMORY_WIRE_EXTENSION_VERSION 1
+// MEMORY_WIRE_EXTENSION_VERSION 2
 //
 // Installed by `memory-wire connect omp`, as
 // ~/.omp/agent/extensions/memory-wire.ts   (omp loads flat `*.ts` files there),
@@ -70,8 +70,22 @@ var INJECT_CAP_CHARS = 2000;
 /** Per-entry ceiling inside that block. */
 var ENTRY_CAP_CHARS = 400;
 
-/** Per-part ceiling on what is retained, so one long answer cannot store 30 KB. */
-var RETAIN_PART_CAP_CHARS = 800;
+/** Per-part ceiling on what is retained. Thirty KB would be a transcript, not
+ *  a memory; but 800 chars kept only the closing summary of a working turn and
+ *  lost the working state -- paths, measurements, decisions -- that made the
+ *  answer worth keeping. */
+var RETAIN_PART_CAP_CHARS = 4000;
+
+/** Prompts at most this long cannot rank anything on their own: "Continue"
+ *  matches every memory equally and the top of that tie is noise. */
+var SHORT_PROMPT_CHARS = 160;
+
+/** How much of the previous turn's answer a short prompt may borrow for its
+ *  recall query. */
+var QUERY_CONTEXT_CHARS = 600;
+
+/** An answer shorter than this is an "OK", not a turn worth remembering. */
+var MIN_ANSWER_CHARS = 32;
 
 /** Server base URL. Loopback and unauthenticated, which is why this is a default
  *  the environment can move rather than something this file validates. */
@@ -79,11 +93,16 @@ function endpoint() {
   return (process.env.MEMORY_WIRE_URL || "http://127.0.0.1:8888").replace(/\/+$/, "");
 }
 
-/** Bank to read and write. Not derived from the cwd: a per-project bank is a
- *  deliberate `MEMORY_WIRE_BANK`, and guessing one from a directory name moves
- *  memories between namespaces on the strength of a path. */
+/** Bank to read and write. `connect --bank` bakes the install-time bank into
+ *  `DEFAULT_BANK`, so this extension and the MCP entry the same install wrote
+ *  cannot disagree on the namespace -- the split that had the injected recall
+ *  reading one bank while the model's tools read another. A deliberate
+ *  `MEMORY_WIRE_BANK` still overrides for a session that needs a different one.
+ *  Not derived from the cwd: guessing one from a directory name moves memories
+ *  between namespaces on the strength of a path. */
+var DEFAULT_BANK = "memory-wire";
 function bank() {
-  return (process.env.MEMORY_WIRE_BANK || "memory-wire").trim();
+  return (process.env.MEMORY_WIRE_BANK || DEFAULT_BANK).trim();
 }
 
 /** One bounded POST. `null` for every failure, with no distinction between
@@ -114,6 +133,15 @@ async function post(path, body, timeoutMs) {
 function clamp(text, max) {
   var flat = text.replace(/\s+/g, " ").trim();
   return flat.length <= max ? flat : flat.slice(0, max - 1).trimEnd() + "…";
+}
+
+/** A stable, non-cryptographic digest of the prompt: the retain key that makes
+ *  a repeated ask replace its row instead of piling up twin questions. djb2
+ *  over UTF-16 units, base-36; a collision costs one overwritten memory. */
+function hash(text) {
+  var h = 5381;
+  for (var i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
 }
 
 /** The text of a message's `content`, which is a string in some events and a
@@ -170,7 +198,10 @@ function formatRecall(items) {
     lines.push(lines.length + 1 + ". " + clamp(content, ENTRY_CAP_CHARS));
   }
   if (!lines.length) return "";
-  var block = "## memory-wire long-term memory\n" + lines.join("\n");
+  var block =
+    "## memory-wire long-term memory\n" +
+    "(recalled by relevance from bank `" + bank() + "`, unverified)\n" +
+    lines.join("\n");
   return block.length <= INJECT_CAP_CHARS ? block : block.slice(0, INJECT_CAP_CHARS - 1) + "…";
 }
 
@@ -179,6 +210,7 @@ function formatRecall(items) {
  *  @param {{ on: (event: string, handler: Function) => void }} pi */
 export default function memoryWireExtension(pi) {
   var lastPrompt = "";
+  var lastAnswer = "";
   var lastRetained = "";
 
   pi.on("before_agent_start", async function (event) {
@@ -188,12 +220,22 @@ export default function memoryWireExtension(pi) {
     // available to `agent_end`.
     lastPrompt = prompt;
 
+    // A prompt this short cannot rank anything on its own: "Continue" matches
+    // every memory equally and the top of that tie is noise. The query borrows
+    // the previous turn's answer, so what ranks is the work being continued,
+    // with the prompt still steering inside it. A mechanism, not a filter --
+    // nothing is cut on a score (docs/OPEN_HOOK_RECALL_RELEVANCE.md).
+    var query = prompt;
+    if (prompt.length <= SHORT_PROMPT_CHARS && lastAnswer) {
+      query = clamp(lastAnswer, QUERY_CONTEXT_CHARS) + "\n" + prompt;
+    }
+
     var items = await post(
       "/banks/" + encodeURIComponent(bank()) + "/recall",
       // `format: "full"` is what puts `score` on the wire; the default shape is a
       // bare array of content strings. `formatRecall` reads both, so this stays
       // compatible with a server that does not know the field.
-      { query: prompt, budget: RECALL_BUDGET, format: "full" },
+      { query: query, budget: RECALL_BUDGET, format: "full" },
       RECALL_TIMEOUT_MS
     );
     if (!Array.isArray(items)) return undefined;
@@ -215,21 +257,27 @@ export default function memoryWireExtension(pi) {
     // not have its prompt consumed by the earlier retain.
     lastPrompt = "";
     var answer = lastAssistantText(event && event.messages);
-    if (!prompt && !answer) return undefined;
+    // The next turn's short-prompt query composition borrows this answer.
+    lastAnswer = answer;
+    // An unanswered or bare-acknowledgement turn is a question with no knowledge
+    // in it: retaining prompt-only rows is how the bank filled with duplicate
+    // question texts ("asked: continue", asked three times over) that recall
+    // then injected as if they were memory. The pair is the memory.
+    if (!prompt || !answer || answer.length < MIN_ANSWER_CHARS) return undefined;
 
     var content = [
-      prompt ? "asked: " + clamp(prompt, RETAIN_PART_CAP_CHARS) : "",
-      answer ? "answered: " + clamp(answer, RETAIN_PART_CAP_CHARS) : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+      "asked: " + clamp(prompt, RETAIN_PART_CAP_CHARS),
+      "answered: " + clamp(answer, RETAIN_PART_CAP_CHARS),
+    ].join("\n");
     // An auto-retry re-submits the same turn, and the server dedupes identical
     // content anyway -- but not before paying for the write, so it is checked here.
     if (!content || content === lastRetained) return undefined;
 
+    // `document_id` keyed on the prompt makes a repeated ask replace its row
+    // (the server's default update mode) rather than add a twin.
     var stored = await post(
       "/banks/" + encodeURIComponent(bank()) + "/retain",
-      { content: content },
+      { content: content, document_id: "turn-" + hash(prompt) },
       RETAIN_TIMEOUT_MS
     );
     // Only a confirmed store updates the marker, so a retain that failed is

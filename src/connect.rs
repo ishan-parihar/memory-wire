@@ -49,7 +49,8 @@ pub enum Host {
     CopilotCli,
     /// Cursor (`~/.cursor/mcp.json`).
     Cursor,
-    /// opencode (`~/.config/opencode/opencode.json`).
+    /// opencode (`~/.config/opencode/opencode.json`, plus the native plugin
+    /// under `~/.config/opencode/plugins/` — see [`crate::connect_opencode`]).
     Opencode,
     /// oh-my-pi (`~/.omp/agent/mcp.json`).
     ///
@@ -502,13 +503,15 @@ fn wired_with(host: Host, home: &Path) -> bool {
         // key is the check. The hook hosts are recognised the way every other
         // pass recognises them: by the marker inside the entry.
         Style::Mcp => {
-            // OMP answers "or" rather than "and", because it has two additive
-            // surfaces: an MCP-only omp wired by an earlier build is genuinely
-            // connected, and reporting `wired=no` there would be a false negative
-            // the user has no way to act on. `connect omp` still installs both.
+            // OMP and opencode answer "or" rather than "and", because each has
+            // two additive surfaces: an MCP-only install wired by an earlier
+            // build is genuinely connected, and reporting `wired=no` there
+            // would be a false negative the user has no way to act on.
+            // `connect` still installs both.
             host.mcp_spec().is_some_and(|(key, _)| {
                 root.get(key).and_then(Value::as_object).is_some_and(|m| m.contains_key(MARKER))
             }) || crate::connect_ext::installed(host, home)
+                || crate::connect_opencode::installed(host, home)
         }
         _ => EVENTS
             .iter()
@@ -732,7 +735,7 @@ pub(crate) fn apply(
         return crate::connect_plugin::apply(host, home, uninstall, data_root);
     }
     if style == Style::Extension {
-        return crate::connect_ext::apply(host, home, uninstall, data_root);
+        return crate::connect_ext::apply(host, home, uninstall, data_root, bank);
     }
 
     let rel = host.config_rel();
@@ -829,9 +832,21 @@ pub(crate) fn apply(
     // replacement: a Codex session needs the hooks *and* the tools, and an omp
     // session wants the tools *and* the injection, because an MCP tool exists
     // only when the model decides to call it.
+    // Three hosts have a second file in a second format, merged into one
+    // report line. Codex's hooks live in `hooks.json`, above, and its MCP
+    // servers in `config.toml` — a TOML document this crate has no parser for,
+    // so it is a surgical text edit in `connect_codex`. OMP's MCP entry is in
+    // `mcp.json`, above, and its extension is a TypeScript file this crate
+    // writes whole from an embedded template; opencode is the same shape, a
+    // plugin file it auto-loads from `~/.config/opencode/plugins/`. All three
+    // are additive rather than a replacement: a Codex session needs the hooks
+    // *and* the tools, and an omp or opencode session wants the tools *and*
+    // the injection, because an MCP tool exists only when the model decides to
+    // call it.
     outcome = match host {
         Host::Codex => merge(outcome, crate::connect_codex::apply(home, uninstall, data_root, bank)),
-        Host::Omp => merge(outcome, crate::connect_ext::apply(host, home, uninstall, data_root)),
+        Host::Omp => merge(outcome, crate::connect_ext::apply(host, home, uninstall, data_root, bank)),
+        Host::Opencode => merge(outcome, crate::connect_opencode::apply(host, home, uninstall, data_root, bank)),
         _ => outcome,
     };
     outcome
@@ -1095,6 +1110,59 @@ mod tests {
         assert_ne!(Host::Pi.id(), Host::Omp.id());
         assert_ne!(Host::Pi.config_rel(), Host::Omp.config_rel());
         assert_ne!(Host::Pi.detect_rel(), Host::Omp.detect_rel());
+    }
+
+    /// `connect opencode` writes both surfaces the way omp does: the MCP entry
+    /// in `opencode.json`, and the plugin under `~/.config/opencode/plugins/`
+    /// beside it. The plugin is what injects recall on a continuation prompt
+    /// the model would otherwise never see — and it carries the same bank the
+    /// MCP entry was installed with.
+    #[test]
+    fn connect_opencode_should_keep_its_mcp_entry_and_add_the_plugin() {
+        let home = tmp_home("opencode-both");
+        std::fs::create_dir_all(home.join(Host::Opencode.detect_rel())).expect("opencode home");
+        write_config(
+            &home,
+            &Host::Opencode.config_rel(),
+            r#"{"mcp":{"cloakctl":{"command":["cloakctl-mcp"],"enabled":true,"type":"local"}}}"#,
+        );
+        let out = apply(
+            Host::Opencode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            Some("omp"),
+        );
+        let Outcome::Wired { events, .. } = &out else {
+            panic!("{out:?}");
+        };
+        assert!(events.iter().any(|e| e == "mcp"), "MCP entry still written: {events:?}");
+        assert!(
+            events.iter().any(|e| e.contains("memory-wire.ts")),
+            "plugin written too: {events:?}"
+        );
+        let plugin = std::fs::read_to_string(
+            home.join(crate::connect_opencode::plugin_rel(Host::Opencode).expect("rel")),
+        )
+        .expect("plugin");
+        assert!(plugin.contains("var DEFAULT_BANK = \"omp\";"), "bank baked: {plugin}");
+        // Uninstall takes both back and leaves the third party alone.
+        let out = apply(
+            Host::Opencode,
+            "/bin/memory-wire",
+            &home,
+            true,
+            no_path,
+            &home.join("data"),
+            Some("omp"),
+        );
+        assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
+        let doc = read_config(&home, &Host::Opencode.config_rel());
+        assert!(!doc.to_string().contains(MARKER), "our MCP entry gone: {doc}");
+        assert!(doc.to_string().contains("cloakctl"), "foreign server survives: {doc}");
+        std::fs::remove_dir_all(&home).ok();
     }
 
     /// `connect omp` writes **two** additive surfaces, and neither displaces the
