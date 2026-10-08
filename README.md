@@ -824,7 +824,7 @@ curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/inst
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
 `MW_REPO`, `MW_VERSION`, `MW_INSTALL_DIR`, and `MW_LOCAL_ASSET` override the
 defaults, which resolve to this repo and its latest published release
-(`v0.6.0`, assets `memory-wire-linux-x86_64.tar.gz`,
+(`v0.6.3`, assets `memory-wire-linux-x86_64.tar.gz`,
 `memory-wire-linux-aarch64.tar.gz` and `memory-wire-linux-x86_64-musl.tar.gz`;
 no macOS asset — `libsqlite3-sys` links CoreFoundation, so those must be built
 on a Mac). `MW_LOCAL_ASSET` takes either a single `.tar.gz` or a **directory**
@@ -844,14 +844,14 @@ exactly the path it always did. Measured on racknerd (Debian 12, glibc 2.36):
 the probe rejected the gnu asset with the real `GLIBC_2.39` message and the
 install completed on musl. `docs/CONSISTENCY.md` §29 has the record.
 
-**The published release is `v0.6.0` and this tree is it.** `v0.6.0` was published
-2026-09-30T14:31:49Z from a local build on this machine, not by GitHub Actions.
-`Cargo.toml` says `0.6.0` and `HEAD` is the `v0.6.0` tag, so the version string
-and the tree agree — check `git log v0.6.0..HEAD --oneline | wc -l` for any
-distance. Nothing described in this README's `embed` paragraphs is in any
-published release: those shipped the lexical arm only, with the `embed` feature
-absent, and the dense arm still ships at weight 0.0. The tree-versus-release
-position is in `docs/CONSISTENCY.md` §15.2 and `docs/VERSIONS.md` §0.
+**The published release is `v0.6.3`.** It was published 2026-10-07T23:48:51Z
+from a local build on this machine, not by GitHub Actions. `Cargo.toml` says
+`0.6.3`; the tag and the tree drift apart whenever docs land after a cut, so
+check with `git log v0.6.3..HEAD --oneline | wc -l`. Nothing described in this
+README's `embed` paragraphs is in any published release: those shipped the
+lexical arm only, with the `embed` feature absent, and the dense arm still ships
+at weight 0.0. The tree-versus-release position is in `docs/CONSISTENCY.md` §15.2
+and `docs/VERSIONS.md` §0.
 
 **The installer wires your agent hosts for you, and lets you choose which.** It
 first runs `memory-wire connect --list`, which reports every supported host with
@@ -867,11 +867,24 @@ touching nothing. Then:
   hosts and prints the list. An unattended install can never hang.
 - **`--no-connect`** skips wiring entirely.
 
-Wiring writes both the lifecycle hooks and the MCP entry: `claude-code`, `codex`,
-and `copilot-cli` get the five hooks, `cursor` and `opencode` get the MCP server,
-and `hermes` gets a `MemoryProvider` plugin when named explicitly. It is
-idempotent, keeps a timestamped backup of every file it edits, refuses a malformed
-config untouched, and never overwrites a hook it did not write. `connect --uninstall`
+**Caveat for bank-pinned installs:** the wiring step runs `connect` with no
+`--bank`. On a machine whose hosts were wired with `connect --bank <id>`, that
+rewrites the surfaces to the default bank — install with `--no-connect` and
+re-run `memory-wire connect --bank <id> <hosts>` yourself.
+
+Wiring writes the lifecycle hooks, the MCP entry, or both: `claude-code`,
+`codex`, and `copilot-cli` get the five hooks, `cursor` gets the MCP server,
+`opencode` gets the MCP server **and, since `v0.6.3`, a native plugin**
+(`~/.config/opencode/plugins/memory-wire.ts`) that injects a recall block into
+each turn's system prompt and retains the finished turn at idle — a
+forked-session test showed a continuation prompt makes zero `memory_recall`
+tool calls, so MCP-only left the tool uncalled exactly when it was needed — and
+`omp` and `pi` get the extension, the same injection-and-retention surface as a
+harness plugin. `hermes` gets a `MemoryProvider` plugin when named explicitly.
+`connect --bank <id>` bakes the bank into the extension, the plugin, and the MCP
+entry, so every surface of one install reads one namespace. Wiring is idempotent,
+keeps a timestamped backup of every file it edits, refuses a malformed config
+untouched, and never overwrites a hook it did not write. `connect --uninstall`
 undoes it. The MCP entry points at the **installed binary by absolute path**, so it
 survives a `cargo clean` of a development checkout.
 
@@ -880,9 +893,11 @@ asset; a mismatch aborts the install rather than installing a corrupt binary.
 
 **Release assets are cut by `scripts/build-release.sh`, not by CI.** GitHub
 Actions minutes are metered and exhaustible, and a release you cannot cut because
-the quota is spent is a release blocker. The script builds the Linux targets
-(`linux-x86_64`, `linux-aarch64`) on one machine using `cargo-zigbuild` for the
-cross target, writes a `.sha256` beside each asset, and publishes with
+the quota is spent is a release blocker. The script builds the three Linux targets
+(`linux-x86_64`, `linux-x86_64-musl`, `linux-aarch64`) on one machine — plain
+cargo for the host target and for musl, whose built-in static CRT makes a
+static-pie binary with `DT_NEEDED=0` and no glibc floor; `cargo-zigbuild` for
+the aarch64 cross — writes a `.sha256` beside each asset, and publishes with
 `gh release` — a REST call that consumes **no Actions minutes**. It **skips the
 macOS targets and says why**: `libsqlite3-sys` links CoreFoundation, so a macOS
 binary needs Apple's SDK and cannot be produced from Linux. Rather than publish

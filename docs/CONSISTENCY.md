@@ -3376,3 +3376,30 @@ The underlying limitation is worth naming rather than leaving implied: **recall 
 per-bank, and there is no cross-bank query.** A user whose memory is staged across
 `observations → memories → concepts` gets one stage per call. That is a product
 gap, not a configuration error, and it is not fixable by choosing a bank.
+## 30. v0.6.3 deploy: the musl fallback re-verified end-to-end on a live box
+
+`v0.6.3` was cut and published 2026-10-07T23:48:51Z from the workstation with
+`scripts/build-release.sh --only "linux-x86_64 linux-x86_64-musl linux-aarch64"
+--upload v0.6.3`, with `ci.yml` and `release.yml` disabled around the tag push —
+`gh run list` before and after showed no new run, so the cut billed no Actions
+minutes.
+
+Two installs, both the `curl | sh` path:
+
+- **Local (Arch, glibc 2.44):** downloaded the `linux-x86_64` asset, checksum ok,
+  probe passed, `memory-wire 0.6.3`. Installed with `--no-connect` and the hosts
+  re-wired with `connect --bank omp` — the installer's wiring step passes no
+  `--bank`, and this machine's surfaces are pinned to `omp`.
+- **racknerd (Debian 12, glibc 2.36, x86_64):** the gnu asset failed its probe
+  with the real `GLIBC_2.39` message, the installer fell back to
+  `memory-wire-linux-x86_64-musl.tar.gz`, and the installed binary reports
+  `static-pie linked, statically linked` under both `file` and `ldd`. §29's
+  fallback record, re-verified on `v0.6.3` by the unattended path itself.
+
+The VPS `serve` (a `systemd --user` unit, `Restart=always`) was restarted
+through that unit and answered `ok` on `/health`; bank `memory-wire` in
+`hermes.db` held 1032 memories, newest 2026-10-08T00:05:57Z — the update touched
+only the binary. One operational misread worth recording: the unit is user-scoped
+(`systemctl --user`), so a system-scope `systemctl show` reports
+`ActiveState=inactive` while the process runs — check the right scope before
+concluding a service is unsupervised.

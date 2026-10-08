@@ -65,6 +65,10 @@ memory-wire hook session-start    # what a host runs
 a usable gate. And latency is only meaningful on a quiet box — check `loadavg`
 before and after and record it (see §7).
 
+**On this workstation `~/.local/bin/ar` shadows GNU `ar`** (an unrelated tool,
+v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
+`libsqlite3-sys` build fails with `ar: error: unrecognized subcommand 'cq'`.
+
 ## 3. Where things live
 
 `src/`, 24.8k lines across 22 modules:
@@ -294,8 +298,25 @@ The CLI and the HTTP surface are read by other agents, so:
   through the `gh` REST API and therefore bills no Actions minutes. It refuses a
   dirty tree, a tag that does not name `HEAD`, an incomplete target set, and
   clobbering a release that already has assets.
-- Disable CI around a tag push (`gh workflow disable ci.yml` … re-enable) so the
-  cut costs nothing.
+- Disable CI around a tag push — **both `ci.yml` and `release.yml`** trigger on
+  `push: tags: ['v*']` (`gh workflow disable ci.yml release.yml` … re-enable) so
+  the cut costs nothing.
+- The complete Linux set from this host is
+  `--only "linux-x86_64 linux-x86_64-musl linux-aarch64"` — a quoted word-list;
+  the script splits `--only` on spaces. No macOS asset has ever shipped, so the
+  three-Linux set is not a partial release. `linux-x86_64` is a glibc build and
+  carries the build host's floor (needs ≥ 2.39, built on 2.44);
+  `linux-x86_64-musl` is plain-cargo static-pie, `DT_NEEDED=0`, no floor —
+  live-verified on the Debian 12 / glibc 2.36 racknerd VPS, where the
+  installer's probe rejects the gnu asset and completes on musl;
+  `linux-aarch64` is a `cargo-zigbuild` cross.
+- Version bump first: edit `Cargo.toml`, run one unlocked `cargo check` to
+  refresh the own-version line in `Cargo.lock`, then the `--locked` gates pass.
+  Two commits — feature, then bump — and the tag names the bump commit.
+- `install/get-memory-wire.sh` wires hosts with no `--bank`. On a machine
+  pinned with `connect --bank <id>`, run it with `--no-connect` and re-run
+  `memory-wire connect --bank <id> <hosts>` after, or the surfaces re-default
+  to bank `memory-wire`.
 - macOS assets cannot be cross-built from Linux — `libsqlite3-sys` links
   CoreFoundation. The script skips them with that reason.
 - Delegate only with the `space-bunny` model.
