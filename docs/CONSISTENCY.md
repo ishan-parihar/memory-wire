@@ -3403,3 +3403,21 @@ only the binary. One operational misread worth recording: the unit is user-scope
 (`systemctl --user`), so a system-scope `systemctl show` reports
 `ActiveState=inactive` while the process runs — check the right scope before
 concluding a service is unsupervised.
+
+## 31. 2026-10-08 live-bank retrieval efficacy audit — pointer
+
+An exhaustive operational audit of injection and retrieval across every wired
+harness (OMP, pi, opencode, MCP, claude-code/codex hooks, cursor, hermes
+provider, operant embedded provider) ran against the live banks with no
+parameter changes. Full evidence, the 10-case graded recall battery, and the
+ten-item gap register are committed in `docs/RETRIEVAL_EFFICACY_AUDIT.md`;
+LongMemEval was not consulted. Headline measurements, all from the running
+system: bank `omp` is 798 rows / 6.44 MB of which ~88% of bytes are one-time
+Hindsight transcript imports (avg 8071c, max 34185c); the hook surface
+injects 4848 bytes for a bare "Continue" (no composition, no caps) and a
+6074-byte session-start preamble; the extension v2 composition demonstrably
+converts "Continue" into the actual work being continued (top-2 gold); the
+documented trading-notes polluter still ranks #1 for trading queries; the
+current audit prompt itself ranked an unrelated cortex transcript #1 —
+reproduced live, and recorded as the audit's own specimen. The graded case
+table is the seed of the dev set the relevance-gating question requires.
