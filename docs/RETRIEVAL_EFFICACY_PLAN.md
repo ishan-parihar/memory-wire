@@ -1,9 +1,29 @@
 # Retrieval efficacy plan — closing the audit gaps
 
 Written 2026-10-08 against `docs/RETRIEVAL_EFFICACY_AUDIT.md` (the evidence
-base; every GAP-N below cites it). Status: **planned, not started.** The
-audit's §4 case table is this plan's v0 baseline — every wave re-runs it and
+base; every GAP-N below cites it). Status: **executed 2026-10-08, shipped as
+v0.7.0** — Wave 0 through Wave 3 in full, Wave 4's dev set seeded and the
+retain probe passed; the operant-side items in §7 remain the only open work.
+The audit's §4 case table is this plan's v0 baseline — every wave re-runs it and
 records the delta in `docs/CONSISTENCY.md`.
+
+Execution notes, recorded where the plan said less than the doing taught:
+
+- Wave 1 grew a second envelope: OMP wraps prompts in `<system-notice>` as
+  Claude-family hosts wrap them in `<system-reminder>`. All four surfaces
+  strip both spellings.
+- Wave 2's hooks composition reads the last assistant turn from the
+  payload's `transcript_path` (the file the host already names) rather than
+  any transcript format guess; an unreadable transcript is the raw prompt.
+- Wave 3's exclusion is applied post-pool, one `ids_tagged` set lookup per
+  recall, rather than in SQL — the include filter must stay inside the
+  candidate window, but exclusion *wants* rows gone from both streams, and
+  a new `Store` method with a default kept every other backend untouched.
+- GAP-8 is closed by characterization (see the addendum in
+  `docs/INTEGRATION_AUDIT.md`): producer unnamed, effect neutralized because
+  it execs the installed binary.
+- GAP-4's decision held: coding harnesses read `omp`, the hermes family reads
+  `memory-wire`, no memories moved, and the junk pairs stopped growing.
 
 ## 0. Doctrine constraints — non-negotiable, inherited
 

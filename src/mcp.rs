@@ -319,6 +319,7 @@ impl<S: Store> Server<S> {
                 "Recall memories from a bank, most relevant first, as a JSON \
                  array of content strings. `budget` is a hard token cap, \
                  `tags` restricts the search to memories carrying any of them, \
+                 `exclude_tags` drops rows carrying any of them before ranking, \
                  and `format: \"full\"` returns {id, score, content} objects \
                  instead so the caller can cite what it got.",
                 schema(json!({
@@ -328,6 +329,7 @@ impl<S: Store> Server<S> {
                         "query": { "type": "string", "description": "Search text. Required." },
                         "budget": { "type": "integer", "description": "Token cap; falls back to the bank's recallMaxTokens, then 2000." },
                         "tags": { "type": "array", "items": { "type": "string" }, "description": "Only memories carrying any of these tags." },
+                        "exclude_tags": { "type": "array", "items": { "type": "string" }, "description": "Drop memories carrying any of these tags before ranking. Absent = no exclusion." },
                         "format": { "type": "string", "enum": ["full"], "description": "Return {id, score, content} objects instead of bare strings." }
                     },
                     "required": ["query"]
@@ -560,7 +562,8 @@ impl<S: Store> Server<S> {
                     .get("budget")
                     .and_then(Value::as_u64)
                     .and_then(|n| usize::try_from(n).ok());
-                let hits = self.svc.recall_filtered(&bank, query, budget, &tags)?;
+                let exclude = arg_tags_key(args, "exclude_tags");
+                let hits = self.svc.recall_filtered(&bank, query, budget, &tags, &exclude)?;
                 // `format: "full"` is the citing shape; the default stays a bare
                 // array of content strings, exactly as the HTTP route serves it.
                 Ok(if arg_str(args, "format").as_deref() == Some("full") {
@@ -912,7 +915,13 @@ fn arg_str(args: &Value, key: &str) -> Option<String> {
 
 /// An optional `tags: string[]`; anything else is treated as no filter.
 fn arg_tags(args: &Value) -> Vec<String> {
-    args.get("tags")
+    arg_tags_key(args, "tags")
+}
+
+/// [`arg_tags`] for any key — the exclusion list is the same shape as the
+/// inclusion list, just a different field name.
+fn arg_tags_key(args: &Value, key: &str) -> Vec<String> {
+    args.get(key)
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
         .unwrap_or_default()

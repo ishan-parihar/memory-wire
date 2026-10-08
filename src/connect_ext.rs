@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn the_version_is_read_out_of_the_marker_rather_than_declared_here() {
-        assert_eq!(version(SOURCE), Some("2"), "the template declares no readable version");
+        assert_eq!(version(SOURCE), Some("3"), "the template declares no readable version");
         assert_eq!(version("// MEMORY_WIRE_EXTENSION_VERSION: 3"), Some("3"));
         assert_eq!(version("const V = 1; // MEMORY_WIRE_EXTENSION_VERSION 12"), Some("12"));
         // Tolerating the `v` prefix and leading zeros is deliberate: a template

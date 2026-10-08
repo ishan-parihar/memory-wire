@@ -11,7 +11,9 @@
 //! - `session-start` — bank preamble (server config when the route exists,
 //!   otherwise the historian framing from `REFLECT_SYSTEM_PROMPT`), plus a
 //!   recall of the opening prompt when the host supplies one.
-//! - `prompt` — the recall results, plain text, nothing else.
+//! - `prompt` — the recall results, plain text, nothing else. Short prompts
+//!   borrow the last assistant turn off the transcript, so a "Continue"
+//!   ranks the work being continued rather than the word itself.
 //! - `stop` — no output; retains one session marker, deduped to a single row
 //!   per session. It names no transcript path: a path there is unreadable from
 //!   the store and its filesystem tokens land in the FTS index recall searches.
@@ -25,13 +27,36 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::guidelines::curl_examples;
 use crate::{http, paths, seed};
 use memory_wire::api::REFLECT_SYSTEM_PROMPT;
 
 /// Recalled lines injected into a session; enough to orient, few enough to
-/// leave room for the actual task.
-const MAX_LINES: usize = 8;
+/// leave room for the actual task. The same shape the omp/pi extension and
+/// the opencode plugin inject — one contract across every surface
+/// (`docs/RETRIEVAL_EFFICACY_AUDIT.md` GAP-1).
+const MAX_LINES: usize = 5;
+
+/// Characters one recalled entry may occupy. An uncapped entry let a single
+/// 4.8 KB transcript row take a whole system prompt (audit case E).
+const ENTRY_CAP_CHARS: usize = 400;
+
+/// Hard ceiling on the whole recall section, so a large bank cannot grow the
+/// injected block without bound.
+const SECTION_CAP_CHARS: usize = 2000;
+
+/// Prompts at most this long cannot rank anything on their own: "Continue"
+/// matches every memory equally and the top of that tie is noise.
+const SHORT_PROMPT_CHARS: usize = 160;
+
+/// How much of the previous turn's answer a short prompt may borrow for its
+/// recall query.
+const QUERY_CONTEXT_CHARS: usize = 600;
+
+/// Tags whose rows are never auto-injected: imported raw transcripts and
+/// bare session markers are corpus, not context for a turn in flight
+/// (`docs/RETRIEVAL_EFFICACY_AUDIT.md` GAP-3/7). An explicit `memory_recall`
+/// through MCP still sees them — exclusion is for injection only.
+const EXCLUDED_TAGS: [&str; 2] = ["transcript", "marker"];
 
 /// Token budget for one recall.
 const BUDGET: usize = 1200;
@@ -153,10 +178,37 @@ fn field(input: &Value, keys: &[&str]) -> String {
     String::new()
 }
 
+/// Drop `<system-reminder>`/`<system-notice>` envelopes the harness wrapped
+/// around the prompt. Those are the host talking to the model, not the user's
+/// words: retained as prompt text they became bank rows that outrank real
+/// questions (audit GAP-2, cases E and G), and in a recall query they are
+/// pure lexical noise. A prompt that is *all* envelope strips to empty, which
+/// every caller already treats as "no prompt".
+fn strip_reminders(text: &str) -> String {
+    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?s)<system-(?:reminder|notice)>.*?</system-(?:reminder|notice)>")
+            .expect("the pattern is a compile-time literal and cannot fail")
+    });
+    RE.replace_all(text, "").trim().to_string()
+}
+
+/// Collapse to one line and cap, so a multi-paragraph memory cannot take a
+/// whole system prompt — the extension's `clamp`, character for character, so
+/// all surfaces shape entries identically.
+fn clamp(text: &str, max: usize) -> String {
+    let flat: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= max {
+        return flat;
+    }
+    let mut cut: String = flat.chars().take(max.saturating_sub(1)).collect();
+    cut.push('…');
+    cut
+}
+
 /// `session-start` output for one endpoint/bank.
 pub fn session_start_at(endpoint: &str, bank: &str, input: &Value) -> String {
     let mut out = preamble(endpoint, bank);
-    let prompt = field(input, &["prompt", "user_prompt"]);
+    let prompt = strip_reminders(&field(input, &["prompt", "user_prompt"]));
     if let Some(hits) = recall_at(endpoint, bank, &prompt) {
         if !hits.is_empty() {
             out.push_str(&recall_section(bank, &hits));
@@ -166,8 +218,25 @@ pub fn session_start_at(endpoint: &str, bank: &str, input: &Value) -> String {
 }
 
 /// `prompt` output for one endpoint/bank.
+///
+/// A short prompt cannot rank anything on its own, so when the payload names
+/// a transcript the query borrows the last assistant text from it — the same
+/// mechanism the extension feeds from in-process state (audit case D: the
+/// borrowed answer turned "Continue" from a random transcript into the actual
+/// work being continued). An unreadable transcript is the raw prompt, which is
+/// the never-fail contract, not a degradation of it.
 pub fn prompt_at(endpoint: &str, bank: &str, input: &Value) -> String {
-    let query = field(input, &["prompt", "user_prompt"]);
+    let prompt = strip_reminders(&field(input, &["prompt", "user_prompt"]));
+    if prompt.is_empty() {
+        return String::new();
+    }
+    let mut query = prompt.clone();
+    if prompt.chars().count() <= SHORT_PROMPT_CHARS {
+        let transcript = field(input, &["transcript_path", "transcriptPath"]);
+        if let Some(answer) = last_assistant_text(&transcript) {
+            query = format!("{}\n{}", clamp(&answer, QUERY_CONTEXT_CHARS), prompt);
+        }
+    }
     match recall_at(endpoint, bank, &query) {
         Some(hits) if !hits.is_empty() => recall_section(bank, &hits),
         _ => String::new(),
@@ -208,7 +277,10 @@ pub fn stop_at(endpoint: &str, bank: &str, input: &Value) {
     } else {
         format!("session {session} ended")
     };
-    retain(endpoint, bank, &line, "hook:stop");
+    // Tagged as a marker so the auto-injection surfaces can exclude it
+    // (`EXCLUDED_TAGS`): a 44-character marker has no prose worth a turn's
+    // context, but it must stay searchable by an explicit recall (audit GAP-7).
+    retain(endpoint, bank, &line, "hook:stop", &["marker"]);
 }
 
 /// `pre-compact` and `session-end`: the two moments a session's words stop being
@@ -245,7 +317,7 @@ pub fn flush_at(endpoint: &str, bank: &str, input: &Value, event: &str) {
     if !why.is_empty() {
         head.push_str(&format!(" ({why})"));
     }
-    retain(endpoint, bank, &format!("{head}\n{digest}"), &format!("hook:{event}"));
+    retain(endpoint, bank, &format!("{head}\n{digest}"), &format!("hook:{event}"), &[]);
 }
 
 /// The tail of a transcript's prose, or `None` when it carries none.
@@ -256,18 +328,7 @@ pub fn flush_at(endpoint: &str, bank: &str, input: &Value, event: &str) {
 /// than reimplemented, so a seeded conversation and a flushed one are split the
 /// same way.
 fn transcript_tail(path: &str) -> Option<String> {
-    use std::io::{Read, Seek, SeekFrom};
-
-    let mut file = std::fs::File::open(path).ok()?;
-    let len = file.metadata().ok()?.len();
-    if len == 0 {
-        return None;
-    }
-    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES))).ok()?;
-    let mut buf = Vec::new();
-    file.take(TAIL_BYTES).read_to_end(&mut buf).ok()?;
-
-    let window = String::from_utf8_lossy(&buf);
+    let window = tail_window(path)?;
     let mut text = String::new();
     for line in window.lines() {
         // The window usually starts mid-record, so its first fragment is not a
@@ -287,9 +348,79 @@ fn transcript_tail(path: &str) -> Option<String> {
     (!content.trim().is_empty()).then_some(content)
 }
 
+/// The last [`TAIL_BYTES`] of a file, or `None` when it cannot be read. The
+/// shared read behind both `transcript_tail` (all prose) and
+/// `last_assistant_text` (one turn), so the two cannot disagree about how
+/// much of a file they are willing to look at.
+fn tail_window(path: &str) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    if len == 0 {
+        return None;
+    }
+    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES))).ok()?;
+    let mut buf = Vec::new();
+    file.take(TAIL_BYTES).read_to_end(&mut buf).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// The last assistant text in a transcript's tail, or `None` when the file is
+/// unreadable or carries no assistant turn.
+///
+/// The shapes are read per line and guarded per field, because a transcript is
+/// a host's file and its exact schema is the host's to change: Claude Code
+/// writes `{"type":"assistant","message":{"role":"assistant","content":…}}`,
+/// and a bare-string `content` and a block list both occur. A line that does
+/// not parse, or parses into none of the known shapes, is skipped rather than
+/// trusted — the caller's fallback is the raw prompt, which is the behavior a
+/// hook had before this existed (audit GAP-1, the composition mechanism).
+fn last_assistant_text(path: &str) -> Option<String> {
+    if path.is_empty() {
+        return None;
+    }
+    let window = tail_window(path)?;
+    for line in window.lines().rev() {
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        // Two accepted shapes: the envelope host's (`type`/`message.role`) and
+        // a bare `{"role":"assistant","content":…}` line.
+        let content = v
+            .get("message")
+            .or(Some(&v))
+            .filter(|_| {
+                v.get("type").and_then(Value::as_str) == Some("assistant")
+                    || v.get("role").and_then(Value::as_str) == Some("assistant")
+            })
+            .and_then(|m| m.get("content"));
+        let Some(content) = content else { continue };
+        let text = match content {
+            Value::String(s) => s.clone(),
+            Value::Array(blocks) => blocks
+                .iter()
+                .filter_map(|b| {
+                    b.get("text")
+                        .filter(|_| b.get("type").and_then(Value::as_str) == Some("text"))
+                        .and_then(Value::as_str)
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => continue,
+        };
+        if !text.trim().is_empty() {
+            return Some(text);
+        }
+    }
+    None
+}
+
 /// One best-effort retain. Every failure is silence, by the module's contract.
-fn retain(endpoint: &str, bank: &str, content: &str, context: &str) {
-    let body = json!({ "content": content, "context": context }).to_string();
+/// `tags` ride along so the store can classify the row (the marker tag) without
+/// this crate growing a second classification scheme.
+fn retain(endpoint: &str, bank: &str, content: &str, context: &str, tags: &[&str]) {
+    let body = json!({ "content": content, "context": context, "tags": tags }).to_string();
     if let Ok(resp) = http::post_json(
         &format!("{endpoint}/banks/{bank}/retain"),
         &body,
@@ -299,15 +430,23 @@ fn retain(endpoint: &str, bank: &str, content: &str, context: &str) {
     }
 }
 
-/// The bank preamble, plus the three operations.
+/// The bank preamble, plus the two operations a session can act on.
+///
+/// The measured preamble was 6074 characters — three full curl recipes on the
+/// critical path of every session open (audit GAP-1). What a model needs is
+/// the write path and the read path, one line each; `reflect` is a tool the
+/// MCP surface already names, and a hook-injected prompt is not the place to
+/// teach curl grammar.
 fn preamble(endpoint: &str, bank: &str) -> String {
     let framing = server_preamble_at(endpoint, bank)
         .unwrap_or_else(|| REFLECT_SYSTEM_PROMPT.trim().to_string());
     format!(
         "## memory-wire — bank `{bank}`\n\n\
          {framing}\n\n\
-         {}\n",
-        curl_examples(endpoint, bank)
+         - write: curl -sS -X POST {endpoint}/banks/{bank}/retain \
+           -H 'content-type: application/json' -d '{{\"content\":\"durable fact + why\"}}'\n\
+         - read: curl -sS -X POST {endpoint}/banks/{bank}/recall \
+           -H 'content-type: application/json' -d '{{\"query\":\"your question\"}}'\n"
     )
 }
 
@@ -388,7 +527,17 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> 
     // `format: "full"` is what puts the score on the wire. It is the documented
     // opt-in for exactly this — a caller that has to judge what it got back —
     // and it changes nothing else about the response's contents or ordering.
-    let body = json!({ "query": query, "budget": BUDGET, "format": "full" }).to_string();
+    // `exclude_tags` keeps imported transcripts and session markers out of an
+    // auto-injected block (audit GAP-3/7); the field is optional on the server
+    // too, so a hook newer than its server degrades to today's behavior
+    // rather than erroring.
+    let body = json!({
+        "query": query,
+        "budget": BUDGET,
+        "format": "full",
+        "exclude_tags": EXCLUDED_TAGS
+    })
+    .to_string();
     let resp = http::post_json(
         &format!("{endpoint}/banks/{bank}/recall"),
         &body,
@@ -423,13 +572,24 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> 
     Some(hits)
 }
 
-/// Recalled memories as plain text.
+/// Recalled memories as plain text, in the shape every auto-injection surface
+/// emits: the bank header, the provenance label (a best-of-irrelevant set must
+/// not read as a verified one), at most [`MAX_LINES`] entries clamped to
+/// [`ENTRY_CAP_CHARS`], and the whole section under [`SECTION_CAP_CHARS`] so a
+/// bank cannot grow a system prompt without bound. The measured before: a
+/// bare "Continue" injected 4848 bytes through this path (audit case C).
 fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
-    let mut out = format!("\n### memory-wire recall — `{bank}`\n\n");
+    let mut out = format!(
+        "\n### memory-wire recall — `{bank}`\n(recalled by relevance, unverified)\n\n"
+    );
+    let mut left = SECTION_CAP_CHARS;
     for hit in hits.iter().take(MAX_LINES) {
-        out.push_str("- ");
-        out.push_str(&hit.content);
-        out.push('\n');
+        let entry = format!("- {}\n", clamp(&hit.content, ENTRY_CAP_CHARS));
+        if entry.chars().count() > left {
+            break;
+        }
+        out.push_str(&entry);
+        left -= entry.chars().count();
     }
     if hits.len() > MAX_LINES {
         out.push_str(&format!("- …and {} more\n", hits.len() - MAX_LINES));
@@ -590,7 +750,10 @@ mod tests {
     fn prompt_should_return_plain_recall_lines() {
         let (ep, _rx) = canned(vec![("/recall", r#"["one","two"]"#)]);
         let out = prompt_at(&ep, "demo", &json!({ "prompt": "what about auth" }));
-        assert_eq!(out, "\n### memory-wire recall — `demo`\n\n- one\n- two\n");
+        assert_eq!(
+            out,
+            "\n### memory-wire recall — `demo`\n(recalled by relevance, unverified)\n\n- one\n- two\n"
+        );
         let empty = prompt_at(&ep, "demo", &json!({ "prompt": "   " }));
         assert!(empty.is_empty(), "blank prompt is not a search");
     }
@@ -619,6 +782,9 @@ mod tests {
         // random transcript basename into the FTS index recall searches.
         assert!(!seen[0].contains("does-not-exist"), "{:?}", seen[0]);
         assert!(!seen[0].contains("/tmp"), "{:?}", seen[0]);
+        // The marker rides the write as a tag, so auto-injection can exclude
+        // the row without deleting it from an explicit recall's reach.
+        assert!(seen[0].contains("\"marker\""), "the marker tag is missing: {:?}", seen[0]);
     }
 
     /// `stop` fires on every turn. Its content is deliberately stable for the
@@ -869,7 +1035,9 @@ mod tests {
         let bank = bank_of(&rx.try_iter().next().expect("one recall"));
         assert_eq!(
             got.stdout,
-            format!("\n### memory-wire recall — `{bank}`\n\n- one\n- two\n"),
+            format!(
+                "\n### memory-wire recall — `{bank}`\n(recalled by relevance, unverified)\n\n- one\n- two\n"
+            ),
             "stdout is exactly the recall section"
         );
 
@@ -1001,6 +1169,145 @@ mod tests {
         assert!(out.contains("…and 3 more"), "{out}");
     }
 
+    // GAP-2: harness reminder envelopes are the host talking to the model, not
+    // the user's words. Both spellings occur in the wild — OMP wraps in
+    // <system-notice>, Claude-family in <system-reminder>. Either must reach
+    // neither the query (lexical noise) nor the bank (a reminder row outranked
+    // a real question in audit cases E and G).
+    #[test]
+    fn harness_reminder_envelopes_should_neither_query_nor_rank() {
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let wrapped = "<system-notice>Session idle. Every turn MUST advance.</system-notice> How does auth work?";
+        let out = prompt_at(&ep, "demo", &json!({ "prompt": wrapped }));
+        assert!(out.contains("- one"), "{out}");
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert!(seen[0].contains("How does auth work"), "the user's words query: {seen:?}");
+        assert!(!seen[0].contains("system-notice"), "envelope text leaked: {seen:?}");
+        assert!(!seen[0].contains("Session idle"), "envelope text leaked: {seen:?}");
+
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let wrapped =
+            "<system-reminder>Reminder 1 of 3.</system-reminder> How does auth work?";
+        let out = prompt_at(&ep, "demo", &json!({ "prompt": wrapped }));
+        assert!(out.contains("- one"), "{out}");
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert!(!seen[0].contains("system-reminder"), "envelope text leaked: {seen:?}");
+        assert!(!seen[0].contains("Reminder 1"), "envelope text leaked: {seen:?}");
+    }
+
+    // A prompt that is only an envelope is, as far as this hook can tell, not a
+    // prompt at all — the same "no prompt" every malformed payload already is.
+    #[test]
+    fn a_prompt_that_is_all_envelope_is_no_prompt() {
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let only = "<system-reminder>Reminder 2 of 3.</system-reminder>";
+        let out = prompt_at(&ep, "demo", &json!({ "prompt": only }));
+        assert!(out.is_empty(), "no words, no search: {out}");
+        assert_eq!(rx.try_iter().count(), 0, "nothing to search for");
+    }
+
+    // GAP-1: the composition mechanism, fed from the payload's own transcript
+    // the way the extension feeds it from in-process state. The transcript
+    // helper's assistant turn says "auth uses jose"; a bare "Continue" must
+    // query with that answer alongside it, not with the word alone.
+    #[test]
+    fn a_short_prompt_should_borrow_the_last_assistant_text_from_the_transcript() {
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let path = transcript("compose");
+        let out = prompt_at(
+            &ep,
+            "demo",
+            &json!({ "prompt": "Continue", "transcript_path": path }),
+        );
+        assert!(out.contains("- one"), "{out}");
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert!(seen[0].contains("auth uses jose"), "the borrowed answer: {seen:?}");
+        assert!(seen[0].contains("Continue"), "the prompt still steers: {seen:?}");
+        std::fs::remove_file(&path).ok();
+    }
+
+    // An unreadable transcript is the raw prompt — never-fail, not a degraded
+    // mode.
+    #[test]
+    fn an_unreadable_transcript_costs_the_raw_prompt_and_nothing_else() {
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let out = prompt_at(
+            &ep,
+            "demo",
+            &json!({ "prompt": "Continue", "transcript_path": "/tmp/mw-no-such-file" }),
+        );
+        assert!(out.contains("- one"), "{out}");
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert!(seen[0].contains("Continue"), "{seen:?}");
+        assert!(!seen[0].contains("mw-no-such-file"), "{seen:?}");
+    }
+
+    // A prompt long enough to rank on its own must not pay a transcript read:
+    // composition is for prompts that cannot rank, not a tax on every turn.
+    #[test]
+    fn a_long_prompt_queries_with_itself_alone() {
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let long = "x".repeat(SHORT_PROMPT_CHARS + 1);
+        let path = transcript("long-prompt");
+        let _ = prompt_at(&ep, "demo", &json!({ "prompt": long, "transcript_path": path }));
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert!(!seen[0].contains("auth uses jose"), "not borrowed: {seen:?}");
+        std::fs::remove_file(&path).ok();
+    }
+
+    // GAP-1: the entry and section ceilings. The measured before was a single
+    // 4.8 KB transcript row taking a whole prompt injection (audit case E).
+    #[test]
+    fn one_entry_cannot_take_the_whole_section() {
+        let out = recall_section(
+            "b",
+            &[ScoredHit { content: "x".repeat(5000), score: Some(0.0) }],
+        );
+        assert!(out.chars().count() < 500, "{} chars", out.chars().count());
+        assert!(out.trim_end().ends_with('…'), "a cut entry is marked: {out}");
+        assert!(out.contains("(recalled by relevance, unverified)"));
+    }
+
+    #[test]
+    fn the_section_has_a_hard_ceiling() {
+        let hits: Vec<ScoredHit> = (0..MAX_LINES)
+            .map(|_| ScoredHit { content: "y".repeat(ENTRY_CAP_CHARS * 2), score: None })
+            .collect();
+        let out = recall_section("b", &hits);
+        assert!(
+            out.chars().count() <= SECTION_CAP_CHARS,
+            "{} chars over the cap",
+            out.chars().count() - SECTION_CAP_CHARS
+        );
+    }
+
+    // GAP-1's preamble diet: the measured session-start preamble was 6074
+    // characters. Two one-line operations is what a session can act on.
+    #[test]
+    fn the_preamble_should_stay_lean() {
+        let (ep, _rx) = canned(vec![("/config", "{}")]);
+        let out = session_start_at(&ep, "demo", &json!({}));
+        assert!(out.chars().count() <= 1600, "{} chars", out.chars().count());
+        assert!(out.contains("/banks/demo/retain"), "{out}");
+        assert!(out.contains("/banks/demo/recall"), "{out}");
+    }
+
+    // GAP-3: the exclusion list rides every recall this hook sends, and the
+    // field is optional on the server too — a hook newer than its server is a
+    // degradation to today's ranking, never an error.
+    #[test]
+    fn the_recall_should_exclude_corpus_noise_by_tag() {
+        let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
+        let _ = prompt_at(&ep, "demo", &json!({ "prompt": "auth" }));
+        let seen: Vec<String> = rx.try_iter().collect();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert!(seen[0].contains("exclude_tags"), "{seen:?}");
+        assert!(seen[0].contains("transcript") && seen[0].contains("marker"), "{seen:?}");
+    }
+
     // The test with teeth, and the core of the fix. The defect this closes is an
     // *information* loss, not a bad decision, so an assertion on the rendered
     // section could never have caught it: the rendered text is identical either
@@ -1058,7 +1365,10 @@ mod tests {
             ],
         );
         assert_eq!(bare, scored);
-        assert_eq!(bare, "\n### memory-wire recall — `demo`\n\n- one\n- two\n");
+        assert_eq!(
+            bare,
+            "\n### memory-wire recall — `demo`\n(recalled by relevance, unverified)\n\n- one\n- two\n"
+        );
     }
 
     fn plain(content: &str) -> ScoredHit {
@@ -1079,7 +1389,7 @@ mod tests {
         assert_eq!(hits[0].score, None, "unscored is None, not a guess at 0.0");
         assert_eq!(
             prompt_at(&ep, "demo", &json!({ "prompt": "auth" })),
-            "\n### memory-wire recall — `demo`\n\n- one\n- two\n"
+            "\n### memory-wire recall — `demo`\n(recalled by relevance, unverified)\n\n- one\n- two\n"
         );
     }
 

@@ -5,7 +5,7 @@
 //! - reflect: top-hit synthesis with cited ids (LLM synthesis lands later).
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -385,6 +385,21 @@ pub struct MemoryService<S: Store> {
     pub store: Arc<S>,
 }
 
+/// The two halves of tag filtering as one parameter, so the recall funnel
+/// keeps a fixed arity: `include` narrows to rows carrying any of them,
+/// `exclude` drops rows carrying any of them before ranking.
+#[derive(Default)]
+struct TagScope<'a> {
+    include: &'a [String],
+    exclude: &'a [String],
+}
+
+impl<'a> TagScope<'a> {
+    fn new(include: &'a [String], exclude: &'a [String]) -> Self {
+        Self { include, exclude }
+    }
+}
+
 impl<S: Store> MemoryService<S> {
     /// Create a service over the given store.
     pub fn new(store: S) -> Self {
@@ -541,12 +556,19 @@ impl<S: Store> MemoryService<S> {
     /// The config is read on the explicit-budget branch too, for
     /// `recallSynonyms` only, and a fault there is non-fatal: the budget is the
     /// caller's there, so no wrong budget can be served.
+    /// Recall top memories for `query` within `budget_tokens`, restricted to
+    /// memories carrying any of `tags` (empty = the whole bank) and with every
+    /// memory carrying any of `exclude` dropped from the candidate set before
+    /// ranking. An `exclude` that normalizes to nothing excludes nothing —
+    /// unlike `tags` it cannot fail closed, because the safe reading of a
+    /// nonsense exclusion is "hide no rows", not "answer with an empty set".
     pub fn recall_filtered(
         &self,
         bank_id: &str,
         query: &str,
         budget: Option<usize>,
         tags: &[String],
+        exclude: &[String],
     ) -> Result<Vec<ScoredMemory>, ApiError> {
         Self::require_bank(bank_id)?;
         // Both branches read the config, because `recallSynonyms` is independent
@@ -577,7 +599,14 @@ impl<S: Store> MemoryService<S> {
                 )
             }
         };
-        self.recall_with(bank_id, query, budget, tags, &FusionWeights::SHIPPED, synonyms)
+        self.recall_with(
+            bank_id,
+            query,
+            budget,
+            TagScope::new(tags, exclude),
+            &FusionWeights::SHIPPED,
+            synonyms,
+        )
     }
 
     /// Recall top memories for `query` within `budget_tokens`.
@@ -598,7 +627,7 @@ impl<S: Store> MemoryService<S> {
             bank_id,
             query,
             budget_tokens,
-            &[],
+            TagScope::default(),
             &FusionWeights::SHIPPED,
             &EMPTY_SYNONYMS,
         )
@@ -624,14 +653,13 @@ impl<S: Store> MemoryService<S> {
             bank_id,
             query,
             budget_tokens,
-            &[],
+            TagScope::default(),
             weights,
             &EMPTY_SYNONYMS,
         )
     }
 
-    /// Recall top memories for `query`, restricted to memories carrying any of
-    /// `tags` (empty = the whole bank).
+    /// Recall top memories for `query`, scoped by [`TagScope`].
     ///
     /// Bounded by construction: the store hands over a bounded candidate pool, the
     /// FTS stream is limited in SQL, the overlap stream is capped, and at most
@@ -643,12 +671,12 @@ impl<S: Store> MemoryService<S> {
         bank_id: &str,
         query: &str,
         budget_tokens: usize,
-        tags: &[String],
+        tags: TagScope<'_>,
         weights: &FusionWeights,
         synonyms: &SynonymTable,
     ) -> Result<Vec<ScoredMemory>, ApiError> {
-        let normalized = normalize_tags(tags);
-        if !tags.is_empty() && normalized.is_empty() {
+        let normalized = normalize_tags(tags.include);
+        if !tags.include.is_empty() && normalized.is_empty() {
             // Fail closed. A filter the caller sent that normalizes to nothing
             // (["", "   "]) names no memory at all, and answering it with the
             // whole bank would reply to a scoped question with unrelated rows
@@ -666,9 +694,28 @@ impl<S: Store> MemoryService<S> {
             scope: weights.keyword_scope,
             synonyms: expand_synonyms(synonyms, query),
         };
-        let (all, keyword_hits) = self
+        let (mut all, mut keyword_hits) = self
             .store
             .recall_inputs_lexical(bank_id, &lexical, &normalized, FTS_LIMIT)?;
+        // Exclusion, one set lookup for the whole recall: the ids carrying any
+        // excluded tag are dropped from both streams before fusion, so an
+        // excluded row neither votes nor can be injected (audit GAP-3).
+        // Normalized but not failed closed — see `recall_filtered`'s doc.
+        let excluded: HashSet<String> = normalize_tags(tags.exclude)
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let excluded = if excluded.is_empty() {
+            excluded
+        } else {
+            self.store
+                .ids_tagged(bank_id, &excluded.into_iter().collect::<Vec<_>>())?
+                .into_iter()
+                .collect()
+        };
+        if !excluded.is_empty() {
+            all.retain(|m| !excluded.contains(&m.id));
+            keyword_hits.retain(|(id, _)| !excluded.contains(id));
+        }
         // Stream A: real BM25 from SQLite FTS5 (bank- and tag-scoped in SQL).
         let fts_stream: Vec<RankedHit> = keyword_hits
             .iter()
@@ -805,7 +852,7 @@ impl<S: Store> MemoryService<S> {
         tags: &[String],
     ) -> Result<String, ApiError> {
         Self::require_bank(bank_id)?;
-        let hits = self.recall_filtered(bank_id, query, Some(2000), tags)?;
+        let hits = self.recall_filtered(bank_id, query, Some(2000), tags, &[])?;
         match hits.first() {
             None => Ok("no relevant memories".to_string()),
             Some(h) => Ok(format!("based on [{}]: {}", h.memory.id, h.memory.content)),
@@ -1970,19 +2017,47 @@ mod tests {
         svc.retain("b", "auth uses jose untagged", None).expect("retain none");
 
         // Unfiltered recall is unchanged: every memory still comes back.
-        assert_eq!(svc.recall_filtered("b", "jose", None, &[]).expect("all").len(), 3);
+        assert_eq!(svc.recall_filtered("b", "jose", None, &[], &[]).expect("all").len(), 3);
         // Any-match: one hit per matching tag, and an untagged memory never does.
         for filter in ["auth", "ops", "secrets"] {
             assert_eq!(
-                svc.recall_filtered("b", "jose", None, &tags(&[filter])).expect("filter").len(),
+                svc.recall_filtered("b", "jose", None, &tags(&[filter]), &[])
+                    .expect("filter")
+                    .len(),
                 1,
                 "filter {filter} should match exactly one memory"
             );
         }
         assert!(svc
-            .recall_filtered("b", "jose", None, &tags(&["nothing-has-this"]))
+            .recall_filtered("b", "jose", None, &tags(&["nothing-has-this"]), &[])
             .expect("miss")
             .is_empty());
+    }
+
+    /// GAP-3: the exclusion half of tag filtering. Dropped rows neither vote
+    /// nor can be injected; absent exclusion is byte-identical to before the
+    /// field existed; an exclusion naming nothing excludes nothing — the safe
+    /// reading, unlike `tags`' fail-closed one.
+    #[test]
+    fn exclude_tags_should_drop_tagged_rows_and_keep_the_rest() {
+        let svc = svc_with_banks(&["b"]);
+        svc.retain_tagged("b", "auth uses jose transcript", None, &tags(&["transcript"]))
+            .expect("retain transcript");
+        svc.retain_tagged("b", "auth uses jose live", None, &tags(&["auth"]))
+            .expect("retain live");
+
+        assert_eq!(svc.recall_filtered("b", "jose", None, &[], &[]).expect("all").len(), 2);
+        let hits = svc
+            .recall_filtered("b", "jose", None, &[], &tags(&["transcript"]))
+            .expect("excluded");
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].memory.content.contains("live"), "{hits:?}");
+        assert_eq!(
+            svc.recall_filtered("b", "jose", None, &[], &tags(&["nothing-has-this"]))
+                .expect("no-op")
+                .len(),
+            2
+        );
     }
 
     #[test]
@@ -1995,15 +2070,26 @@ mod tests {
         // The request tag is normalized into the same namespace as the bank's.
         for filter in ["req", "bank", "ops"] {
             assert_eq!(
-                svc.recall_filtered("b", "jose", None, &tags(&[filter])).expect("filter").len(),
+                svc.recall_filtered("b", "jose", None, &tags(&[filter]), &[])
+                    .expect("filter")
+                    .len(),
                 1,
                 "{filter} should reach the memory"
             );
         }
         // A bank-wide default applies to every later retain, not just this one.
         svc.retain("b", "auth uses jose second", None).expect("plain retain");
-        assert_eq!(svc.recall_filtered("b", "jose", None, &tags(&["bank"])).expect("bank").len(), 2);
-        assert!(svc.recall_filtered("b", "jose", None, &tags(&["req"])).expect("req").len() == 1);
+        assert_eq!(
+            svc.recall_filtered("b", "jose", None, &tags(&["bank"]), &[])
+                .expect("bank")
+                .len(),
+            2
+        );
+        assert!(svc
+            .recall_filtered("b", "jose", None, &tags(&["req"]), &[])
+            .expect("req")
+            .len()
+            == 1);
     }
 
     /// The overlap stream is **not** a "no query terms match" fallback: it drops
@@ -2163,9 +2249,9 @@ mod tests {
         }
 
         let len = |hits: Vec<ScoredMemory>| hits[0].memory.content.chars().count();
-        let bank_default = len(svc.recall_filtered("cfg", "jose", None, &[]).expect("bank"));
-        let explicit = len(svc.recall_filtered("cfg", "jose", Some(10), &[]).expect("explicit"));
-        let server_default = len(svc.recall_filtered("plain", "jose", None, &[]).expect("default"));
+        let bank_default = len(svc.recall_filtered("cfg", "jose", None, &[], &[]).expect("bank"));
+        let explicit = len(svc.recall_filtered("cfg", "jose", Some(10), &[], &[]).expect("explicit"));
+        let server_default = len(svc.recall_filtered("plain", "jose", None, &[], &[]).expect("default"));
 
         assert_eq!(bank_default, 5 * 4, "bank recallMaxTokens must be the default");
         assert_eq!(explicit, 10 * 4, "an explicit budget must win");
@@ -2211,7 +2297,7 @@ mod tests {
             .expect("config");
         svc.retain("b", "auth uses jose middleware", None).expect("retain");
         // The bad keys are ignored, so the server default applies and recall works.
-        let hits = svc.recall_filtered("b", "jose", None, &[]).expect("recall");
+        let hits = svc.recall_filtered("b", "jose", None, &[], &[]).expect("recall");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].memory.content, "auth uses jose middleware");
     }
@@ -2234,11 +2320,11 @@ mod tests {
         assert!(svc.get_memory("b", &first).expect("get").is_none(), "the superseded row is gone");
         // Tags are authoritative, not merged: the old revision's tag went with it.
         assert!(svc
-            .recall_filtered("b", "jose", None, &old_tags)
+            .recall_filtered("b", "jose", None, &old_tags, &[])
             .expect("old tag")
             .is_empty());
         assert_eq!(
-            svc.recall_filtered("b", "jose", None, &tags(&["auth"])).expect("new tag").len(),
+            svc.recall_filtered("b", "jose", None, &tags(&["auth"]), &[]).expect("new tag").len(),
             1
         );
     }
@@ -2353,11 +2439,11 @@ mod tests {
         // bank, which would answer a scoped question with unscoped rows that
         // look exactly like a real result.
         assert!(svc
-            .recall_filtered("b", "jose", None, &tags(&["", "   "]))
+            .recall_filtered("b", "jose", None, &tags(&["", "   "]), &[])
             .expect("blank filter")
             .is_empty());
         // An absent filter is the whole bank, and stays that way.
-        assert_eq!(svc.recall_filtered("b", "jose", None, &[]).expect("empty filter").len(), 1);
+        assert_eq!(svc.recall_filtered("b", "jose", None, &[], &[]).expect("empty filter").len(), 1);
         assert_eq!(svc.recall("b", "jose", 2000).expect("unfiltered").len(), 1);
     }
 
@@ -2479,7 +2565,7 @@ mod tests {
 
         // The bank default cannot be read, so the recall cannot know its budget.
         let err = svc
-            .recall_filtered("b", "jose", None, &[])
+            .recall_filtered("b", "jose", None, &[], &[])
             .expect_err("a swallowed config error must not answer 200 with the wrong budget");
         assert!(matches!(err, ApiError::Store(StoreError::Sqlite(_))), "got {err:?}");
         // …and it is the documented opaque 500, because that is what every
@@ -2493,7 +2579,7 @@ mod tests {
         // the fix is not "recall now needs the config", it is "recall does not
         // lie about the config it could not read".
         assert_eq!(
-            svc.recall_filtered("b", "jose", Some(2000), &[]).expect("explicit budget").len(),
+            svc.recall_filtered("b", "jose", Some(2000), &[], &[]).expect("explicit budget").len(),
             1
         );
     }
@@ -2982,7 +3068,7 @@ mod tests {
 
         // The config-aware entry point, with a config that has no synonym key.
         svc.set_bank_config("b", r#"{"recallMaxTokens": 100000}"#).expect("config");
-        let got = svc.recall_filtered("b", query, None, &[]).expect("configured recall");
+        let got = svc.recall_filtered("b", query, None, &[], &[]).expect("configured recall");
 
         assert_eq!(
             got.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
@@ -3017,7 +3103,7 @@ mod tests {
         // fail on a stopword rather than on the synonym.
         let query = "migrate";
         assert_eq!(
-            svc.recall_filtered("b", query, None, &[]).expect("before").len(),
+            svc.recall_filtered("b", query, None, &[], &[]).expect("before").len(),
             0,
             "the query alone must not match"
         );
@@ -3027,7 +3113,7 @@ mod tests {
             r#"{"recallSynonyms": {"migrate": {"terms": ["schema"], "weight": 0.7}}}"#,
         )
         .expect("config");
-        let after = svc.recall_filtered("b", query, None, &[]).expect("after");
+        let after = svc.recall_filtered("b", query, None, &[], &[]).expect("after");
         assert_eq!(after.len(), 1, "the configured synonym must reach it: {after:?}");
         assert!(after[0].memory.content.contains("schema change"));
 
@@ -3036,7 +3122,7 @@ mod tests {
         // table, so a bank that configured the key got no expansion on either
         // real surface while the key parsed, unit-tested and did nothing.
         let explicit = svc
-            .recall_filtered("b", query, Some(DEFAULT_RECALL_BUDGET), &[])
+            .recall_filtered("b", query, Some(DEFAULT_RECALL_BUDGET), &[], &[])
             .expect("explicit-budget recall");
         assert_eq!(
             explicit.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),

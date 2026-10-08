@@ -951,7 +951,7 @@ mod tests {
 
         let svc = crate::api::MemoryService::new(&store);
         let tagged = svc
-            .recall_filtered("ops", "release", None, &["from-config".to_string()])
+            .recall_filtered("ops", "release", None, &["from-config".to_string()], &[])
             .expect("recall");
         assert_eq!(
             tagged.len(),

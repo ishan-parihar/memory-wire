@@ -379,3 +379,40 @@ The audit's table holds, with two surfaces now having a second additive piece:
 
 The capability matrix in §1 grows one row worth naming explicitly: opencode is
 no longer MCP-only.
+
+## Addendum (2026-10-08, v0.7.0): the retrieval-efficacy waves land
+
+The exhaustive audit (`docs/RETRIEVAL_EFFICACY_AUDIT.md`) found the surfaces
+had drifted apart — the v2 mitigations existed only where the extension ran.
+v0.7.0 makes one contract out of them:
+
+- **Hooks and the hermes provider reach parity** with the extension: 5 entries,
+  400c each, 2000c block, provenance label, and short-prompt composition —
+  the `prompt` hook borrows the last assistant text from the payload's own
+  `transcript_path` where the extension borrows it from in-process state.
+  Measured on the live bank: a bare "Continue" through the hook binary cost
+  4848 bytes and now costs ~1450; a session-start preamble cost 6074 and now
+  ~2265.
+- **Harness envelopes are no longer memories.** `<system-reminder>` and
+  `<system-notice>` text is stripped at every capture seam (extension, plugin,
+  hooks, hermes provider) before any query is composed or any row is
+  retained; 24 envelope-keyed rows were pruned from bank `omp` through the
+  HTTP delete path, listed first.
+- **`exclude_tags` lands on the recall route** — additive, absent = the old
+  bytes. The one-time migration (`scripts/retag_imports.py`) tagged 710
+  Hindsight transcript imports and 47 session markers; auto-injection
+  excludes both, explicit `memory_recall` still sees everything.
+- **Hermes `sync_turn` keeps the question.** Head-anchored pairs with a
+  `MIN_ANSWER_CHARS` skip and a `turn-<djb2>` document id, so the bank that
+  filled with 943 prompt-only pairs stops growing them.
+- **The marker producer (audit surface #9) is characterized, not named**:
+  it execs `~/.local/bin/memory-wire hook stop` by absolute path once per
+  opencode session end — 10/10 probe runs, ~15 ms after the plugin's own
+  idle retain, PATH shim bypassed. Not in the opencode/omp binaries,
+  oh-my-openagent, AFT, herdr, hermes, or operant-core. Because it execs
+  the installed binary, v0.7.0 tags its markers automatically and they drop
+  out of auto-injection. The identity question stays open; the effect is
+  closed.
+- **A labelled dev set now exists** — `eval/relevance/`, ten graded cases,
+  never LongMemEval — and a ten-run headless retain probe passed 10/10,
+  closing the audit's GAP-10 fragility question for this configuration.

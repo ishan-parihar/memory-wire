@@ -29,12 +29,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urlparse
 
 try:  # Hermes installs its own memory ABC; the fallback keeps this importable
@@ -77,11 +78,32 @@ DEFAULT_BANK = "memory-wire"
 # server that is down must cost one timeout, not the session.
 TIMEOUT = 2.0
 
-# Token budget and line cap for a prefetch recall. Both lifted from
-# `src/hooks.rs` (BUDGET = 1200, MAX_LINES = 8) so a Hermes session and a
-# Claude Code session get the same amount of context for the same bank.
+# Token budget for a prefetch recall. Lifted from `src/hooks.rs` so a Hermes
+# session and a Claude Code session get the same amount of context for the
+# same bank.
 BUDGET = 1200
-MAX_LINES = 8
+
+# Entries and characters one prefetch may inject — the same ceilings every
+# auto-injection surface enforces (docs/RETRIEVAL_EFFICACY_AUDIT.md GAP-1),
+# so a Hermes block and an extension block cost the same context.
+MAX_LINES = 5
+ENTRY_CAP_CHARS = 400
+SECTION_CAP_CHARS = 2000
+
+# An answer shorter than this is an "OK", not a turn worth remembering — the
+# same rule the omp/pi extension applies (audit GAP-6, and the 943
+# prompt-pair rows a bank filled with before it).
+MIN_ANSWER_CHARS = 32
+
+# Characters of the user half one sync_turn retain keeps. The question is the
+# retrieval key; the tail-cut this replaces could drop it whole (audit GAP-6).
+USER_CAP_CHARS = 600
+
+# Tags whose rows are never auto-injected: imported raw transcripts and bare
+# session markers are corpus, not context for a turn in flight
+# (docs/RETRIEVAL_EFFICACY_AUDIT.md GAP-3/7). Optional on the server too, so a
+# plugin newer than its server degrades to today's behavior.
+EXCLUDE_TAGS = ("transcript", "marker")
 
 # Characters of prose one retain may carry. Same literal as `FLUSH_CHARS` in
 # `src/hooks.rs`, for the same reason: a seeded and a flushed conversation
@@ -190,20 +212,32 @@ def _request(
         return None
 
 
-def _retain(base: str, bank: str, content: str, tag: str, context: str = "") -> bool:
-    """Store one memory. Returns whether the server accepted it."""
+def _retain(base: str, bank: str, content: str, tag: str, context: str = "", document_id: str = "") -> bool:
+    """Store one memory. Returns whether the server accepted it.
+
+    ``document_id`` is the turn-dedupe key: a repeated ask replaces its row
+    instead of piling up twin questions (audit GAP-6).
+    """
     if not content.strip():
         return False
+    body: Dict[str, Any] = {"content": content, "context": context, "tags": [tag]}
+    if document_id:
+        body["document_id"] = document_id
     out = _request(
         base,
         f"/banks/{bank}/retain",
-        {"content": content, "context": context, "tags": [tag]},
+        body,
         method="POST",
     )
     return isinstance(out, dict)
 
 
-def _recall(base: str, bank: str, query: str) -> Optional[List[Dict[str, Any]]]:
+def _recall(
+    base: str,
+    bank: str,
+    query: str,
+    exclude: Sequence[str] = (),
+) -> Optional[List[Dict[str, Any]]]:
     """Memories for *query* as ``{"content", "score"}`` dicts, or ``None`` when the
     server is unreachable.
 
@@ -225,10 +259,15 @@ def _recall(base: str, bank: str, query: str) -> Optional[List[Dict[str, Any]]]:
     """
     if not query.strip():
         return None
+    body: Dict[str, Any] = {"query": query, "budget": BUDGET, "format": "full"}
+    if exclude:
+        # Optional on the server: a plugin newer than its server degrades to
+        # the unfiltered ranking rather than erroring.
+        body["exclude_tags"] = list(exclude)
     out = _request(
         base,
         f"/banks/{bank}/recall",
-        {"query": query, "budget": BUDGET, "format": "full"},
+        body,
         method="POST",
     )
     if not isinstance(out, list):
@@ -242,6 +281,48 @@ def _recall(base: str, bank: str, query: str) -> Optional[List[Dict[str, Any]]]:
         score = hit.get("score") if isinstance(hit, dict) else None
         hits.append({"content": content, "score": score if isinstance(score, float) else None})
     return hits
+
+
+# ---------------------------------------------------------------------------
+# Prompt hygiene
+# ---------------------------------------------------------------------------
+
+
+_REMINDER_RE = re.compile(
+    r"<system-(?:reminder|notice)>.*?</system-(?:reminder|notice)>", re.DOTALL
+)
+
+
+def _strip_reminders(text: str) -> str:
+    """Drop harness reminder/notice envelopes — the host talking to the model,
+    not the user's words. Retained as prompt text they outranked real
+    questions; in a query they are lexical noise (audit GAP-2)."""
+    return _REMINDER_RE.sub("", text or "").strip()
+
+
+def _clamp(text: str, max_chars: int) -> str:
+    """Collapse to one line and cap — the extension's ``clamp``, so every
+    surface shapes an entry identically."""
+    flat = " ".join((text or "").split())
+    if len(flat) <= max_chars:
+        return flat
+    return flat[: max_chars - 1] + "…"
+
+
+def _djb36(text: str) -> str:
+    """djb2 over code points, base-36 — the same digest the extension's
+    ``hash`` produces, so a turn retained here and one retained there key
+    identically."""
+    h = 5381
+    for ch in text or "":
+        h = ((h << 5) + h + ord(ch)) & 0xFFFFFFFF
+    digits = ""
+    while True:
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"[h % 36] + digits
+        h //= 36
+        if h == 0:
+            break
+    return digits
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +367,7 @@ def _prose(messages: List[Dict[str, Any]]) -> str:
     for message in messages or []:
         if not isinstance(message, dict):
             continue
-        text = _text_of(message.get("content")).strip()
+        text = _strip_reminders(_text_of(message.get("content"))).strip()
         if not text:
             continue
         role = str(message.get("role", "") or "message")
@@ -392,12 +473,24 @@ class MemoryWireProvider(MemoryProvider):
         """
         if not _valid_url(self._base):
             return ""
-        hits = _recall(self._base, self._bank, query)
+        hits = _recall(self._base, self._bank, _strip_reminders(query), EXCLUDE_TAGS)
         if not hits:
             return ""
-        out = f"### memory-wire recall — `{self._bank}`\n\n"
+        # The shape every auto-injection surface emits (audit GAP-1): the bank
+        # header, the provenance label — a best-of-irrelevant set must not read
+        # as a verified one — and at most MAX_LINES entries, each clamped, the
+        # whole block under SECTION_CAP_CHARS.
+        out = (
+            f"### memory-wire recall — `{self._bank}`\n"
+            "(recalled by relevance, unverified)\n\n"
+        )
+        left = SECTION_CAP_CHARS
         for hit in hits[:MAX_LINES]:
-            out += f"- {hit['content']}\n"
+            entry = f"- {_clamp(hit['content'], ENTRY_CAP_CHARS)}\n"
+            if len(entry) > left:
+                break
+            out += entry
+            left -= len(entry)
         if len(hits) > MAX_LINES:
             out += f"- …and {len(hits) - MAX_LINES} more\n"
         return out
@@ -406,28 +499,42 @@ class MemoryWireProvider(MemoryProvider):
         """Retain the turn that just completed.
 
         Runs on Hermes' background sync worker, so blocking here costs the drain
-        deadline rather than the turn. The user half is stored and the assistant
-        half is kept as a short trailing line, because what a later session needs
-        to find a decision is the question that produced it more than the
-        thousand-token answer.
+        deadline rather than the turn.
 
-        Capped at :data:`FLUSH_CHARS` and tagged, so a bank of per-turn memories
-        stays rankable: recall reads a bounded candidate window, so the cost of
-        a chatty session is ranking quality, not scan time.
+        Retention discipline (audit GAP-6): reminder envelopes are stripped; a
+        turn whose answer is shorter than :data:`MIN_ANSWER_CHARS` is a bare
+        acknowledgement and is not retained — retaining prompt-only rows is
+        how a bank fills with duplicate question texts that recall then
+        injects as if they were memory. The pair is **head-anchored**: the
+        user half is clamped and always present, and only the answer half is
+        tail-cut — the question is the retrieval key, and the old whole-body
+        tail-cut could drop it exactly when the answer was long enough to be
+        worth keeping. ``document_id`` keys the row on the question, so a
+        repeated ask replaces its row rather than piling up twins.
         """
         if not self._writable():
             return
-        user = (user_content or "").strip()
+        user = _strip_reminders((user_content or "").strip())
         if not user:
             return
         answer = (assistant_content or "").strip()
+        if len(answer) < MIN_ANSWER_CHARS:
+            return
         head = f"turn {self._session_id}"
         if self._identity:
             head += f" [{self._identity}]"
-        body = f"{head}\nuser: {user}"
-        if answer:
-            body += f"\nassistant: {answer}"
-        _retain(self._base, self._bank, body[-FLUSH_CHARS:], "hook:sync-turn")
+        lead = f"{head}\nuser: {_clamp(user, USER_CAP_CHARS)}"
+        # The answer keeps its tail — the end of a working turn is the
+        # decision — in whatever room the head-anchor leaves it.
+        room = max(0, FLUSH_CHARS - len(lead) - len("\nassistant: "))
+        body = f"{lead}\nassistant: {answer[-room:]}"
+        _retain(
+            self._base,
+            self._bank,
+            body,
+            "hook:sync-turn",
+            document_id=f"turn-{_djb36(user)}",
+        )
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
         """Retain the conversation's own words as the session ends.

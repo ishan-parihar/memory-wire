@@ -536,7 +536,13 @@ tags, so a bank-wide default can never displace a tag you named.
 Tags work without any config: `retain` accepts `{"content", "tags"}` and `recall`
 accepts `{"query", "tags"}` to restrict the search to memories carrying **any** of
 them (normalized, deduped, capped at 20; the cap keeps the head, preserving your
-ordering).
+ordering). `recall` also accepts `exclude_tags` — the additive inverse: rows
+carrying any of those tags are dropped from the candidate set before ranking.
+Absent, the field is byte-identical to before it existed. The auto-injection
+surfaces (extension, opencode plugin, hooks, the hermes provider) send
+`["transcript", "marker"]` so imported raw transcripts and bare session markers
+never land in a system prompt, while an explicit `memory_recall` still sees
+everything.
 
 ## Forgetting (opt-in TTL)
 
@@ -602,7 +608,7 @@ binding beyond `127.0.0.1` is not enough on its own to expose it.
 | Tool | Writes? | Arguments |
 |---|---|---|
 | `memory_retain` | yes | `content` (required), `bank?`, `context?`, `tags?` |
-| `memory_recall` | no | `query` (required), `bank?`, `budget?`, `tags?` |
+| `memory_recall` | no | `query` (required), `bank?`, `budget?`, `tags?`, `exclude_tags?` |
 | `memory_reflect` | no | `query` (required), `bank?` |
 | `memory_bank_config_get` | no | `bank?` |
 
@@ -887,6 +893,22 @@ keeps a timestamped backup of every file it edits, refuses a malformed config
 untouched, and never overwrites a hook it did not write. `connect --uninstall`
 undoes it. The MCP entry points at the **installed binary by absolute path**, so it
 survives a `cargo clean` of a development checkout.
+
+**Every auto-injection surface emits the same bounded block (since `v0.7.0).**
+Whatever injects — hooks, extension, plugin, hermes provider — the block is:
+harness `<system-reminder>`/`<system-notice>` envelopes stripped from the
+capture before anything is queried or retained; a short prompt (≤160 chars)
+borrows the previous turn's answer into its recall query, so a "Continue" ranks
+the work being continued; at most 5 entries, each clamped to 400 characters, the
+whole block under 2000; a provenance label (`recalled by relevance, unverified`)
+so a best-of-irrelevant set cannot read as a verified one; and rows tagged
+`transcript` or `marker` excluded from injection while remaining reachable by an
+explicit `memory_recall`. The measured before/after on a live bank: a bare
+"Continue" through the hook surface cost 4848 bytes of injected context and now
+costs ~1450; a session-start preamble cost 6074 and now costs ~2265 with the same
+recall attached. The full audit and the gap register are in
+`docs/RETRIEVAL_EFFICACY_AUDIT.md`; the labelled battery that measures this is
+`eval/relevance/`.
 
 Downloads are verified against the `.sha256` the release publishes next to each
 asset; a mismatch aborts the install rather than installing a corrupt binary.

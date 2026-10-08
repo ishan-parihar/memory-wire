@@ -291,7 +291,7 @@ mod tests {
         assert!(file.contains(VERSION_MARKER));
         // And a reconnect without a bank is only ever a re-render: the file
         // stays ours, and the version still parses.
-        assert_eq!(version(&file), Some("1"));
+        assert_eq!(version(&file), Some("2"));
         std::fs::remove_dir_all(&home).ok();
     }
 

@@ -482,6 +482,10 @@ struct RecallReq {
     /// Only memories carrying any of these tags.
     #[serde(default)]
     tags: Option<Vec<String>>,
+    /// Rows carrying any of these tags are dropped before ranking. Absent =
+    /// no exclusion — byte-identical to before the field existed.
+    #[serde(default)]
+    exclude_tags: Option<Vec<String>>,
     /// `full` returns `{id, score, content}` objects; anything else (the
     /// default) keeps the bare array of content strings.
     format: Option<String>,
@@ -687,6 +691,7 @@ async fn recall(
             &req.query,
             req.budget,
             &req.tags.unwrap_or_default(),
+            &req.exclude_tags.unwrap_or_default(),
         )
     })
     .await

@@ -1,5 +1,5 @@
 // memory-wire native memory extension for omp and pi.
-// MEMORY_WIRE_EXTENSION_VERSION 2
+// MEMORY_WIRE_EXTENSION_VERSION 3
 //
 // Installed by `memory-wire connect omp`, as
 // ~/.omp/agent/extensions/memory-wire.ts   (omp loads flat `*.ts` files there),
@@ -87,6 +87,14 @@ var QUERY_CONTEXT_CHARS = 600;
 /** An answer shorter than this is an "OK", not a turn worth remembering. */
 var MIN_ANSWER_CHARS = 32;
 
+/** Tags whose rows are never auto-injected: imported raw transcripts and bare
+ *  session markers are corpus, not context for a turn in flight
+ *  (docs/RETRIEVAL_EFFICACY_AUDIT.md GAP-3/7). An explicit memory_recall still
+ *  sees them — exclusion is for injection only. The field is optional on the
+ *  server too, so an extension newer than its server degrades to today's
+ *  behavior rather than erroring. */
+var EXCLUDE_TAGS = ["transcript", "marker"];
+
 /** Server base URL. Loopback and unauthenticated, which is why this is a default
  *  the environment can move rather than something this file validates. */
 function endpoint() {
@@ -142,6 +150,16 @@ function hash(text) {
   var h = 5381;
   for (var i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
   return h.toString(36);
+}
+
+/** Drop <system-notice>/<system-reminder> envelopes the harness wrapped
+ *  around the prompt. The envelope is the host talking to the model, not the
+ *  user's words: retained as prompt text those rows outrank real questions,
+ *  and in a query they are lexical noise (docs/RETRIEVAL_EFFICACY_AUDIT.md
+ *  GAP-2). A prompt that is only an envelope strips to empty, which reads as
+ *  no prompt. */
+function stripReminders(text) {
+  return text.replace(/<system-(?:reminder|notice)>[\s\S]*?<\/system-(?:reminder|notice)>/g, "").trim();
 }
 
 /** The text of a message's `content`, which is a string in some events and a
@@ -214,7 +232,7 @@ export default function memoryWireExtension(pi) {
   var lastRetained = "";
 
   pi.on("before_agent_start", async function (event) {
-    var prompt = event && typeof event.prompt === "string" ? event.prompt.trim() : "";
+    var prompt = event && typeof event.prompt === "string" ? stripReminders(event.prompt) : "";
     if (!prompt) return undefined;
     // Recorded before the await, so a recall that fails still leaves the prompt
     // available to `agent_end`.
@@ -235,7 +253,7 @@ export default function memoryWireExtension(pi) {
       // `format: "full"` is what puts `score` on the wire; the default shape is a
       // bare array of content strings. `formatRecall` reads both, so this stays
       // compatible with a server that does not know the field.
-      { query: query, budget: RECALL_BUDGET, format: "full" },
+      { query: query, budget: RECALL_BUDGET, format: "full", exclude_tags: EXCLUDE_TAGS },
       RECALL_TIMEOUT_MS
     );
     if (!Array.isArray(items)) return undefined;

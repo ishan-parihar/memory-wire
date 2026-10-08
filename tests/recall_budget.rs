@@ -42,7 +42,7 @@ fn a_median_size_session_must_survive_the_default_budget_whole() {
     svc.retain("b", "unrelated note about the release checklist", None).expect("retain short");
 
     let hits = svc
-        .recall_filtered("b", "jose migration", None, &[])
+        .recall_filtered("b", "jose migration", None, &[], &[])
         .expect("recall under the shipped default budget");
     let served = hits.iter().find(|h| h.memory.content.starts_with("jose migration"));
 
@@ -67,7 +67,7 @@ fn the_default_budget_must_admit_several_median_size_sessions_not_one() {
             .expect("retain");
     }
     let hits = svc
-        .recall_filtered("b", "session1 topic", None, &[])
+        .recall_filtered("b", "session1 topic", None, &[], &[])
         .expect("recall under the shipped default budget");
 
     // 3 × 2,626 is the derivation of the default, so three whole sessions must

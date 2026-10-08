@@ -442,6 +442,15 @@ pub trait Store: Send + Sync {
     ) -> Result<KeywordHits, StoreError> {
         Ok(Vec::new())
     }
+    /// Ids of memories in `bank_id` carrying any of `tags`.
+    ///
+    /// The exclusion half of tag filtering: a recall that must not inject
+    /// imported transcripts or bare markers asks once for the ids to drop
+    /// rather than paying a per-candidate lookup. Default is empty, so a
+    /// backend without tags keeps exactly today's behavior.
+    fn ids_tagged(&self, _bank_id: &str, _tags: &[String]) -> Result<Vec<String>, StoreError> {
+        Ok(Vec::new())
+    }
     /// Persist a memory together with its tags in one transaction.
     ///
     /// `tags` is the complete tag set for the row. Default is
@@ -2049,6 +2058,31 @@ impl Store for SqliteStore {
         let hit_ids: Vec<&str> = hits.iter().map(|(id, _)| id.as_str()).collect();
         let pool = Self::recall_pool_conn(&conn, bank_id, tags, RECALL_POOL_LIMIT, &hit_ids)?;
         Ok((pool, hits))
+    }
+
+    fn ids_tagged(&self, bank_id: &str, tags: &[String]) -> Result<Vec<String>, StoreError> {
+        if tags.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.read_conn()?;
+        // `prepare`, not `prepare_cached`, for the same reason as the two
+        // recall statements: the text carries one `?` per tag, so caching
+        // would pin a variable-shape statement for nothing.
+        let marks = vec!["?"; tags.len()].join(",");
+        let sql = format!(
+            "SELECT m.id FROM memories m \
+             JOIN memory_tags t ON t.memory_id = m.id \
+             WHERE m.bank_id = ? AND t.tag IN ({marks})"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut args: Vec<&dyn ToSql> = vec![&bank_id];
+        args.extend(tags.iter().map(|t| t as &dyn ToSql));
+        let rows = stmt.query_map(params_from_iter(args), |row| row.get::<_, String>(0))?;
+        let mut ids = Vec::new();
+        for id in rows {
+            ids.push(id?);
+        }
+        Ok(ids)
     }
 
     fn get_bank_config(&self, bank_id: &str) -> Result<Option<String>, StoreError> {
