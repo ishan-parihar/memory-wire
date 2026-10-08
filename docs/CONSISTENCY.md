@@ -3421,3 +3421,34 @@ documented trading-notes polluter still ranks #1 for trading queries; the
 current audit prompt itself ranked an unrelated cortex transcript #1 —
 reproduced live, and recorded as the audit's own specimen. The graded case
 table is the seed of the dev set the relevance-gating question requires.
+
+## 32. 2026-10-08: v0.7.0 ships the uniform injection contract — measured before/after
+
+The retrieval-efficacy plan (`docs/RETRIEVAL_EFFICACY_PLAN.md`) executed
+end-to-end and shipped as `v0.7.0` (published 2026-10-08 from a local build,
+`--only "linux-x86_64 linux-x86_64-musl linux-aarch64"`, both workflows
+disabled around the tag push — no new Actions runs). Every number below was
+read off the live banks, before and after, with the labelled battery committed
+at `eval/relevance/` (never LongMemEval; the three-set discipline holds).
+
+| measurement | before | after |
+|---|---|---|
+| `hook prompt` with a bare "Continue" | 4848 bytes injected | 1442 |
+| `hook session-start` preamble+recall | 6074 bytes | 2265 |
+| auto-injection battery: junk in top-5 | 4 of 9 cases | **1 of 9** (a cross-project turn row the label counts as junk) |
+| auto-injection battery: gold at top | 5 of 6 | 5 of 6 (case H's gold is `transcript`-tagged by design: auto-excluded, still reachable in search — Y) |
+| the audit's own pollution specimen (case B) | cortex 20-pools transcript at rank 1 | gone from top-5; the audit turn's real pair at rank 1 |
+| headless `opencode run` retain | 1 miss in 2 | **10/10** (10-run probe, same GLM model) |
+
+Corpus work, all reversible and snapshotted: 709 Hindsight transcript imports
+and 57 session markers tagged (`scripts/retag_imports.py`, idempotent);
+24 reminder-envelope turn rows + 1 test row deleted through the HTTP path.
+Bank configs set: `recallMaxTokens: 1200` on `omp` and `memory-wire`, local
+and VPS — an MCP call that omits `budget` now costs ~4.8 KB, not ~8 KB.
+
+One measurement recorded as a null result: the marker producer (audit surface
+#9) is characterized but unnamed — it execs the installed binary by absolute
+path once per opencode session end; ten probe runs with a PATH shim logged
+zero intercepts while ten markers appeared. v0.7.0 tags its output
+automatically (`marker`), so its rows are out of every auto-injected block;
+naming it remains open and does not block anything.
