@@ -3,6 +3,13 @@
 Written 2026-09-28, after `v0.4.0` shipped. Read-only audit of the three
 codebases plus the locally installed harnesses; no code changed.
 
+**Status 2026-10-08:** the framing below is the v0.4.0 field and stays for
+the record; closed rows are struck with their closing commit, and the
+surviving open items are indexed in `TODO.md` at the repo root. The
+current-state document for the installed surfaces is
+`docs/INTEGRATION_AUDIT.md` (with its 2026-10-08 addendum). Verify a row
+against the binary before acting on it — this doc's own convention.
+
 Sources: `_audit/agentmemory/` (rohitg00/agentmemory), `_audit/hindsight/`
 (vectorize-io/hindsight), and this tree at `eec026f`. Every claim below carries
 a `file:line` citation from those trees or a command run on this machine.

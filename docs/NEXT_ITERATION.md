@@ -1,5 +1,12 @@
 # Next iteration — 2026-09-28
 
+**Status 2026-10-08:** this is the measured record of the 2026-09-28 parity
+iteration. Its E-wave outcomes are recorded in `docs/RERANKING_PLAN.md` §3,
+`docs/PERFORMANCE_PLAN.md` and `docs/CONSISTENCY.md`; the retrieval-efficacy
+work that followed shipped in `v0.7.0` (`docs/RETRIEVAL_EFFICACY_PLAN.md`,
+CONSISTENCY §31–32). Open implementation work lives in `TODO.md` at the repo
+root.
+
 ## What changed since the last plan
 
 The four-phase performance plan is complete and verified: `synchronous=NORMAL`,

@@ -1,0 +1,32 @@
+# retrieval-efficacy battery — post-v0.7.0
+# date: 2026-10-08T15:50:54Z | binary: memory-wire 0.7.0 | bank: omp
+# command: python3 eval/relevance/run_battery.py --bank omp
+# numbers quoted in docs/CONSISTENCY.md §32 must match this artifact (artifact wins per AGENTS §7).
+# note: the v0.6.3 baseline run has no committed artifact — it was not saved at
+# measurement time; §32's baseline column is prose-only by miss, recorded here so
+# the miss is not silent. Every future run that lands in CONSISTENCY commits its output first.
+case           gold@5  junk@5  chars   top-5 (auto shape)
+A-readme            Y       -   1200   asked: Was the README was also updated with any relevant information?  | asked: Bhakti yog and karma yog would be inferred from the Bhagavad Gi | asked: I'm investigating the local machine's agent stack for routing m
+B-audit             Y       -    679   asked: I want you to audit the context injection implementation gaps t | asked: Complete assignment thoroughly: Run the three steps in the cont
+C-continue          -       -   1248   memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | asked: continue with the aroute development answered: Release rerun st | asked: continue with the sourcehound development answered: Sweep still | asked: continue with the aroute development. answered: Release is depl
+D-composed          Y       -   1200   asked: Was the README was also updated with any relevant information?  | asked: Is the readme, and everything else updated? Are all their integ | asked: Complete assignment thoroughly: Run the two steps verbatim from
+E-release           Y       Y   1648   asked: Proceed with updating the tag on the github releases and deploy | asked: Update both the binaries on this system, and on my SSH RACKNERD | asked: continue with the aroute development. answered: Release is depl | asked: <system-reminder> [BACKGROUND BASH COMPLETED] - task bash-6529b | asked: continue with the aroute development answered: Release rerun st
+F-plugin            Y       -   1671   memory-wire closed the integration gaps from the 2026-10-07 investigat | memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | asked: "This is a live retention test of the memory-wire opencode plug | asked: Update both the binaries on this system, and on my SSH RACKNERD | asked: continue with the aroute development answered: Release rerun st
+G-dispatcher        -       -   1200   asked: Proceed with the full scale implementation of the remaining ite | fooyin-bin AUR resurrection (filed 2026-10-06 ~20:19 IST): package reb | asked: Complete assignment thoroughly: Run the single bash command des
+H-trading           !       -    800   asked: Proceed with the execution of the remaining phases fully and ef | asked: continue answered: Audit done; plan at `docs/plan-2026-10-08-or
+I-session-ended      -       -    800   social-forge audit 2026-10-03 (all verified by execution; commit ce6af | asked: Complete assignment thoroughly: Run the single bash command des
+J-harness-noise      -       -   2000   asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH COMPLETED] - task bash-6529b | asked: <system-reminder> [BACKGROUND BASH COMPLETED] - task bash-d6129
+
+auto shape: gold 5/6 junk-injected 1/9 ~12446 chars total across 10 cases
+
+search shape (what memory_recall sees, no exclusions):
+  A-readme       gold-reachable@5: Y
+  B-audit        gold-reachable@5: Y
+  C-continue     gold-reachable@5: -
+  D-composed     gold-reachable@5: Y
+  E-release      gold-reachable@5: Y
+  F-plugin       gold-reachable@5: Y
+  G-dispatcher   gold-reachable@5: -
+  H-trading      gold-reachable@5: Y
+  I-session-ended gold-reachable@5: -
+  J-harness-noise gold-reachable@5: -

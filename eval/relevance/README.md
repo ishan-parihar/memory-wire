@@ -36,6 +36,13 @@ go in `docs/CONSISTENCY.md`. The 2026-10-08 baseline (pre-fix) is recorded
 in the audit doc §4; the first post-fix run is recorded in
 `docs/CONSISTENCY.md` §32.
 
+**Artifacts are committed, not paraphrased.** Every run whose numbers are
+quoted in prose ships its full output here as a `BATTERY-<date>[-<tag>].txt`
+file *in the same commit* as the prose (AGENTS §7: the artifact wins). The
+v0.6.3 baseline has no such file — its output was not saved at measurement
+time, so §32's baseline column is prose-only by miss; the first committed
+artifact is `BATTERY-2026-10-08-v0.7.0.txt`.
+
 ## The discipline
 
 - A change is **decided** on this set, then measured once on LongMemEval

@@ -109,6 +109,7 @@ the wrong one is how claims drift.
 | how memory-wire compares to agentmemory and Hindsight | `README.md`, then `docs/EXCEED_PLAN.md` |
 | what a latency number means and how to take one | `docs/BENCHMARK.md`, `docs/BENCHMARK_SCALE.md` |
 | what is still open, and what is deliberately not being done | `docs/INTEGRATION_GAPS.md` — written at `eec026f`, partly stale; verify each row against the binary |
+| what is left to implement, as tracked work items | **`TODO.md`** at the repo root — the implementation register; indexes the domain lists in this table rather than duplicating them |
 | what we install into each agent harness, and what is quietly broken | `docs/INTEGRATION_AUDIT.md` — findings ranked F1–F7, each verified or explicitly marked unverified |
 | how to make the harness integration correct rather than merely present | `docs/INTEGRATION_PLAN.md` — two open decisions block Phase 1 |
 | why a hook injected something irrelevant, and why adding a score threshold is the wrong fix | `docs/OPEN_HOOK_RECALL_RELEVANCE.md` — diagnosed, deliberately unfixed |
