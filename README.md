@@ -894,7 +894,7 @@ untouched, and never overwrites a hook it did not write. `connect --uninstall`
 undoes it. The MCP entry points at the **installed binary by absolute path**, so it
 survives a `cargo clean` of a development checkout.
 
-**Every auto-injection surface emits the same bounded block (since `v0.7.0).**
+**Every auto-injection surface emits the same bounded block (since `v0.7.0`).**
 Whatever injects — hooks, extension, plugin, hermes provider — the block is:
 harness `<system-reminder>`/`<system-notice>` envelopes stripped from the
 capture before anything is queried or retained; a short prompt (≤160 chars)
