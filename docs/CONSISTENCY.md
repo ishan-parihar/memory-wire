@@ -3864,3 +3864,31 @@ the semantic residue. A ~3× artifact would buy, at its best point, +1.8pp `reca
 itself remains what it was — an opt-in, off-by-default arm for users who want it, whose
 axis harness now reports the full seven metrics. The shipping decision is now an informed
 one (`docs/handoff/RND_PLAN.md` H1d row): the evidence says do not promote it.
+
+## 42. 2026-10-15: v0.8.0 release acceptance — LongMemEval retrieval, test consultation #4
+
+**Acceptance run, not a selection.** The release chain's one sanctioned LongMemEval
+consultation (the plan's "release acceptance only" rule), run once on the exact tree that
+ships, after the feature commit and before the tag: `examples/longmemeval --n 500`,
+regenerating `eval/RESULTS.md` from the release tree's own provenance.
+
+**Result: byte-identical to the committed v0.7.0 record on every retrieval metric.**
+Overall 83.8% R@1 / 97.2% R@5 / 98.6% R@10 / 99.6% R@20 / 88.2% NDCG@10 / 89.2% MRR
+(n 500; abstention-excluded row 84.0 / 97.2 / 98.5 / 99.6 / 88.5 / 89.3, n 470); every
+per-slice row identical to the committed artifact. Only the wall-clock `p50 ms` column
+moved (8→9 ms at load 15.3 — the artifact's own note says not to pin it). **The retrieval
+surface is unchanged from v0.7.0's measured record**, exactly as the cycle predicted: the
+product batch touched connect/doctor/update/harness code, not the ranker.
+
+Test-set consultations to date: **4** (§34: 2; §39: 1; this section: 1 — this one).
+All measurement/acceptance; no value was ever selected on this set.
+
+**The release itself** (cut under the quota discipline of AGENTS §11): two commits —
+feature `04123f7`, bump `a272196` (v0.8.0) — tag on the bump commit, `ci.yml` and
+`release.yml` disabled around the tag push so the cut bills no Actions minutes, assets
+built locally (`scripts/build-release.sh --only "linux-x86_64 linux-x86_64-musl
+linux-aarch64"` — the complete Linux set from this host; no macOS asset has ever shipped)
+and published through the `gh` REST API. Version 0.8.0: `update` command, `doctor
+--all-hosts` + stale-serve finding, claude-code + copilot-cli HTTP MCP entries, bank-pin
+preservation, namespace-collision refusal, golden install shapes, `hook --endpoint`,
+DT_NEEDED recording; 589 tests, clippy `-D warnings --all-features` clean, 0 doc warnings.

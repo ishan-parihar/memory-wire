@@ -1,6 +1,6 @@
 # memory-wire
 
-**Agent memory in one 8.7 MiB binary, three shared libraries, 10.7 MiB of RSS and
+**Agent memory in one 8.8 MiB binary, three shared libraries, 10.7 MiB of RSS and
 no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
 language runtime, no database server, no install step: retain/recall/reflect with
 bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
@@ -8,7 +8,7 @@ an MCP server over stdio, and over HTTP at `/mcp` on any running server. `memory
 if you want it to outlive your terminal — one process, the same binary, no
 supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **8.7 MiB** binary · **3.8 MiB** download · **0** background processes until you ask for one
+- **10.7 MiB** idle RSS · **8.8 MiB** binary · **3.9 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
@@ -178,7 +178,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.7 MiB** binary — 9,152,864 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.8 MiB** gzipped (4,032,998 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **8.8 MiB** binary — 9,256,736 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.9 MiB** gzipped (4,081,871 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |

@@ -1,9 +1,12 @@
-# State at handoff — 2026-10-14
+# State at handoff — 2026-10-15
 
-Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `84580d5` (memory-wire
-`0.7.0`). **Nothing from this R&D cycle is committed.** The working tree is the work.
+Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `a272196` — **v0.8.0,
+released** (feature commit `04123f7`, bump `a272196`, tag `v0.8.0`, three-Linux assets
+published via the REST path; CI was disabled around the tag push and re-enabled after).
+The R&D cycle and the product batch are **in the release**. Post-release doc edits
+(§42 records, size re-pins) are the current uncommitted residue, by the house rhythm.
 
-## 1. What is in the working tree (uncommitted)
+## 1. What is in the working tree (post-release residue)
 
  Modified: `AGENTS.md INSTALL_FOR_AGENTS.md README.md TODO.md docs/CONSISTENCY.md
   docs/INTEGRATION_GAPS.md docs/INTEGRATION_PLAN.md eval/LOCOMO.md eval/README.md

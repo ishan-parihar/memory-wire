@@ -350,10 +350,11 @@ The CLI and the HTTP surface are read by other agents, so:
 State as of 2026-10-14; the authoritative, kept-current record is
 `docs/handoff/` (index: `docs/handoff/README.md`).
 
-- **The tree is uncommitted on purpose.** A full-scale baseline
-  (`eval/baseline/2026-10-13-v0.7.0/`), an occurrence-time capability on `retain`/`full`
-  recall, a date-aware `answer_quality`, and the `recall_all@10` dev metric are all in the
-  working tree. Do not commit, tag or push; the user decides.
+- **v0.8.0 released 2026-10-15** (user-ratified release chain). The R&D cycle's records and
+  the product batch — baseline artifacts, occurrence-time capability, date-aware
+  `answer_quality`, `recall_all@10`, `update`, doctor work, the new host entries, all harnesses —
+  are **committed and shipped** (feature `04123f7`, bump `a272196`, tag `v0.8.0`, three-Linux
+  assets). The R&D queue is empty; `docs/handoff/` is the current record.
 - **The open work is a hypothesis list with pre-registered tests** —
   `docs/handoff/RND_PLAN.md` (H1.0 first: where do the missing gold sessions sit?).
   `docs/handoff/CLOSED.md` lists what is already rejected; do not re-propose.
