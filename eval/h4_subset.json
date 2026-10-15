@@ -1,0 +1,825 @@
+{
+  "allocated_per_category": {
+    "multi-hop": 7,
+    "open-domain": 140,
+    "single-hop": 8,
+    "temporal": 45
+  },
+  "eligible_per_category": {
+    "multi-hop": 36,
+    "open-domain": 724,
+    "single-hop": 43,
+    "temporal": 232
+  },
+  "evaluated_per_category": {
+    "multi-hop": 89,
+    "open-domain": 841,
+    "single-hop": 281,
+    "temporal": 320
+  },
+  "n_subset": 200,
+  "queries": [
+    {
+      "category": "open-domain",
+      "id": "conv-26_q104"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q105"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q110"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q115"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q119"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q121"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-26_q13"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q130"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q139"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q140"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q143"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q144"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q146"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-26_q29"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q86"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q87"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-26_q97"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-30_q20"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-30_q28"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-30_q36"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-30_q38"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-30_q43"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-30_q45"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-30_q61"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-30_q63"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q108"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q117"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q122"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q125"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q145"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q147"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q150"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-41_q20"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-41_q24"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-41_q27"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-41_q34"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-41_q4"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-41_q48"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q75"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q76"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q77"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q78"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q81"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q84"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-41_q86"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q110"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q112"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q119"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q121"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q124"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q128"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q130"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q133"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q143"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q144"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q148"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q152"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q162"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q163"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q164"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q165"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q167"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q169"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q176"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q177"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q181"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q188"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-42_q25"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-42_q28"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-42_q32"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-42_q33"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-42_q36"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-42_q38"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q88"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q89"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q93"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-42_q95"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q103"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q104"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q108"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q122"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q125"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q127"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q131"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q132"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q133"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q137"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q139"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q140"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q143"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q160"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q162"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q168"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q170"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-43_q27"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-43_q28"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-43_q32"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-43_q36"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-43_q37"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-43_q48"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-43_q60"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q73"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q74"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q83"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q88"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q89"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-43_q98"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-44_q10"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q103"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q104"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-44_q16"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-44_q41"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-44_q57"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-44_q58"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-44_q6"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q68"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q74"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q80"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q83"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q86"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-44_q94"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q103"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q115"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q120"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q121"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q129"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-47_q13"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q130"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q138"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q147"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-47_q16"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-47_q25"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-47_q52"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-47_q57"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-47_q64"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q71"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q73"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q76"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q85"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-47_q87"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q108"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q110"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q131"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q138"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q139"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q148"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q150"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q177"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-48_q18"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q2"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q3"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q47"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q50"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q56"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q60"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q61"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q72"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-48_q73"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q74"
+    },
+    {
+      "category": "multi-hop",
+      "id": "conv-48_q75"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-48_q9"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q94"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-48_q96"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q107"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q114"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q115"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q117"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q121"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-49_q13"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q140"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q146"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-49_q29"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-49_q34"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-49_q35"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-49_q40"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-49_q41"
+    },
+    {
+      "category": "single-hop",
+      "id": "conv-49_q42"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-49_q59"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-49_q79"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q90"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q92"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-49_q94"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q104"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q106"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q108"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q109"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q112"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q118"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q123"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q137"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q143"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q153"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-50_q25"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-50_q34"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-50_q50"
+    },
+    {
+      "category": "temporal",
+      "id": "conv-50_q65"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q71"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q72"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q79"
+    },
+    {
+      "category": "open-domain",
+      "id": "conv-50_q80"
+    }
+  ],
+  "rule": "recall_all@3 = 1 under FusionWeights::SHIPPED, session granularity; 200 proportional per meta.category, largest-remainder reconciliation, seeded permutation (seed 42, bench_common::shuffle) over the id-sorted eligible list",
+  "seed": 42
+}

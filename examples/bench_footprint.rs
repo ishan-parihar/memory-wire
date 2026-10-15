@@ -66,6 +66,32 @@ const DEFAULT_MEMORIES: usize = 10_000;/// How long to wait for a spawned `serve
 /// seconds has failed, whatever the machine is doing.
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// The DT_NEEDED entries of the release binary — the shared libraries the
+/// default build links. Three at v0.7.0 (`libgcc_s.so.1`, `libm.so.6`,
+/// `libc.so.6`); growth here is what breaks installs on slim targets, so it
+/// is recorded beside the size and a change shows as a diff between dated
+/// artifacts rather than a silent drift. `readelf` is binutils, present on
+/// the hosts this harness documents; absent, the row degrades to
+/// `unavailable` exactly like the size row does.
+fn dt_needed(binary: Option<&Path>) -> Vec<String> {
+    let Some(bin) = binary else { return Vec::new() };
+    let out = match std::process::Command::new("readelf")
+        .arg("-d")
+        .arg(bin)
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return Vec::new(),
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let rest = l.split_once("Shared library: [")?.1;
+            Some(rest.trim_end_matches(']').to_string())
+        })
+        .collect()
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let memories: usize = arg(&args, "--memories", &DEFAULT_MEMORIES.to_string())
@@ -90,6 +116,18 @@ fn main() -> Result<()> {
     let binary_note = match binary_bytes {
         0 => "unavailable — no `target/release/memory-wire`; run `cargo build --release --locked` first".into(),
         n => format!("{n} B ({} MB)", mb(n)),
+    };
+
+    // DT_NEEDED is the load-bearing dependency count: three at v0.7.0
+    // (`libgcc_s.so.1`, `libm.so.6`, `libc.so.6`), and growth here is what
+    // breaks installs on slim targets — so it is recorded beside the size it
+    // rides with, and a change is a visible diff between dated artifacts
+    // rather than a silent drift.
+    let needed = dt_needed(binary.as_deref());
+    let needed_note = if needed.is_empty() {
+        "unavailable — no binary or no `readelf`".to_string()
+    } else {
+        format!("{} ({})", needed.len(), needed.join(", "))
     };
 
     // ---- this process -------------------------------------------------------
@@ -161,6 +199,7 @@ fn main() -> Result<()> {
     md.push_str("| Dimension | Value | How read |\n|---|---|---|\n");
     md.push_str(&format!(
         "| Release binary | {binary_note} | `std::fs::metadata` on the binary next to this example's own path |\n\
+         | DT_NEEDED | {needed_note} | `readelf -d` on the same binary |\n\
          | Harness idle RSS (floor) | {} | `VmRSS`, this process, before any store is opened |\n\
          | Harness RSS with {memories} rows | {} | same process, store open, index built |\n\
          | Serve idle RSS | {} | `VmRSS` of a real `memory-wire serve`, after `/health` answers |\n\

@@ -1,6 +1,6 @@
 # memory-wire
 
-**Agent memory in one 8.6 MiB binary, three shared libraries, 10.7 MiB of RSS and
+**Agent memory in one 8.7 MiB binary, three shared libraries, 10.7 MiB of RSS and
 no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
 language runtime, no database server, no install step: retain/recall/reflect with
 bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
@@ -8,7 +8,7 @@ an MCP server over stdio, and over HTTP at `/mcp` on any running server. `memory
 if you want it to outlive your terminal — one process, the same binary, no
 supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **8.6 MiB** binary · **3.8 MiB** download · **0** background processes until you ask for one
+- **10.7 MiB** idle RSS · **8.7 MiB** binary · **3.8 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
@@ -178,7 +178,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.6 MiB** binary — 9,023,808 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.8 MiB** gzipped (3,978,654 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **8.7 MiB** binary — 9,152,864 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.8 MiB** gzipped (4,032,998 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
@@ -339,8 +339,10 @@ or relative. Point it at a scratch file for throwaway work —
 `GET`/`DELETE /banks/:id/memories/:mid` · `GET /banks/:id/stats`.
 Banks are isolated namespaces; any bank id is created implicitly by its first
 `retain`, and a `default` bank is seeded at boot. Recall returns a bare JSON array
-of content strings by default; `{"format":"full"}` returns `{id, score, content}`
-objects instead, where `score` is the fused RRF value the ranking actually used
+of content strings by default; `{"format":"full"}` returns `{id, score, created_at, content}`
+objects instead (`created_at` is the retain's own `created_at` — when the memory
+happened, RFC 3339 or `YYYY-MM-DD`, stored as UTC — or the write time if none was
+given), where `score` is the fused RRF value the ranking actually used
 (`1·1/(60 + rank_bm25) + 0.25·1/(60 + rank_overlap)`, higher is better) rather than
 a token count — so it is a fraction, and only comparable against other scores from
 the same recall. Those two weights are the swept default
@@ -641,13 +643,15 @@ retain       → ensure bank exists → redact_pii(content, context) → put
                (+ tags ∪ bank retainTags); byte-identical content already in the
                bank returns that row's id, no second copy
                document_id set → supersede that document's prior row in the same tx
+               created_at set → the memory's occurrence time (UTC-normalized;
+               unparseable → 400); absent → now
 recall       → candidate pool: newest 200 rows ∪ the BM25 hits (bounded, so a
                recall never reads the whole bank) → FTS5 BM25 (LIMIT 50 in SQL)
                + overlap rank (cap 200) → weighted RRF k=60 (bm25 1.0,
                  overlap 0.25 — swept, `eval/SWEEP_FUSION.md`)
                → token-budget trim (truncate, never drop) → take 100
                budget precedence: request > bank recallMaxTokens > 2000
-               format=full → {id, score, content} instead of bare strings,
+               format=full → {id, score, created_at, content} instead of bare strings,
                score = the fused RRF value
 reflect      → recall(2000).first() cited by id
 memories     → SELECT … LIMIT ? OFFSET ? (50/0 default, 500 cap) → {id, content, created_at}
@@ -874,9 +878,9 @@ touching nothing. Then:
 - **`--no-connect`** skips wiring entirely.
 
 **Caveat for bank-pinned installs:** the wiring step runs `connect` with no
-`--bank`. On a machine whose hosts were wired with `connect --bank <id>`, that
-rewrites the surfaces to the default bank — install with `--no-connect` and
-re-run `memory-wire connect --bank <id> <hosts>` yourself.
+`--bank`, and `connect` preserves the bank baked into each host's existing
+entries (since 2026-10-15) — a pinned machine re-wires with its pin intact, so
+`--no-connect` is only for installs that genuinely want nothing wired.
 
 Wiring writes the lifecycle hooks, the MCP entry, or both: `claude-code`,
 `codex`, and `copilot-cli` get the five hooks, `cursor` gets the MCP server,

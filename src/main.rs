@@ -1,6 +1,8 @@
 mod cli_home;
 mod connect;
+mod connect_claude;
 mod connect_codex;
+mod connect_copilot;
 mod connect_ext;
 mod connect_opencode;
 mod connect_plugin;
@@ -11,6 +13,7 @@ mod hooks;
 mod http;
 mod mcp;
 mod mcp_http;
+mod update;
 mod paths;
 mod seed;
 mod sweep;
@@ -26,12 +29,12 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tracing_subscriber::EnvFilter;
 
 use memory_wire::api::{
-    bank_config_routes, blocking, http_error, memories_routes, parse_update_mode, ApiError,
-    MemoryService,
+    bank_config_routes, blocking, full_hit_json, http_error, memories_routes, parse_created_at,
+    parse_update_mode, ApiError, MemoryService,
 };
 use memory_wire::memory::Bank;
 use memory_wire::store::{default_db_path, BankStats, SqliteStore, Store};
@@ -148,6 +151,13 @@ enum Cmd {
         /// worth not shipping.
         #[arg(long, global = true)]
         bank: Option<String>,
+        /// Server endpoint to use, overriding the resolved one
+        /// (`MEMORY_WIRE_URL`, then the daemon's recorded address, then the
+        /// default). For pointing a hook at a specific serve from a host that
+        /// cannot pass environment variables — the same slot `--bank` gives
+        /// the bank.
+        #[arg(long, global = true)]
+        endpoint: Option<String>,
     },
     /// Report endpoint, bank, store, and server health.
     ///
@@ -165,7 +175,22 @@ enum Cmd {
         /// Exit nonzero when the server or the store is unusable.
         #[arg(long)]
         strict: bool,
+        /// Prepend the per-host install table: every host's detected/wired
+        /// state, plus a finding for entries that point at a binary other than
+        /// this one.
+        #[arg(long)]
+        all_hosts: bool,
     },
+    /// Self-update the installed binary from the newest GitHub release.
+    ///
+    /// The five-step swap as one command: download and verify (sha256), stop
+    /// the daemon if it is live, swap the binary (keeping the old one beside
+    /// the new as `<exe>.old` for a one-command rollback), restart on the new
+    /// binary, and re-run `connect` — whose bank-pin preservation (TODO #1)
+    /// keeps a pinned machine pinned. `gh` is required (the API is
+    /// https-only and this binary stays dependency-free); `MW_REPO` names a
+    /// different repository, `MW_ASSET` overrides the asset slug.
+    Update,
     /// Serve MCP over stdio: memory_retain / recall / reflect / bank_config_get.
     Mcp {
         /// Default bank for every call (default: $MEMORY_WIRE_BANK, else `memory-wire`).
@@ -280,17 +305,48 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Cmd::Hook { lifecycle, bank } => {
-            std::process::exit(hooks::run(lifecycle, bank.as_deref()));
+        Cmd::Hook { lifecycle, bank, endpoint } => {
+            std::process::exit(hooks::run(lifecycle, bank.as_deref(), endpoint.as_deref()));
         }
-        Cmd::Doctor { db, strict } => {
+        Cmd::Doctor { db, strict, all_hosts } => {
             // No `--db`: `doctor::run` is the original path, untouched. With one,
             // the same report is collected from that file instead of the default.
+            if all_hosts {
+                match paths::home() {
+                    Ok(home) => println!(
+                        "{}",
+                        doctor::hosts_screen(
+                            &home,
+                            &std::env::current_exe().unwrap_or_default()
+                        )
+                    ),
+                    Err(e) => eprintln!("memory-wire: {e}"),
+                }
+            }
             let code = match db {
                 Some(path) => doctor_at(&path, strict),
                 None => doctor::run(strict),
             };
             std::process::exit(code);
+        }
+        Cmd::Update => {
+            let mut ops = match update::GhOps::new() {
+                Ok(ops) => ops,
+                Err(why) => {
+                    eprintln!("memory-wire: {why}");
+                    std::process::exit(1);
+                }
+            };
+            match update::orchestrate(&mut ops, env!("CARGO_PKG_VERSION")) {
+                Ok(report) => {
+                    println!("{report}");
+                    println!("verify with: memory-wire doctor");
+                }
+                Err(why) => {
+                    eprintln!("memory-wire: {why}");
+                    std::process::exit(1);
+                }
+            }
         }
         Cmd::Mcp { bank, db } => {
             // `--bank` wins; `default_bank` covers the env var and the fallback.
@@ -463,6 +519,10 @@ struct RetainReq {
     /// refused with `409` — use `replace` for repeated writes, or a distinct
     /// `document_id` per memory.
     update_mode: Option<String>,
+    /// When the memory happened: RFC 3339, or a bare `YYYY-MM-DD`. Absent = now.
+    /// Anything else is `400 invalid content`. Served back as `created_at` in
+    /// `format: "full"` recall, and read by a bank's `ttl_days` sweep.
+    created_at: Option<String>,
 }
 
 /// Retain response body.
@@ -486,8 +546,8 @@ struct RecallReq {
     /// no exclusion — byte-identical to before the field existed.
     #[serde(default)]
     exclude_tags: Option<Vec<String>>,
-    /// `full` returns `{id, score, content}` objects; anything else (the
-    /// default) keeps the bare array of content strings.
+    /// `full` returns `{id, score, created_at, content}` objects; anything else
+    /// (the default) keeps the bare array of content strings.
     format: Option<String>,
 }
 
@@ -659,16 +719,18 @@ async fn retain(
     Json(req): Json<RetainReq>,
 ) -> Result<Json<RetainRes>, HttpErr> {
     let mode = parse_update_mode(req.update_mode.as_deref()).map_err(to_http)?;
+    let created_at = parse_created_at(req.created_at.as_deref()).map_err(to_http)?;
     // The service declares the bank itself, so declaring it here as well was a
     // second write per retain for nothing.
     let id = blocking(move || {
-        svc.retain_doc(
+        svc.retain_doc_at(
             &bank,
             &req.content,
             req.context,
             &req.tags.unwrap_or_default(),
             req.document_id.as_deref(),
             mode,
+            created_at,
         )
     })
     .await
@@ -699,11 +761,7 @@ async fn recall(
     // The default shape is a bare array of strings and stays that way; `full` is
     // for a caller that has to cite what it got back.
     Ok(Json(if req.format.as_deref() == Some("full") {
-        Value::Array(
-            hits.iter()
-                .map(|h| json!({ "id": h.memory.id, "score": h.score, "content": h.memory.content }))
-                .collect(),
-        )
+        Value::Array(hits.iter().map(full_hit_json).collect())
     } else {
         Value::Array(hits.into_iter().map(|h| Value::String(h.memory.content)).collect())
     }))
@@ -756,6 +814,7 @@ fn to_http(e: ApiError) -> HttpErr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use crate::http;
     use memory_wire::memory::Memory;
     use std::time::Duration;
@@ -1145,6 +1204,45 @@ mod tests {
         )
         .expect("array of strings");
         assert_eq!(other, plain, "an unrecognised format must not change the shape");
+    }
+
+    // An occurrence time round-trips: retain dates the memory, `full` recall
+    // serves the date back in the store's own UTC shape, and an undatable value
+    // is the frozen 400 with nothing written (TODO row 15).
+    #[test]
+    fn retain_created_at_should_round_trip_through_full_recall() {
+        let (base, _db) = serve_scratch("created-at");
+        for (content, stated) in [
+            ("jose offset", "2023-05-08T13:56:00+05:30"),
+            ("jose day", "2023-05-08"),
+        ] {
+            let body = json!({ "content": content, "created_at": stated }).to_string();
+            assert_eq!(post(&base, "/banks/c/retain", &body).status, 200);
+        }
+        post(&base, "/banks/c/retain", r#"{"content":"jose undated"}"#);
+
+        let full: Vec<Value> = serde_json::from_str(
+            &post(&base, "/banks/c/recall", r#"{"query":"jose","format":"full"}"#).body,
+        )
+        .expect("array of objects");
+        let at = |c: &str| {
+            full.iter().find(|h| h["content"] == json!(c)).expect(c)["created_at"]
+                .as_str()
+                .expect("created_at is always served")
+                .to_string()
+        };
+        assert_eq!(at("jose offset"), "2023-05-08T08:26:00.000Z", "converted to UTC");
+        assert_eq!(at("jose day"), "2023-05-08T00:00:00.000Z", "a bare date is its midnight");
+        assert!(at("jose undated").as_str() > "2026", "absent is stamped now");
+
+        for bad in ["8 May, 2023", "2023-13-01", "yesterday"] {
+            let body = json!({ "content": "jose bad", "created_at": bad }).to_string();
+            let (status, got) = body_of(&base, "POST", "/banks/c/retain", &body);
+            assert_eq!((status, got.as_str()), (400, "invalid content"), "{bad:?}");
+        }
+        let listed: Vec<Value> =
+            serde_json::from_str(&get(&base, "/banks/c/memories").body).expect("array");
+        assert_eq!(listed.len(), 3, "a refused date writes nothing: {listed:?}");
     }
 
     // A misspelled `update_mode` is a 400, and the document keeps the revision

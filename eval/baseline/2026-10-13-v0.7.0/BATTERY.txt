@@ -1,0 +1,25 @@
+case           gold@5  junk@5  chars   top-5 (auto shape)
+A-readme            Y       -   1719   asked: Was the README was also updated with any relevant information?  | asked: Bhakti yog and karma yog would be inferred from the Bhagavad Gi | asked: The certification was way faster than this 6 row descent. Under | asked: Proceed with implementing the plan and ensuring that it integra | asked: Check the existing git diff and changes, so that you can unders
+B-audit             Y       -    650   asked: I want you to audit the context injection implementation gaps t | asked: Check the existing git diff and changes, so that you can unders
+C-continue          -       -   1648   memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | asked: continue with the aroute development answered: Release rerun st | asked: <system-notice> Continue. MUST resume most recent intent; compl | asked: [SYSTEM DIRECTIVE: OH-MY-OPENCODE - TODO CONTINUATION] Incomple | asked: continue with the aroute development. answered: Release is depl
+D-composed          Y       -   1450   asked: Was the README was also updated with any relevant information?  | asked: Is the readme, and everything else updated? Are all their integ | asked: Proceed with the execution of the remaining V6 implementation p | asked: Check the existing git diff and changes, so that you can unders
+E-release           Y       -   1269   asked: Proceed with updating the tag on the github releases and deploy | asked: Proceed with updating the tag and deploying the latest release  | asked: continue with the aroute development. answered: Release is depl | asked: We still suffered a setback as the entire system had to restart
+F-plugin            Y       -   1849   memory-wire closed the integration gaps from the 2026-10-07 investigat | memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | Fixed opencode infra bugs 2026-10-09: (1) browseros-neo endless-restar | asked: "This is a live retention test of the memory-wire opencode plug | asked: <system-reminder> [BACKGROUND BASH COMPLETED] - task bash-9a752
+G-dispatcher        -       -    800   asked: Check both ./parent-projects/zeroclaw and ./parent-projects/her | asked: Proceed with full scale execution of the implementation plan. a
+H-trading           !       -    800   asked: The computer restarted due to power cuts. Investigate the curre | asked: Audit the surface area of /home/ishanp/.hermes/organism/venture
+I-session-ended      -       -   1404   pre-compact session 47b01cd5-861b-4156-913a-055df2bf1b2e (auto) can tr | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (resume) The  | asked: The telegram bot token for @ip_operant_testing_bot is "88897732 | asked: Proceed with the execution of the V6 implementation plan now an
+J-harness-noise      -       -   2000   asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-27cef5 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e
+
+auto shape: gold 5/6 junk-injected 0/9 ~13589 chars total across 10 cases
+
+search shape (what memory_recall sees, no exclusions):
+  A-readme       gold-reachable@5: Y
+  B-audit        gold-reachable@5: Y
+  C-continue     gold-reachable@5: -
+  D-composed     gold-reachable@5: Y
+  E-release      gold-reachable@5: Y
+  F-plugin       gold-reachable@5: Y
+  G-dispatcher   gold-reachable@5: -
+  H-trading      gold-reachable@5: Y
+  I-session-ended gold-reachable@5: -
+  J-harness-noise gold-reachable@5: -

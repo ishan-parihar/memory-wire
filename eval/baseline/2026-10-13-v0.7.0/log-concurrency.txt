@@ -1,0 +1,23 @@
+wrote /home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/eval/baseline/2026-10-13-v0.7.0/BENCH_CONCURRENCY.md
+=== concurrency vs throughput ===
+7 client counts (1..64) · op recall · 2000 memories · 200 ops/client · 3 repeats · profile release
+db /var/tmp/ishanp-agentic/mw-conc-3626932.db · seeded 2000 rows
+rss ceiling 71.8 MB (page cache + 1 MB/client)
+
+| clients | ops/s (min-max) | p50 us | p95 us | p99 us | rss MB | vs 1 client | Eff |
+|---|---|---|---|---|---|---|---|
+| 1 | 583.7 (451.8-674.9) | 1705 | 3103 | 3371 | 12.8 | 1.00x | 1.00 |
+| 2 | 758.5 (702.1-795.1) | 3069 | 3480 | 3607 | 12.8 | 1.30x | 0.65 |
+| 4 | 1210.8 (1091.0-1357.6) | 3741 | 5787 | 7071 | 12.8 | 2.07x | 0.52 |
+| 8 | 986.0 (830.2-1110.8) | 5910 | 20757 | 35090 | 12.8 | 1.69x | 0.21 |
+| 16 | 1192.5 (1140.4-1250.7) | 6490 | 40539 | 67371 | 12.8 | 2.04x | 0.13 |
+| 32 | 1139.1 (1097.4-1186.0) | 8911 | 99066 | 162437 | 12.8 | 1.95x | 0.06 |
+| 64 | 1081.1 (1026.9-1131.4) | 13787 | 227120 | 380216 | 12.8 | 1.85x | 0.03 |
+
+scaling   2 clients: 1.30x aggregate ops/s (758.5/s), under the 1.50x floor
+scaling   gate at 64 clients: 1.85x vs floor 1.50x · PASS, throughput grows with client count
+rss       6.8 MB -> 12.8 MB (delta +6.0 MB) (ceiling 71.8 MB)
+storage   main 692224 B · wal 24752 B · shm 32768 B (WAL unflushed while the store holds the file open)
+panics    0
+
+Error: FAIL: aggregate ops/s does not grow with client count — a serialization signature. floor 1.50x, observed 2 clients 1.30x (758.5 ops/s)

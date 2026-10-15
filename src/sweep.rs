@@ -5,12 +5,7 @@
 //! for it, and a bank with no `ttl_days` keeps every memory it was ever given.
 
 use chrono::{DateTime, TimeDelta, Utc};
-use memory_wire::store::{Store, StoreError};
-
-/// The store's `created_at` shape, which is what makes the age comparison a byte
-/// compare: fixed-width RFC 3339 UTC with exactly three fractional digits, the
-/// same thing `strftime('%Y-%m-%dT%H:%M:%fZ', …)` writes.
-const TIMESTAMP: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
+use memory_wire::store::{Store, StoreError, CREATED_AT_FORMAT as TIMESTAMP};
 
 /// Why a bank was not touched, when it was not touched.
 const NO_TTL: &str = "no ttl_days";

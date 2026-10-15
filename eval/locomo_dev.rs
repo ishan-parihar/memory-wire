@@ -63,6 +63,11 @@ pub struct Document {
     pub content: String,
     /// The conversation this document belongs to, and the bank-isolation unit.
     pub user_id: String,
+    /// The document's occurrence time (e.g. `2023-05-08T13:56:00+00:00`), the
+    /// field that makes the corpus date-aware. `Option` because the corpus owns
+    /// the schema, not this harness.
+    #[serde(default)]
+    pub timestamp: Option<String>,
 }
 
 /// One turn of a LoCoMo document. Every turn has `speaker` and `text`; the
@@ -116,10 +121,31 @@ pub struct Meta {
 }
 
 impl Document {
+    /// The document's occurrence time in the store's fixed-width UTC shape, via
+    /// the same conversion the product's `retain` uses (`api::parse_created_at`).
+    /// A corpus timestamp the product cannot parse fails here loudly rather than
+    /// silently stamping the harness clock — before this, every LoCoMo memory
+    /// carried `created_at: None` and any recency measurement was a measurement
+    /// of ingest order (H0, `docs/handoff/RND_PLAN.md`).
+    pub fn created_at(&self) -> anyhow::Result<Option<String>> {
+        memory_wire::api::parse_created_at(self.timestamp.as_deref()).map_err(|e| {
+            anyhow::anyhow!(
+                "locomo: document {} has an unparseable timestamp {:?}: {e}",
+                self.id, self.timestamp
+            )
+        })
+    }
+
     /// The document as one memory body: one line per turn, caption text folded in
     /// where there is any. The same shape `longmemeval` builds from a session, so the
     /// two suites put the same kind of string in front of the same index.
     pub fn text(&self) -> anyhow::Result<String> {
+        Ok(self.lines()?.join("\n"))
+    }
+
+    /// One line per turn, the pieces [`Self::text`] joins — and, under
+    /// `--turns`, one memory each.
+    pub fn lines(&self) -> anyhow::Result<Vec<String>> {
         let turns: Vec<Turn> = serde_json::from_str(&self.content).map_err(|e| {
             anyhow::anyhow!("locomo: document {} has un-decodable content: {e}", self.id)
         })?;
@@ -141,9 +167,25 @@ impl Document {
                 }
                 line
             })
-            .collect::<Vec<_>>()
-            .join("\n"))
+            .collect())
     }
+}
+
+/// The corpus's write granularity.
+pub enum Granularity {
+    /// One memory per document — a whole session. The default arm of every
+    /// committed artifact.
+    Session,
+    /// One memory per dialogue turn, id `<document id>#<turn index>` — the
+    /// granularity the product's hooks write at (TODO row 12). [`session_of`]
+    /// maps a hit back to its document.
+    Turns,
+    /// One memory per window of W consecutive turns, stride W/2 (min 1), id
+    /// `<document id>#<window start>` — H2 (`docs/handoff/RND_PLAN.md`): a
+    /// window keeps the local context a bare turn loses while still
+    /// concentrating the match. [`session_of`] maps both suffixed forms back to
+    /// their document.
+    Windows(usize),
 }
 
 /// The dev corpus, ingested: one bank per `user_id`, one memory per document.
@@ -181,6 +223,12 @@ impl Corpus {
     /// corpus rather than pinned, so a differently-sized dataset cannot make the
     /// budget trim a document the candidate pool would otherwise have returned.
     pub fn load(docs_path: &str, queries_path: &str) -> anyhow::Result<Self> {
+        Self::load_at(docs_path, queries_path, Granularity::Session)
+    }
+
+    /// [`Self::load`], with the write [`Granularity`] the caller names. The bank
+    /// is always the conversation; only what one memory holds varies.
+    pub fn load_at(docs_path: &str, queries_path: &str, granularity: Granularity) -> anyhow::Result<Self> {
         let documents: Vec<Document> =
             serde_json::from_str(&fs::read_to_string(docs_path).with_context(|| {
                 format!("locomo: cannot read the document corpus at {docs_path}")
@@ -207,6 +255,10 @@ impl Corpus {
         let mut turns = 0usize;
         for doc in &documents {
             let text = doc.text()?;
+            // The document's own occurrence time, not the ingest clock (H0). Turns
+            // inherit the session's time: the corpus carries no per-turn stamps, and
+            // the recency stream is inert at the shipped weight either way.
+            let created_at = doc.created_at()?;
             total_chars += text.len();
             turns += serde_json::from_str::<Vec<Turn>>(&doc.content)
                 .map(|t| t.len())
@@ -221,13 +273,45 @@ impl Corpus {
                 .expect("put_bank on a fresh in-memory store only inserts the bank row");
                 s
             });
-            store.put(&Memory {
-                id: doc.id.clone(),
-                bank_id: doc.user_id.clone(),
-                content: text,
-                context: None,
-                created_at: None,
-            })?;
+            match granularity {
+                Granularity::Session => {
+                    store.put(&Memory {
+                        id: doc.id.clone(),
+                        bank_id: doc.user_id.clone(),
+                        content: text,
+                        context: None,
+                        created_at,
+                    })?;
+                }
+                Granularity::Turns => {
+                    for (i, line) in doc.lines()?.into_iter().enumerate() {
+                        store.put(&Memory {
+                            id: format!("{}#{i}", doc.id),
+                            bank_id: doc.user_id.clone(),
+                            content: line,
+                            context: None,
+                            created_at: created_at.clone(),
+                        })?;
+                    }
+                }
+                Granularity::Windows(w) => {
+                    // Stride W/2 (at least 1) from the plan; ids name the
+                    // window's first turn, so `session_of` pools hits back to
+                    // the session exactly as it does for `Turns`.
+                    let lines = doc.lines()?;
+                    let stride = (w / 2).max(1);
+                    for start in (0..lines.len()).step_by(stride) {
+                        let end = (start + w).min(lines.len());
+                        store.put(&Memory {
+                            id: format!("{}#{start}", doc.id),
+                            bank_id: doc.user_id.clone(),
+                            content: lines[start..end].join("\n"),
+                            context: None,
+                            created_at: created_at.clone(),
+                        })?;
+                    }
+                }
+            }
             *bank_sizes.entry(doc.user_id.clone()).or_default() += 1;
         }
         let banks: HashMap<String, MemoryService<SqliteStore>> = stores
@@ -313,12 +397,34 @@ pub fn plan<'q>(queries: &'q [Query], order: impl IntoIterator<Item = usize>) ->
         .collect()
 }
 
+/// Recalled memory ids as document ids, each document at its first (best) hit:
+/// MaxP pooling, so a session ranks where its best-matching turn does. The
+/// identity on whole-document ids, which carry no `#`.
+pub fn session_of(ids: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    ids.into_iter()
+        .map(|id| id.split('#').next().unwrap_or_default().to_string())
+        .filter(|d| seen.insert(d.clone()))
+        .collect()
+}
+
 /// A hit means **any** id in `gold` inside the top `k` — the same `recall_any`
 /// definition `longmemeval` and `sweep_fusion` use, so the R@5/R@10 columns are on
 /// one scale with `eval/RESULTS.md`.
 pub fn recall_any(retrieved: &[String], gold: &[String], k: usize) -> f64 {
     let top: HashSet<&str> = retrieved.iter().take(k).map(String::as_str).collect();
     f64::from(gold.iter().any(|g| top.contains(g.as_str())))
+}
+
+/// A hit means **every** id in `gold` inside the top `k`. 1,540 LoCoMo questions
+/// include multi-session ones, and `recall_any` scores those a hit when one of
+/// their sessions is served. The judged AMB `rag` run (2026-10-13 baseline) is
+/// what makes this the second number to read: with all gold in the reader's
+/// top 10 it answered 91.2% (1,176/1,289), with some 53.0% (88/166), with none 36.5%
+/// (31/85) — accuracy follows *all*, not *any*.
+pub fn recall_all(retrieved: &[String], gold: &[String], k: usize) -> f64 {
+    let top: HashSet<&str> = retrieved.iter().take(k).map(String::as_str).collect();
+    f64::from(!gold.is_empty() && gold.iter().all(|g| top.contains(g.as_str())))
 }
 
 fn dcg(rels: &[bool], k: usize) -> f64 {
@@ -367,6 +473,8 @@ pub struct Row {
     pub r10: f64,
     /// `recall_any@20`.
     pub r20: f64,
+    /// `recall_all@10`: every gold id in the top 10, the cut AMB `rag` serves.
+    pub all10: f64,
     /// NDCG@10.
     pub ndcg10: f64,
     /// Reciprocal rank of the first gold id.
@@ -388,6 +496,7 @@ impl Row {
             r5: recall_any(retrieved, &query.gold_ids, 5),
             r10: recall_any(retrieved, &query.gold_ids, 10),
             r20: recall_any(retrieved, &query.gold_ids, 20),
+            all10: recall_all(retrieved, &query.gold_ids, 10),
             ndcg10: ndcg(retrieved, gold, 10),
             mrr: mrr(retrieved, gold),
             pool: recall_any(retrieved, &query.gold_ids, usize::MAX),
@@ -412,6 +521,8 @@ pub struct Agg {
     pub r10: f64,
     /// Summed `recall_any@20`.
     pub r20: f64,
+    /// Summed `recall_all@10`.
+    pub all10: f64,
     /// Summed NDCG@10.
     pub ndcg10: f64,
     /// Summed MRR.
@@ -428,6 +539,7 @@ impl Agg {
         self.r5 += r.r5;
         self.r10 += r.r10;
         self.r20 += r.r20;
+        self.all10 += r.all10;
         self.ndcg10 += r.ndcg10;
         self.mrr += r.mrr;
         self.pool += r.pool;
@@ -456,6 +568,10 @@ impl Agg {
     pub fn r20(&self) -> f64 {
         self.pct(self.r20)
     }
+    /// `recall_all@10` as a percentage.
+    pub fn all10(&self) -> f64 {
+        self.pct(self.all10)
+    }
     /// NDCG@10 as a percentage.
     pub fn ndcg10(&self) -> f64 {
         self.pct(self.ndcg10)
@@ -469,11 +585,22 @@ impl Agg {
         self.pct(self.pool)
     }
     /// Every metric, in the order the tables print them, as percentages.
-    pub fn all(&self) -> [f64; 6] {
-        [self.r1(), self.r5(), self.r10(), self.r20(), self.ndcg10(), self.mrr()]
+    /// `recall_all@10` rides last: it is the multi-gold coverage metric the
+    /// H1 gates are judged on (`docs/handoff/RND_PLAN.md`), so harnesses that
+    /// print the whole vector report it without a second accessor set.
+    pub fn all(&self) -> [f64; 7] {
+        [
+            self.r1(),
+            self.r5(),
+            self.r10(),
+            self.r20(),
+            self.ndcg10(),
+            self.mrr(),
+            self.all10(),
+        ]
     }
     /// The metric set under the given column names, for a table header and a `Δ`.
-    pub fn labelled(&self) -> [(&'static str, f64); 6] {
+    pub fn labelled(&self) -> [(&'static str, f64); 7] {
         [
             ("R@1", self.r1()),
             ("R@5", self.r5()),
@@ -481,6 +608,7 @@ impl Agg {
             ("R@20", self.r20()),
             ("NDCG@10", self.ndcg10()),
             ("MRR", self.mrr()),
+            ("recall_all@10", self.all10()),
         ]
     }
 }

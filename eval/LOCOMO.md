@@ -4,10 +4,12 @@
 
 | | |
 |---|---|
-| Commit under test | `ebb4e832d6a61c8e051541709c17f4275f84bcd5` |
+| Commit under test | `84580d577cb3d0299da37ca9636081b1f3d30a2d` |
 | Command | `cargo run --release --example locomo -- --docs eval/data/locomo/documents.json --data eval/data/locomo/queries.json --out-md eval/LOCOMO.md --out-json eval/results_locomo.json` |
-| Run | 2026-09-28, from `--release`, on AMD Ryzen 9 5900X 12-Core Processor, 24 logical CPUs |
-| Load at start / at end | `44.68 42.62 36.95 36/6808 2767588` / `42.37 42.29 36.97 18/6842 2771599` |
+| Run | 2026-10-14, from `--release`, on AMD Ryzen 9 5900X 12-Core Processor, 24 logical CPUs |
+| Granularity | session: one memory per document |
+| Occurrence times | each memory carries its corpus `timestamp` (`api::parse_created_at`), not the ingest clock — the corpus has been date-aware since 2026-10-14 (H0, `docs/handoff/RND_PLAN.md`); the shipped recency weight is 0.0, so dated ingestion moved no number in this file (control: the full metric vector was bit-identical) |
+| Load at start / at end | `20.66 23.30 23.59 15/6394 2664231` / `20.28 23.09 23.52 18/6380 2665347` |
 | Dataset | LoCoMo (Snap Research) via the canonical distribution `vectorize-io/agent-memory-benchmark`, `data/locomo/locomo10/`, pinned at upstream commit `decbb07f4f9899deac28a76293564cf263872652` and sha256-verified by `eval/download.sh` |
 | Corpus | 272 documents, 1,540 queries, 10 conversations — fetched by `./eval/download.sh`, **not committed** (`eval/data/` is gitignored) |
 | **LLM involvement** | **none.** No model, no judge, no answer generation, no network call of any kind. `gold_answers` is read for shape and never scored. |
@@ -80,6 +82,16 @@ Per-query movement on R@5 for the `0.25` row against the `1.00` row: **57 improv
 | 0.25 | 67.4% (+0.0, n=89) | 91.8% (+1.1, n=841) | 79.4% (+2.1, n=281) | 81.6% (+2.2, n=320) | 86.0% |
 | 0.00 | 66.3% (-1.1, n=89) | 91.7% (+1.0, n=841) | 80.4% (+3.2, n=281) | 83.1% (+3.8, n=320) | 86.3% |
 
+## recall_all@10, per `meta.category`
+
+| overlap | multi-hop | open-domain | single-hop | temporal | overall |
+|---|---|---|---|---|---|
+| 1.00 | 58.4% (+0.0, n=89) | 96.7% (+0.0, n=841) | 42.0% (+0.0, n=281) | 86.9% (+0.0, n=320) | 82.4% |
+| 0.75 | 55.1% (-3.4, n=89) | 97.1% (+0.5, n=841) | 43.4% (+1.4, n=281) | 88.4% (+1.6, n=320) | 83.0% |
+| 0.50 | 55.1% (-3.4, n=89) | 97.3% (+0.6, n=841) | 43.8% (+1.8, n=281) | 87.8% (+0.9, n=320) | 83.0% |
+| 0.25 | 56.2% (-2.2, n=89) | 97.0% (+0.4, n=841) | 43.1% (+1.1, n=281) | 88.4% (+1.6, n=320) | 83.0% |
+| 0.00 | 58.4% (+0.0, n=89) | 96.8% (+0.1, n=841) | 41.6% (-0.4, n=281) | 88.4% (+1.6, n=320) | 82.7% |
+
 ## NDCG@10, per `meta.category`
 
 | overlap | multi-hop | open-domain | single-hop | temporal | overall |
@@ -103,7 +115,7 @@ Per-query movement on R@5 for the `0.25` row against the `1.00` row: **57 improv
 | queries with a blank `gold_answers` (shape-checked only, never scored) | 6 |
 | queries whose `gold_answers` holds a bare JSON number, not a string | 6 |
 | conversations (`user_id`) | 10 |
-| wall clock for the scoring pass | 20.8s |
+| wall clock for the scoring pass | 16.7s |
 
 **The n above is 1531, not 1540.** 9 queries carry an empty `gold_ids` list: they have a gold *answer* but no gold *document*, so no document could be retrieved and every `recall_any@K` would be 0 by construction. They are excluded from every denominator and reported here rather than silently kept — keeping them would understate every row by a flat 0.58pp carrying no measurement at all. Every remaining `gold_ids` value resolves to a document in the query's own bank; none names a document from another conversation, so per-bank isolation costs nothing measurable here.
 

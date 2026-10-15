@@ -126,6 +126,13 @@ const BACKGROUND_COLUMN: &str = "background";
 /// age", which is the truth, and a visibly wrong age beats a plausible one.
 const UNKNOWN_CREATED_AT: &str = "1970-01-01T00:00:00Z";
 
+/// The shape every stamped `created_at` is written in, for `chrono`'s `format`:
+/// fixed-width RFC 3339 UTC with exactly three fractional digits, the same thing
+/// `strftime('%Y-%m-%dT%H:%M:%fZ', …)` writes. Fixed width is what makes an age
+/// comparison a byte compare, so anything that writes or compares a stamp from
+/// Rust uses this one constant.
+pub const CREATED_AT_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
+
 /// The wire spelling of [`UpdateMode::Append`].
 ///
 /// Kept for callers that build the request; the decision itself is
@@ -1406,9 +1413,10 @@ impl SqliteStore {
     /// `created_at` is stamped by the database on insert and is deliberately
     /// absent from the conflict branch: it records when the row came into being,
     /// so rewriting a row must not restate its age. `None` means "stamp it",
-    /// which is what every normal caller passes; the `NULLIF(…,'')` in the
-    /// statement is belt-and-braces for a value that no longer has a type-level
-    /// way to be written.
+    /// which is what every normal caller passes. `Some` is a caller-stated
+    /// occurrence time (an imported conversation's own date), already normalized
+    /// to [`CREATED_AT_FORMAT`] by `api::parse_created_at`; the `NULLIF(…,'')` is
+    /// belt-and-braces for an empty one.
     ///
     /// `content_hash` is `digest` — the SHA-256 of the content as written, the
     /// caller's to compute so one retain digests its content once — which is

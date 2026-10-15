@@ -67,7 +67,7 @@ mod bench_common;
 #[path = "../eval/locomo_dev.rs"]
 mod dev;
 
-use dev::{git_head, loadavg, Agg, Corpus, Row, UPSTREAM_REF};
+use dev::{git_head, loadavg, Agg, Corpus, Granularity, Row, UPSTREAM_REF};
 
 /// The grid: the weight on the token-overlap stream, with BM25 pinned at 1.0, the
 /// agreement bonus at 0.0 and RRF `k` at 60, so `overlap` is the only axis that
@@ -106,10 +106,27 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    // One bank per `user_id`, built once, one memory per document: the shared
-    // ingestion, so this harness and `select_fusion` cannot be describing two
-    // different corpora. See `eval/locomo_dev.rs`.
-    let corpus = Corpus::load(&docs_path, &queries_path)?;
+    // One bank per `user_id`, built once. The default arm is one memory per
+    // document; `--turns` and `--windows W` are experiment arms (TODO rows 12/17,
+    // H2) sharing the same ingestion — see `eval/locomo_dev.rs`.
+    let turns_mode = args.iter().any(|a| a == "--turns");
+    let windows = bench_common::flag(&args, "--windows").and_then(|v| v.parse::<usize>().ok());
+    anyhow::ensure!(
+        !(turns_mode && windows.is_some()),
+        "locomo: --turns and --windows are mutually exclusive"
+    );
+    if bench_common::flag(&args, "--windows").is_some() && windows.is_none() {
+        anyhow::bail!("locomo: --windows needs a value: --windows <W>");
+    }
+    let granularity = if let Some(w) = windows {
+        anyhow::ensure!(w > 0, "locomo: --windows W must be at least 1");
+        Granularity::Windows(w)
+    } else if turns_mode {
+        Granularity::Turns
+    } else {
+        Granularity::Session
+    };
+    let corpus = Corpus::load_at(&docs_path, &queries_path, granularity)?;
     let all_queries = &corpus.queries;
     let documents = &corpus.documents;
     let banks = &corpus.banks;
@@ -167,7 +184,7 @@ fn main() -> anyhow::Result<()> {
         for (ci, weight) in GRID.iter().enumerate() {
             let weights = FusionWeights { overlap: *weight, ..FusionWeights::SHIPPED };
             let hits = svc.recall_with_weights(&q.user_id, &q.query, budget_tokens, &weights)?;
-            let retrieved: Vec<String> = hits.into_iter().map(|h| h.memory.id).collect();
+            let retrieved = dev::session_of(hits.into_iter().map(|h| h.memory.id));
             let row = Row::new(q, &retrieved, &planned_q.gold);
             // The fused *membership* is weight-independent — the weights reorder the
             // list, they do not change which documents enter it — so this is counted
@@ -337,6 +354,11 @@ metrics moved the right way.",
          | Command | `cargo run --release --example locomo -- --docs {docs} --data {queries} \
 --out-md eval/LOCOMO.md --out-json eval/results_locomo.json` |\n\
          | Run | {date}, from `--{profile}`, on {host} |\n\
+         | Granularity | {granularity} |\n\
+         | Occurrence times | each memory carries its corpus `timestamp` (`api::parse_created_at`), \
+not the ingest clock — the corpus has been date-aware since 2026-10-14 (H0, \
+`docs/handoff/RND_PLAN.md`); the shipped recency weight is 0.0, so dated ingestion moved no \
+number in this file (control: the full metric vector was bit-identical) |\n\
          | Load at start / at end | `{load_start}` / `{load_end}` |\n\
          | Dataset | LoCoMo (Snap Research) via the canonical distribution \
 `vectorize-io/agent-memory-benchmark`, `data/locomo/locomo10/`, pinned at upstream commit \
@@ -426,6 +448,20 @@ rejected on LongMemEval. Every `Δ` is against the `1.00` row.\n\n\
         pool_mean = pool_mean,
         pool_max = pool_len_max,
         pool_verdict = pool_verdict,
+        granularity = if let Some(w) = windows {
+            format!(
+                "**window of {w} turns** (`--windows {w}`): one memory per window of {w} \
+                 consecutive turns, stride {}, hits pooled to their session at its best window \
+                 (MaxP). An experiment arm (H2, `docs/handoff/RND_PLAN.md`), not the committed \
+                 whole-session run",
+                (w / 2).max(1)
+            )
+        } else if turns_mode {
+            "**turn** (`--turns`): one memory per dialogue turn, hits pooled to their session at \
+its best turn (MaxP). An experiment arm, not the committed whole-session run".to_string()
+        } else {
+            "session: one memory per document".to_string()
+        },
     );
     for (i, weight) in GRID.iter().enumerate() {
         let t = &totals[i];
@@ -466,6 +502,7 @@ reader can tell which one this is.\n",
     for (title, f) in [
         ("R@1", Agg::r1 as fn(&Agg) -> f64),
         ("R@5", Agg::r5),
+        ("recall_all@10", Agg::all10),
         ("NDCG@10", Agg::ndcg10),
     ] {
         md.push_str(&format!("\n## {title}, per `meta.category`\n\n| overlap |"));
@@ -596,6 +633,7 @@ artifact means naming `--out-md eval/LOCOMO.md`.\n",
                     "recall_any_at_5": r.r5,
                     "recall_any_at_10": r.r10,
                     "recall_any_at_20": r.r20,
+                    "recall_all_at_10": r.all10,
                     "ndcg_at_10": r.ndcg10,
                     "mrr": r.mrr,
                     "gold_in_pool": r.pool,

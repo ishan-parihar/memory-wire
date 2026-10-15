@@ -1,0 +1,32 @@
+no --out-json given: writing per-question data to /var/tmp/ishanp-agentic/bench_recall_curve.json
+  building 1000 ...
+  building 10000 ...
+  building 50000 ...
+  building 100000 ...
+wrote /home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/eval/baseline/2026-10-13-v0.7.0/BENCH_RECALL_CURVE.md
+wrote /var/tmp/ishanp-agentic/bench_recall_curve.json
+=== recall curve ===
+profile release · sizes 1000,10000,50000,100000 · 32 fixed queries · 3 interleaved passes · seed 42 · pool 200 ∪ BM25 50 · loadavg 16.68 14.64 12.92 20/6965 3619525
+
+| memories | configuration | signal % | in window | in BM25 | in pool | R@1 | R@5 | p50 us | p95 us |
+|---|---|---|---|---|---|---|---|---|
+| 1000 | shipped | 3.200% | 3 | 32 | 32 | 71.9% | 96.9% | 1187 | 1653 |
+| 1000 | raw overlap=0.50 | 3.200% | 3 | 32 | 32 | 71.9% | 96.9% | 1197 | 1597 |
+| 1000 | raw overlap=0.75 | 3.200% | 3 | 32 | 32 | 71.9% | 100.0% | 1173 | 1797 |
+| 1000 | raw overlap=1.00 | 3.200% | 3 | 32 | 32 | 78.1% | 100.0% | 1162 | 1528 |
+| 1000 | raw overlap=2.00 | 3.200% | 3 | 32 | 32 | 84.4% | 100.0% | 1187 | 1492 |
+| 10000 | shipped | 0.320% | 0 | 32 | 32 | 75.0% | 84.4% | 6724 | 9053 |
+| 10000 | raw overlap=0.50 | 0.320% | 0 | 32 | 32 | 75.0% | 90.6% | 6705 | 9415 |
+| 10000 | raw overlap=0.75 | 0.320% | 0 | 32 | 32 | 75.0% | 100.0% | 6681 | 8908 |
+| 10000 | raw overlap=1.00 | 0.320% | 0 | 32 | 32 | 75.0% | 100.0% | 6762 | 8668 |
+| 10000 | raw overlap=2.00 | 0.320% | 0 | 32 | 32 | 84.4% | 100.0% | 6729 | 9694 |
+| 50000 | shipped | 0.064% | 0 | 32 | 32 | 75.0% | 90.6% | 38391 | 52502 |
+| 50000 | raw overlap=0.50 | 0.064% | 0 | 32 | 32 | 75.0% | 96.9% | 38478 | 60804 |
+| 50000 | raw overlap=0.75 | 0.064% | 0 | 32 | 32 | 78.1% | 100.0% | 38417 | 54073 |
+| 50000 | raw overlap=1.00 | 0.064% | 0 | 32 | 32 | 81.2% | 100.0% | 38463 | 58340 |
+| 50000 | raw overlap=2.00 | 0.064% | 0 | 32 | 32 | 87.5% | 100.0% | 38404 | 54689 |
+| 100000 | shipped | 0.032% | 0 | 32 | 32 | 71.9% | 90.6% | 84578 | 142561 |
+| 100000 | raw overlap=0.50 | 0.032% | 0 | 32 | 32 | 71.9% | 96.9% | 82431 | 146679 |
+| 100000 | raw overlap=0.75 | 0.032% | 0 | 32 | 32 | 71.9% | 100.0% | 83475 | 141648 |
+| 100000 | raw overlap=1.00 | 0.032% | 0 | 32 | 32 | 75.0% | 100.0% | 85225 | 125630 |
+| 100000 | raw overlap=2.00 | 0.032% | 0 | 32 | 32 | 81.2% | 100.0% | 84003 | 153408 |

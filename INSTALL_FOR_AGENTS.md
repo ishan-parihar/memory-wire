@@ -585,6 +585,7 @@ echo "ok — retained $ID and recalled it back"
 |---|---|---|
 | bank id is empty or whitespace | `400` | `invalid bank id` |
 | `content` is empty or whitespace | `400` | `invalid content` |
+| a retain `created_at` that is neither RFC 3339 nor `YYYY-MM-DD` | `400` | `invalid content` — nothing is written |
 | `GET`/`PUT /banks/:id/config` on a bank that was never created | `404` | `unknown bank` |
 | `GET`/`PUT /banks/:id/memories/:mid` on an unknown memory | `404` | `unknown memory` |
 | `PUT /banks/:id/config` with a non-object body | `400` | `invalid bank config` |

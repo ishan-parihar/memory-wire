@@ -74,6 +74,18 @@ pub fn endpoint() -> String {
     endpoint_from(url.as_deref(), &daemon_state_path())
 }
 
+/// [`endpoint`], with an explicit `--endpoint` value that outranks everything.
+///
+/// An empty or whitespace-only flag reads as absent — the same convention
+/// `--bank` uses on the hook path — so a host template that always writes the
+/// flag can leave it empty rather than special-casing the write.
+pub fn endpoint_with(explicit: Option<&str>) -> String {
+    explicit
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map_or_else(endpoint, String::from)
+}
+
 /// The resolution, as a pure function of its two inputs.
 ///
 /// Split out so every rule above can be tested without touching the process
@@ -88,7 +100,7 @@ fn endpoint_from(url: Option<&str>, state: &Path) -> String {
 }
 
 /// Where a detached server records itself.
-fn daemon_state_path() -> PathBuf {
+pub(crate) fn daemon_state_path() -> PathBuf {
     memory_wire::store::default_db_path()
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
@@ -777,5 +789,22 @@ mod endpoint_tests {
         let p = std::env::temp_dir().join("mw-endpoint-absent-serve.json");
         std::fs::remove_file(&p).ok();
         assert_eq!(endpoint_from(None, &p), "http://127.0.0.1:8888");
+    }
+
+    /// `--endpoint` outranks both the env var and the state file, and an empty
+    /// value reads as absent so a template that always writes the flag cannot
+    /// silently kill resolution.
+    #[test]
+    fn an_explicit_endpoint_outranks_everything_and_empty_means_absent() {
+        let p = state_file("explicit-endpoint", RECORDED);
+        assert_eq!(endpoint_with(None), endpoint());
+        assert_eq!(endpoint_with(Some("  ")), endpoint());
+        assert_eq!(endpoint_with(Some("http://10.0.0.5:9999")), "http://10.0.0.5:9999");
+        // The ambient env is off-limits in tests (see the module doc), so the
+        // precedence against `MEMORY_WIRE_URL` is asserted through the pure
+        // resolution instead: an explicit flag is the same "person telling us
+        // where the server is" as the env var, and wins.
+        assert_eq!(endpoint_from(Some("http://10.0.0.5:9999"), &p), "http://10.0.0.5:9999");
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 }

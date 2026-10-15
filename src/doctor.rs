@@ -84,6 +84,16 @@ pub struct Report {
     /// while the same harness's MCP tools read another, each invisible to the
     /// other.
     pub harness_banks: Vec<(&'static str, String)>,
+    /// The finding that the running serve is an **older binary** than the one
+    /// this `doctor` runs from, when a daemon state file names its pid.
+    ///
+    /// The swap-then-forget window: the new binary is installed, the serve
+    /// keeps serving from the old inode (Linux lets a running executable stay
+    /// alive under its old bytes), and nothing on the screen says so until a
+    /// behaviour the new build fixes still reproduces. `None` when the server
+    /// is down, when there is no state file (a manually started `serve` cannot
+    /// be identified), or when the running and installed bytes are identical.
+    pub stale_serve: Option<String>,
 }
 
 impl Report {
@@ -148,6 +158,13 @@ warning    memory-wire surfaces disagree on the bank: {surfaces}.\n  \
            with one explicit bank: `memory-wire connect --bank <id> omp opencode`"
             ));
         }
+        if let Some(stale) = &self.stale_serve {
+            out.push_str(&format!(
+                "\n  \nfinding    {stale}. The old process keeps serving \
+                 the old bytes until it is restarted, so behaviours the new build \
+                 fixed will keep reproducing until then."
+            ));
+        }
         out
     }
 
@@ -178,6 +195,14 @@ pub fn collect() -> Report {
         .filter(|b| !b.is_empty())
     {
         report.harness_banks.push(("MEMORY_WIRE_BANK", b));
+    }
+    // Only a live server can be a stale one, and only a daemon-recorded pid
+    // can be named at all. Everything else is quiet — a down server has
+    // already said what is wrong with it.
+    if report.server == ServerState::Up {
+        if let Ok(mine) = std::env::current_exe() {
+            report.stale_serve = stale_serve_at(&paths::daemon_state_path(), &mine);
+        }
     }
     report
 }
@@ -214,7 +239,43 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         legacy_bank: legacy_bank_at(&per_bank, bank),
         elsewhere: elsewhere_at(&per_bank, bank),
         harness_banks: Vec::new(),
+        stale_serve: None,
     }
+}
+
+/// The `--all-hosts` screen: every host's install state on one table, plus the
+/// finding that a wired host's entries point at a binary that is not the one
+/// this `doctor` runs from (G6.9 — the moved-or-swapped-binary case, which is
+/// silent in the host itself: a hook that execs a stale path still runs, or
+/// fails, without ever mentioning the new install).
+///
+/// Reads and nothing else, on the same rule as `connect --list`.
+pub fn hosts_screen(home: &Path, mine: &Path) -> String {
+    let mut out = String::from("hosts");
+    for host in crate::connect::ALL {
+        out.push_str(&format!(
+            "\n  {}",
+            crate::connect::listing(*host, home, crate::connect::binary_on_path)
+        ));
+        let Some(exe) = crate::connect::wired_exe(*host, home) else {
+            continue;
+        };
+        if exe == mine.to_string_lossy() {
+            continue;
+        }
+        let same_bytes = std::fs::read(&exe)
+            .ok()
+            .zip(std::fs::read(mine).ok())
+            .is_some_and(|(a, b)| a == b);
+        if !same_bytes {
+            out.push_str(&format!(
+                "\n    finding  entries point at `{exe}` but this binary is `{}`. \
+                 Re-run `connect` so the host fires the installed build.",
+                mine.display()
+            ));
+        }
+    }
+    out
 }
 
 /// Ask `endpoint` whether a memory-wire server is answering, at the grade that
@@ -233,6 +294,54 @@ pub fn probe_server(endpoint: &str) -> ServerState {
         Ok(_) => ServerState::Down("unexpected health response".to_string()),
         Err(e) => ServerState::Down(e.to_string()),
     }
+}
+
+/// Is the running serve an older build than `mine`?
+///
+/// Read from the daemon's own state file, the only place the running serve's
+/// pid is recorded. The comparison is on **bytes**, not paths: a serve
+/// legitimately started from a copy or symlink of the same build is not stale,
+/// and a swapped-out inode shows up as a path different from `mine` — with the
+/// kernel's `(deleted)` marker — while still holding the old bytes. Both files
+/// are a few MiB and this is an interactive command, so reading them is the
+/// honest comparison.
+///
+/// Quiet, with no error, whenever the question cannot be asked: no state file
+/// (a manually started `serve` cannot be identified), an unreadable one, a
+/// dead pid, or a platform without `/proc/<pid>/exe`.
+fn stale_serve_at(state: &Path, mine: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(state).ok()?;
+    let pid = serde_json::from_str::<crate::daemon::ServeState>(&text).ok()?.pid;
+    let running = exe_of(pid)?;
+    if running == mine.to_string_lossy() {
+        return None;
+    }
+    let same_bytes = std::fs::read(&running)
+        .ok()
+        .zip(std::fs::read(mine).ok())
+        .is_some_and(|(x, y)| x == y);
+    if same_bytes {
+        return None;
+    }
+    let mine = mine.display();
+    Some(format!(
+        "serve is running an older binary ({running}); this binary is {mine}. Restart it: `{mine} daemon stop && {mine} daemon start`"
+    ))
+}
+
+/// The executable a live pid is running, via `/proc/<pid>/exe`.
+///
+/// The kernel appends ` (deleted)` once the file has been swapped out from
+/// under the process — exactly the case [`stale_serve_at`] exists for — so the
+/// suffix is stripped rather than read as a different path. `None` off Linux
+/// or for a pid that is gone.
+fn exe_of(pid: i32) -> Option<String> {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    let raw = exe.to_string_lossy().into_owned();
+    Some(match raw.strip_suffix(" (deleted)") {
+        Some(p) => p.to_string(),
+        None => raw,
+    })
 }
 
 /// `(bank_id, memory count)` per bank, read-only, largest first.
@@ -320,6 +429,8 @@ fn harness_banks_at(home: &Path) -> Vec<(&'static str, String)> {
     for (surface, rel, master) in [
         ("omp mcp entry", ".omp/agent/mcp.json", "mcpServers"),
         ("opencode mcp entry", ".config/opencode/opencode.json", "mcp"),
+        ("claude-code mcp entry", ".claude.json", "mcpServers"),
+        ("copilot-cli mcp entry", ".copilot/mcp-config.json", "mcpServers"),
     ] {
         if let Some(bank) = mcp_bank_at(&home.join(rel), master) {
             out.push((surface, bank));
@@ -331,37 +442,33 @@ fn harness_banks_at(home: &Path) -> Vec<(&'static str, String)> {
 /// The `DEFAULT_BANK` baked into an installed extension/plugin file, or `None`.
 ///
 /// Only our templates carry that declaration, so the string match doubles as
-/// the marker check. A `"` in a hostile bank id would misread here; bank ids
-/// are slug-like by construction and the trade for a non-failing read is right.
+/// the marker check. Reading is `connect`'s, so the writer and this reader can
+/// never disagree about the line's shape.
 fn default_bank_at(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
-    text.lines().find_map(|line| {
-        let rest = line.trim().strip_prefix("var DEFAULT_BANK = \"")?;
-        let end = rest.find('"')?;
-        Some(rest[..end].to_string())
-    })
+    crate::connect::bank_from_extension(&text)
 }
 
 /// The `--bank` value in our MCP entry of a host config, or `None` — cursor,
 /// omp and opencode all spell a local stdio server as a `command`/`args` argv
-/// built by `connect`'s `mcp_args`, so both key names are scanned. An entry
-/// for a *different* server in the same map is untouched: the get is keyed on
-/// our marker, not on the file.
+/// built by `connect`'s `mcp_args`, so both key names are scanned. The
+/// URL-based hosts (codex, claude-code) pin the bank as the `/mcp/<bank>` path
+/// segment of the URL instead, so that spelling is scanned too. An entry for a
+/// *different* server in the same map is untouched: the get is keyed on our
+/// marker, not on the file. The argv scan is `connect`'s for the same
+/// single-reader reason as `default_bank_at`.
 fn mcp_bank_at(path: &Path, master: &str) -> Option<String> {
     let raw = std::fs::read_to_string(path).ok()?;
     let root: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let entry = root.get(master)?.get(crate::connect::MARKER)?;
-    for field in ["args", "command"] {
-        let Some(args) = entry.get(field).and_then(serde_json::Value::as_array) else {
-            continue;
-        };
-        for (i, arg) in args.iter().enumerate() {
-            if arg.as_str() == Some("--bank") {
-                return args.get(i + 1)?.as_str().map(String::from);
-            }
-        }
-    }
-    None
+    crate::connect::bank_in_mcp_entry(entry).or_else(|| {
+        entry
+            .get("url")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|u| u.split("/mcp/").nth(1))
+            .filter(|b| !b.is_empty())
+            .map(String::from)
+    })
 }
 
 /// On-disk size of the store, SQLite sidecars included.
@@ -509,7 +616,114 @@ mod tests {
             legacy_bank: None,
             elsewhere: None,
             harness_banks: Vec::new(),
+            stale_serve: None,
         }
+    }
+
+    /// A state file naming a live *foreign* process is the stale-serve
+    /// signature: the recorded pid runs a binary that is not this one, which
+    /// is exactly what the swap-then-forget window looks like from `/proc`.
+    #[test]
+    fn a_state_file_naming_a_foreign_process_reports_the_stale_serve() {
+        let dir = tmp_home("stale-serve");
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().expect("sleep");
+        let state = dir.join("serve.json");
+        std::fs::write(
+            &state,
+            serde_json::json!({"pid": child.id() as i32, "addr": "127.0.0.1:18899", "db": "", "started_at": 0})
+                .to_string(),
+        )
+        .expect("write state");
+        let mine = std::env::current_exe().expect("exe");
+        let finding = stale_serve_at(&state, &mine).expect("a foreign binary must be reported");
+        assert!(finding.contains("older binary"), "{finding}");
+        assert!(finding.contains("daemon stop"), "must name the restart: {finding}");
+        let _ = child.kill();
+        let _ = child.wait();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The pid naming this very process is the quiet case: same binary, no
+    /// finding — a healthy daemon state file must not render a warning.
+    #[test]
+    fn a_state_file_naming_this_binary_stays_quiet() {
+        let dir = tmp_home("fresh-serve");
+        let state = dir.join("serve.json");
+        std::fs::write(
+            &state,
+            serde_json::json!({"pid": std::process::id() as i32, "addr": "127.0.0.1:18899", "db": "", "started_at": 0})
+                .to_string(),
+        )
+        .expect("write state");
+        let mine = std::env::current_exe().expect("exe");
+        assert_eq!(stale_serve_at(&state, &mine), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A *copy* of this build at a different path is not stale: the comparison
+    /// is on bytes, so an install under a new path with the same build stays
+    /// quiet.
+    #[test]
+    fn a_byte_identical_copy_at_a_different_path_is_not_stale() {
+        let dir = tmp_home("copy-serve");
+        let mine = std::env::current_exe().expect("exe");
+        let copy = dir.join("memory-wire-copy");
+        std::fs::copy(&mine, &copy).expect("copy");
+        let state = dir.join("serve.json");
+        std::fs::write(
+            &state,
+            serde_json::json!({"pid": std::process::id() as i32, "addr": "127.0.0.1:18899", "db": "", "started_at": 0})
+                .to_string(),
+        )
+        .expect("write state");
+        assert_eq!(stale_serve_at(&state, &copy), None, "same bytes, different path");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `--all-hosts`: a wired host whose entries point at a binary other than
+    /// this one renders the G6.9 finding naming the path; the same config
+    /// pointed at the running binary renders nothing.
+    #[test]
+    fn hosts_screen_flags_entries_pointing_at_a_foreign_binary() {
+        let home = tmp_home("hosts-stale");
+        let rel = ".claude/settings.json";
+        std::fs::create_dir_all(home.join(".claude")).expect("mkdir");
+        let mine = std::env::current_exe().expect("exe");
+        let old = r#"{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/old/dir/memory-wire hook stop","timeout":5}]}]}}"#.to_string();
+        std::fs::write(home.join(rel), &old).expect("write");
+        let screen = hosts_screen(&home, &mine);
+        assert!(screen.contains("claude-code"), "hosts table: {screen}");
+        assert!(
+            screen.contains("entries point at `/old/dir/memory-wire`"),
+            "{screen}"
+        );
+
+        // The same host pointed at *this* binary: no finding.
+        let fresh = old.replace("/old/dir/memory-wire", &mine.to_string_lossy());
+        std::fs::write(home.join(rel), &fresh).expect("write");
+        let clean = hosts_screen(&home, &mine);
+        assert!(!clean.contains("finding"), "{clean}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// A byte-identical copy at a different path is not stale — same rule as
+    /// the stale-serve check, so a renamed install dir does not render a
+    /// finding.
+    #[test]
+    fn hosts_screen_accepts_a_byte_identical_copy() {
+        let home = tmp_home("hosts-copy");
+        std::fs::create_dir_all(home.join(".claude")).expect("mkdir");
+        let mine = std::env::current_exe().expect("exe");
+        let copy = home.join("memory-wire");
+        std::fs::copy(&mine, &copy).expect("copy");
+        let config = format!(
+            r#"{{"hooks":{{"Stop":[{{"matcher":"","hooks":[{{"type":"command","command":"{} hook stop","timeout":5}}]}}]}}}}"#,
+            copy.display()
+        );
+        std::fs::write(home.join(".claude/settings.json"), &config).expect("write");
+        let screen = hosts_screen(&home, &mine);
+        assert!(!screen.contains("finding"), "{screen}");
+        std::fs::remove_dir_all(&home).ok();
     }
 
     fn tmp_home(tag: &str) -> PathBuf {
@@ -727,6 +941,7 @@ mod tests {
             legacy_bank: None,
             elsewhere: None,
             harness_banks: Vec::new(),
+            stale_serve: None,
         };
         assert_eq!(
             r.render(),

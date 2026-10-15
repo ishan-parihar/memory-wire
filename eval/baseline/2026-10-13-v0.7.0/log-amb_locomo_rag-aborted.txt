@@ -1,0 +1,218 @@
+
+Dataset: locomo  Split: locomo10  Memory: memory-wire  Mode: rag
+
+Loading queries...
+  1540 queries loaded
+Loading documents...
+  272 documents loaded
+Ingesting 10 units into memory-wire (unit-sequential)...
+2026-10-13 20:23:03,094 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,096 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,097 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,098 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,099 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,100 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,102 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,103 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,104 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,105 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,106 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,107 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,108 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,109 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,110 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,111 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,112 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,114 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,115 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/retain "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,115 [INFO] [query:conv-26_q0] start — When did Caroline go to the LGBTQ support group?
+2026-10-13 20:23:03,115 [INFO] [query:conv-26_q1] start — When did Melanie paint a sunrise?
+2026-10-13 20:23:03,116 [INFO] [query:conv-26_q2] start — What fields would Caroline be likely to pursue in her educaton?
+2026-10-13 20:23:03,119 [INFO] [query:conv-26_q3] start — What did Caroline research?
+2026-10-13 20:23:03,126 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,136 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,136 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:03,137 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:11,056 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:11,061 [INFO] [query:conv-26_q0] answer done in 7.9s (retrieve=11ms)
+2026-10-13 20:23:14,867 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:14,868 [INFO] [query:conv-26_q2] answer done in 11.8s (retrieve=23ms)
+2026-10-13 20:23:15,776 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:15,777 [INFO] [query:conv-26_q3] answer done in 12.7s (retrieve=20ms)
+2026-10-13 20:23:17,302 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:17,303 [INFO] [query:conv-26_q1] answer done in 14.2s (retrieve=23ms)
+2026-10-13 20:23:20,302 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:20,303 [INFO] [query:conv-26_q0] done in 17.2s — correct=False score=None
+2026-10-13 20:23:20,430 [INFO] [query:conv-26_q4] start — What is Caroline's identity?
+2026-10-13 20:23:20,439 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:31,000 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:31,001 [INFO] [query:conv-26_q4] answer done in 10.6s (retrieve=10ms)
+2026-10-13 20:23:32,180 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:32,181 [INFO] [query:conv-26_q1] done in 29.1s — correct=False score=None
+2026-10-13 20:23:32,191 [INFO] [query:conv-26_q5] start — When did Melanie run a charity race?
+2026-10-13 20:23:32,203 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:44,411 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:44,412 [INFO] [query:conv-26_q4] done in 24.0s — correct=False score=None
+2026-10-13 20:23:44,420 [INFO] [query:conv-26_q6] start — When is Melanie planning on going camping?
+2026-10-13 20:23:44,428 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:46,083 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:46,084 [INFO] [query:conv-26_q5] answer done in 13.9s (retrieve=12ms)
+2026-10-13 20:23:53,938 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:53,939 [INFO] [query:conv-26_q5] done in 21.7s — correct=False score=None
+2026-10-13 20:23:53,944 [INFO] [query:conv-26_q7] start — What is Caroline's relationship status?
+2026-10-13 20:23:53,952 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:23:55,229 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:23:55,229 [INFO] [query:conv-26_q6] answer done in 10.8s (retrieve=9ms)
+2026-10-13 20:24:02,651 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:24:02,652 [INFO] [query:conv-26_q6] done in 18.2s — correct=False score=None
+2026-10-13 20:24:02,657 [INFO] [query:conv-26_q8] start — When did Caroline give a speech at a school?
+2026-10-13 20:24:02,666 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:24:02,852 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:24:02,853 [INFO] [query:conv-26_q7] answer done in 8.9s (retrieve=9ms)
+2026-10-13 20:24:11,830 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:24:11,831 [INFO] [query:conv-26_q7] done in 17.9s — correct=False score=None
+2026-10-13 20:24:11,836 [INFO] [query:conv-26_q9] start — When did Caroline meet up with her friends, family, and mentors?
+2026-10-13 20:24:11,849 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:24:12,000 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:24:12,001 [INFO] [query:conv-26_q8] answer done in 9.3s (retrieve=10ms)
+2026-10-13 20:24:21,962 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:24:21,963 [INFO] [query:conv-26_q9] answer done in 10.1s (retrieve=14ms)
+2026-10-13 20:25:32,528 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:25:32,528 [INFO] [query:conv-26_q3] done in 149.4s — correct=False score=None
+2026-10-13 20:25:32,534 [INFO] [query:conv-26_q10] start — How long has Caroline had her current group of friends for?
+2026-10-13 20:25:32,541 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:25:32,573 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:25:32,573 [INFO] [query:conv-26_q2] done in 149.5s — correct=False score=None
+2026-10-13 20:25:32,579 [INFO] [query:conv-26_q11] start — Where did Caroline move from 4 years ago?
+2026-10-13 20:25:32,586 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:25:44,494 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:25:44,494 [INFO] [query:conv-26_q11] answer done in 11.9s (retrieve=7ms)
+2026-10-13 20:25:46,364 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:25:46,365 [INFO] [query:conv-26_q10] answer done in 13.8s (retrieve=8ms)
+2026-10-13 20:25:51,181 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:25:51,182 [INFO] [query:conv-26_q11] done in 18.6s — correct=False score=None
+2026-10-13 20:25:51,188 [INFO] [query:conv-26_q12] start — How long ago was Caroline's 18th birthday?
+2026-10-13 20:25:51,196 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:25:59,246 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:25:59,247 [INFO] [query:conv-26_q10] done in 26.7s — correct=False score=None
+2026-10-13 20:25:59,252 [INFO] [query:conv-26_q13] start — What career path has Caroline decided to persue?
+2026-10-13 20:25:59,262 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:26:00,916 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:00,917 [INFO] [query:conv-26_q12] answer done in 9.7s (retrieve=8ms)
+2026-10-13 20:26:09,664 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:09,664 [INFO] [query:conv-26_q12] done in 18.5s — correct=False score=None
+2026-10-13 20:26:09,669 [INFO] [query:conv-26_q14] start — Would Caroline still want to pursue counseling as a career if she hadn't receive
+2026-10-13 20:26:09,678 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:26:12,159 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:12,160 [INFO] [query:conv-26_q13] answer done in 12.9s (retrieve=10ms)
+2026-10-13 20:26:18,828 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:18,829 [INFO] [query:conv-26_q13] done in 19.6s — correct=False score=None
+2026-10-13 20:26:18,834 [INFO] [query:conv-26_q15] start — What activities does Melanie partake in?
+2026-10-13 20:26:18,844 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:26:23,606 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:23,607 [INFO] [query:conv-26_q8] done in 140.9s — correct=False score=None
+2026-10-13 20:26:23,612 [INFO] [query:conv-26_q16] start — When did Melanie sign up for a pottery class?
+2026-10-13 20:26:23,622 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:26:27,671 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:27,671 [INFO] [query:conv-26_q14] answer done in 18.0s (retrieve=10ms)
+2026-10-13 20:26:28,406 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:28,407 [INFO] [query:conv-26_q16] answer done in 4.8s (retrieve=14ms)
+2026-10-13 20:26:29,157 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:29,158 [INFO] [query:conv-26_q15] answer done in 10.3s (retrieve=10ms)
+2026-10-13 20:26:38,067 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:38,068 [INFO] [query:conv-26_q9] done in 146.2s — correct=False score=None
+2026-10-13 20:26:38,076 [INFO] [query:conv-26_q17] start — When is Caroline going to the transgender conference?
+2026-10-13 20:26:38,084 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:26:41,764 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:41,765 [INFO] [query:conv-26_q14] done in 32.1s — correct=False score=None
+2026-10-13 20:26:41,771 [INFO] [query:conv-26_q18] start — Where has Melanie camped?
+2026-10-13 20:26:41,779 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:26:47,659 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:47,660 [INFO] [query:conv-26_q18] answer done in 5.9s (retrieve=9ms)
+2026-10-13 20:26:50,864 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:50,865 [INFO] [query:conv-26_q17] answer done in 12.8s (retrieve=8ms)
+2026-10-13 20:26:56,796 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:26:56,796 [INFO] [query:conv-26_q18] done in 15.0s — correct=False score=None
+2026-10-13 20:26:56,801 [INFO] [query:conv-26_q19] start — What do Melanie's kids like?
+2026-10-13 20:26:56,809 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:27:00,249 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:00,249 [INFO] [query:conv-26_q17] done in 22.2s — correct=False score=None
+2026-10-13 20:27:00,254 [INFO] [query:conv-26_q20] start — When did Melanie go to the museum?
+2026-10-13 20:27:00,261 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:27:07,338 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:07,339 [INFO] [query:conv-26_q19] answer done in 10.5s (retrieve=9ms)
+2026-10-13 20:27:17,181 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:17,181 [INFO] [query:conv-26_q20] answer done in 16.9s (retrieve=8ms)
+2026-10-13 20:27:17,579 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:17,580 [INFO] [query:conv-26_q19] done in 20.8s — correct=False score=None
+2026-10-13 20:27:17,585 [INFO] [query:conv-26_q21] start — When did Caroline have a picnic?
+2026-10-13 20:27:17,592 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:27:31,206 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:31,207 [INFO] [query:conv-26_q20] done in 31.0s — correct=False score=None
+2026-10-13 20:27:31,214 [INFO] [query:conv-26_q22] start — Would Caroline likely have Dr. Seuss books on her bookshelf?
+2026-10-13 20:27:31,225 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:27:31,292 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:31,293 [INFO] [query:conv-26_q21] answer done in 13.7s (retrieve=8ms)
+2026-10-13 20:27:39,969 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:39,970 [INFO] [query:conv-26_q21] done in 22.4s — correct=False score=None
+2026-10-13 20:27:39,975 [INFO] [query:conv-26_q23] start — What books has Melanie read?
+2026-10-13 20:27:39,982 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:27:40,203 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:40,203 [INFO] [query:conv-26_q22] answer done in 9.0s (retrieve=12ms)
+2026-10-13 20:27:50,380 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:50,380 [INFO] [query:conv-26_q22] done in 19.2s — correct=False score=None
+2026-10-13 20:27:50,385 [INFO] [query:conv-26_q24] start — What does Melanie do to destress?
+2026-10-13 20:27:50,393 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:27:52,288 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:27:52,289 [INFO] [query:conv-26_q23] answer done in 12.3s (retrieve=8ms)
+2026-10-13 20:28:01,068 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:01,068 [INFO] [query:conv-26_q24] answer done in 10.7s (retrieve=11ms)
+2026-10-13 20:28:03,908 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:03,909 [INFO] [query:conv-26_q23] done in 23.9s — correct=False score=None
+2026-10-13 20:28:03,913 [INFO] [query:conv-26_q25] start — When did Caroline go to the LGBTQ conference?
+2026-10-13 20:28:03,923 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:28:07,784 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:07,784 [INFO] [query:conv-26_q25] answer done in 3.9s (retrieve=10ms)
+2026-10-13 20:28:08,434 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:08,435 [INFO] [query:conv-26_q24] done in 18.0s — correct=False score=None
+2026-10-13 20:28:08,440 [INFO] [query:conv-26_q26] start — When did Melanie read the book "nothing is impossible"?
+2026-10-13 20:28:08,448 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:28:16,556 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:16,556 [INFO] [query:conv-26_q25] done in 12.6s — correct=False score=None
+2026-10-13 20:28:16,564 [INFO] [query:conv-26_q27] start — Would Caroline pursue writing as a career option?
+2026-10-13 20:28:16,571 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:28:17,887 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:17,887 [INFO] [query:conv-26_q26] answer done in 9.4s (retrieve=9ms)
+2026-10-13 20:28:44,833 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:28:44,834 [INFO] [query:conv-26_q27] answer done in 28.3s (retrieve=8ms)
+2026-10-13 20:29:26,930 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:26,930 [INFO] [query:conv-26_q27] done in 70.4s — correct=False score=None
+2026-10-13 20:29:26,935 [INFO] [query:conv-26_q28] start — When did Caroline go to the adoption meeting?
+2026-10-13 20:29:26,944 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:29:32,117 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:32,117 [INFO] [query:conv-26_q15] done in 193.3s — correct=False score=None
+2026-10-13 20:29:32,122 [INFO] [query:conv-26_q29] start — When did Melanie go to the pottery workshop?
+2026-10-13 20:29:32,129 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:29:36,287 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:36,287 [INFO] [query:conv-26_q16] done in 192.7s — correct=False score=None
+2026-10-13 20:29:36,292 [INFO] [query:conv-26_q30] start — Would Melanie be considered a member of the LGBTQ community?
+2026-10-13 20:29:36,299 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:29:41,628 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:41,629 [INFO] [query:conv-26_q29] answer done in 9.5s (retrieve=8ms)
+2026-10-13 20:29:41,709 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:41,709 [INFO] [query:conv-26_q28] answer done in 14.8s (retrieve=9ms)
+2026-10-13 20:29:45,592 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:45,593 [INFO] [query:conv-26_q30] answer done in 9.3s (retrieve=7ms)
+2026-10-13 20:29:48,180 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:48,180 [INFO] [query:conv-26_q28] done in 21.2s — correct=False score=None
+2026-10-13 20:29:48,184 [INFO] [query:conv-26_q31] start — When did Melanie go camping in June?
+2026-10-13 20:29:48,191 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:29:49,584 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:49,585 [INFO] [query:conv-26_q29] done in 17.5s — correct=False score=None
+2026-10-13 20:29:49,590 [INFO] [query:conv-26_q32] start — What LGBTQ+ events has Caroline participated in?
+2026-10-13 20:29:49,597 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-26/recall "HTTP/1.1 200 OK"
+2026-10-13 20:29:57,273 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:29:57,273 [INFO] [query:conv-26_q31] answer done in 9.1s (retrieve=8ms)
+2026-10-13 20:30:05,211 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-13 20:30:05,212 [INFO] [query:conv-26_q32] answer done in 15.6s (retrieve=8ms)
+Terminated                 ( cd "$AMB" && MEMORY_WIRE_URL="http://127.0.0.1:$1" .venv/bin/amb run "${@:2}" --memory memory-wire --output-dir "$SCRATCH/amb-out" )

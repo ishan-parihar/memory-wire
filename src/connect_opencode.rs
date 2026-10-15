@@ -73,8 +73,8 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
         return Outcome::Skipped("no opencode plugin surface for this host".to_string());
     };
     let path = home.join(&rel);
-    let source = baked(bank);
-    let current = version(&source).unwrap_or("?");
+    let probe = baked(bank);
+    let current = version(&probe).unwrap_or("?");
 
     if uninstall {
         if !path.is_file() {
@@ -106,6 +106,13 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     }
 
     let existing = std::fs::read_to_string(&path).ok();
+    // Same pin-preservation rule as `connect_ext` (TODO #1): a bare re-wire
+    // reads the bank the installed plugin was baked with and keeps it, so a
+    // pinned machine does not silently split between the plugin's bank and
+    // the hooks' bank.
+    let baked_pin = existing.as_deref().and_then(crate::connect::bank_from_extension);
+    let bank = bank.or(baked_pin.as_deref());
+    let source = baked(bank);
     if let Some(have) = existing.as_deref() {
         if !carries_marker(have) {
             return Outcome::Failed(format!(

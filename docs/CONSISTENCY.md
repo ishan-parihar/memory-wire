@@ -3452,3 +3452,415 @@ path once per opencode session end; ten probe runs with a PATH shim logged
 zero intercepts while ten markers appeared. v0.7.0 tags its output
 automatically (`marker`), so its rows are out of every auto-injected block;
 naming it remains open and does not block anything.
+
+## 33. 2026-10-13: the external benchmark landscape mapped, and PrecisionMemBench measured once
+
+Seven external benchmarks and harnesses were surveyed and pinned
+(`docs/BENCHMARK_LANDSCAPE.md`, at `84580d5`). No shipped value changed and
+LongMemEval was not run. Gate at `84580d5`: release build, 555 tests passing,
+clippy clean, 0 doc warnings.
+
+**PrecisionMemBench, measured once** — AMB @ `03c1d0f`, `--mode retrieval`, no
+LLM, provider `eval/amb/memory_wire.py` (no filters, `k` 20), memory-wire 0.7.0
+on a fresh scratch database; load 10.7 → 12.2 on 24 cores. Artifact
+`eval/amb/PRECISIONMEMBENCH-2026-10-13-v0.7.0.json.gz` (AMB output, unedited):
+
+| | memory-wire 0.7.0 | hindsight-cloud 0.10.0 (AMB's committed run; filters on, LLM-extracted labels) |
+|---|---|---|
+| total passes | 14 / 77 | 66 / 77 |
+| active passes | 3 / 43 | 33 / 43 |
+| mean precision / recall | 0.17 / 0.95 | 0.85 / 1.00 |
+
+563 of 567 assertion failures are `unexpected belief in relevantBeliefs`. This is
+the over-return diagnosed in `docs/OPEN_HOOK_RECALL_RELEVANCE.md`, now measured
+on an independent public set. Role: measure-only. It does not reopen score
+thresholds; the follow-up is `TODO.md` #7.
+
+**Two label findings, both verified against the bytes.**
+(1) In AMB's copies, BEAM's gold ids resolve to no document (0 of 1,800 at
+100k/500k/1m) and PersonaMem's gold is the whole bank, so neither can be scored
+retrieval-only (`TODO.md` #9). (2) LongMemEval-S marks its 30 abstention
+questions only in `question_id`; upstream's retrieval protocol scores 470.
+`examples/longmemeval.rs` scores 500, and so does agentmemory's
+`longmemeval-bench.ts`, whose `question_type` filter never matches. The
+head-to-head therefore stands on the same 500, but neither number is comparable
+to the paper's retrieval tables (`TODO.md` #8).
+
+The AMB provider existed before today only as an untracked file inside the
+`../_audit/amb` clone. It is now tracked at `eval/amb/`.
+
+Test-set consultations this section: **0**.
+
+## 34. 2026-10-13: the full-scale baseline, `eval/baseline/2026-10-13-v0.7.0/`
+
+memory-wire 0.7.0 @ `84580d5` plus uncommitted harness edits (listed in the
+directory's `PROVENANCE.md`). One script, `eval/baseline/run_baseline.sh`, one
+dated directory, every artifact unedited. Numbers and their denominators live in
+`eval/baseline/README.md`; this entry records what the run found about the
+*instruments*, because those corrections are the part that must not be lost.
+
+**Retrieval reproduced the committed artifacts value for value** (LongMemEval-S
+500 q, LoCoMo 1,531 q). New: the 470-question abstention-excluded LongMemEval row
+(84.0% R@1, 97.2% R@5), emitted by the generator, not by hand.
+
+**Corrections to earlier claims, by name.**
+- The binary is 10.25 MiB, not the 9.7 MiB `AGENTS.md` stated; `DT_NEEDED` is 3.
+- The relevance battery's junk-injected count moved 1/9 → 0/9 against 2026-10-08
+  with the code unchanged: it runs on the live bank `omp`, which grew. A live-bank
+  number is not a pure code comparison.
+- `bench_concurrency` **failed** its 2-client gate (1.30× vs 1.50×) at loadavg
+  17→22, while absolute throughput *rose* against the committed artifact. Not
+  readable as a regression; re-measure on a quiet box (`TODO.md` #14). All
+  latency/RSS figures in this baseline are range-quality (load 11–28 on 24 cores).
+
+**LLM-judged rows (reader and judge: aroute `small-stack`, temperature 0).**
+- `answer_quality`, LongMemEval-S: 17.0% (85/500) conditioned vs 6.0% (30/500)
+  closed-book. A gold session was served in 454/500, ranked first in 419/454, and
+  368 of the 374 wrong answers among those were `I don't know`. Gold alone was
+  answered 6/10, gold + 2 sessions 1/10 (10 items). A planted-fact probe found the
+  needle at every position to 7.8k prompt tokens, so truncation is excluded. **The
+  floor is the small reader, not retrieval.**
+- AMB LoCoMo `rag`: **84.1% (1,295/1,540)**; 91.2% when every gold session was
+  served (1,176/1,289), 53.0% with some (88/166), 36.5% with none (31/85). Only 12
+  of 245 wrong answers are refusals: the LME failure shape is absent on LoCoMo.
+- Neither number is comparable to a published LoCoMo/LME figure: custom judge,
+  free small reader, a fallback chain whose served model cannot be pinned
+  (`llm-calls.jsonl` records it: 3,542 of 3,572 AMB-era calls `laguna-s-2.1:free`).
+
+**Instrument defects found and fixed during the run (none a memory-wire retrieval
+change).**
+1. *AMB provider returned metadata as `raw_response`.* AMB's LoCoMo/LME/LifeBench
+   `build_rag_prompt` replaces the formatted documents with `json.dumps(raw_response)`
+   when it is truthy, so the reader saw `{"provider": …, "returned": 10}` and no
+   memory. First run: 0/29, aborted (`log-amb_locomo_rag-aborted.txt`). Fixed to
+   return `None`. PrecisionMemBench (`retrieval` mode) was never affected.
+2. *Shim worst case exceeded the SDK timeout.* 8 attempts × 180 s > the OpenAI
+   client's 600 s, and AMB does not retry a timeout; a 21:00–22:10 network outage
+   killed the run after 384/1,540 (`log-amb_locomo_rag-timeout.txt`). Shim now has a
+   480 s total deadline returning a 502 (which AMB retries); `amb_rag` resumes from
+   AMB's per-conversation saves. Two further host resets (02:09, 03:34, 2026-10-14)
+   were absorbed by the same mechanism; their logs are kept. No OOM, panic or thermal
+   record precedes either reset in the journal.
+3. *Free models ignore `response_format: json_schema`; AMB sends no temperature.* The
+   shim restates the schema in a system message and defaults `temperature` to 0.
+4. *aroute defects*, handed off in `docs/AROUTE_BUGS.md` (not edited here): 200 with a
+   502 body logged `outcome=ok` (B1); every cline reply wrapped in
+   `{"success","data"}` (B2; 2,050 enveloped AMB-era calls); cline token headers 0 on
+   all calls, so spend limits miss cline (B3); `opencode-zen` 403 with `cooldown_ms=0`
+   until 21:05:55, after which it was no longer attempted (B4).
+
+**Product/harness gaps the run exposed**, tracked in `TODO.md`: no occurrence time on
+HTTP `retain` (#15, closed in §35), `answer_quality` passed no session dates (#16,
+fixed in §35, re-measure outstanding), whole-session documents make AMB's top-10 the
+entire bank on BEAM 100k / PersonaMem 32k (#12), and served-context precision for small
+readers (#17).
+
+**Test-set consultations this section: 2.** (1) LongMemEval-S retrieval, once;
+(2) LongMemEval-S `answer_quality`, once. Both measurement-only; nothing was selected
+on either. Additionally ≈13 LongMemEval items were used for *diagnostic* LLM probes
+(refusal vs distractor count, needle position). These characterise the reader
+instrument and selected no memory-wire parameter; they are disclosed here because they
+are LME items, and `TODO.md` #17 forbids using that observation to pick a lever.
+AMB LoCoMo `rag` and PrecisionMemBench are measure-only.
+
+## 35. 2026-10-14: R&D after the baseline — occurrence time, dated reader, `recall_all@10`, turn granularity
+
+Gate at the working tree: release build, 9 suites / 557 tests passing, clippy
+`-D warnings` clean, 0 doc warnings. Uncommitted.
+
+**Closed by mechanism (not by score).**
+- `TODO.md` #15: HTTP and MCP `retain` accept `created_at` (RFC 3339 or `YYYY-MM-DD`,
+  stored UTC in the store's fixed-width shape, else the frozen `400 invalid content`
+  with nothing written); `format: full` recall serves it. The retention sweep reads the
+  same column, so a backdated memory is as old as it says. `full` recall gained a key;
+  default recall is unchanged. Tests: `src/main.rs`, `src/mcp.rs`.
+- `TODO.md` #16: `examples/answer_quality.rs` now stores each session at its
+  `haystack_dates` entry and puts `question_date` in the prompt. Ranking cannot move
+  (candidate pool is by rowid, id tiebreak, recency weight 0). **The prompt changed, so
+  runs before 2026-10-14 are a different instrument**; the 17.0% above is undated. The
+  one re-measure is outstanding and is a *test consultation* (LongMemEval).
+
+**Measurement added (dev set, no LLM).** `eval/LOCOMO.md` gained `recall_all@10`: the
+share of questions with *every* gold session in the top 10 — 83.0% at the shipped
+`overlap 0.25`, against `recall_any@10` 94.2%. The session arm is metric-identical to
+the previous run. The judged baseline motivates it: accuracy tracks all-gold coverage
+(91.2% vs 53.0% vs 36.5%), and `recall_any` hides it. Misses concentrate in
+multi-session questions: 43/49 single-hop and 10/10 multi-hop with ≥4 gold sessions.
+
+**Tried and rejected: turn-granularity writes.** `locomo --turns` (one memory per
+dialogue turn, session ranked at its best turn, MaxP) on the LoCoMo dev set, one run,
+`eval/LOCOMO_TURNS.md`: at `overlap 0.25` R@1 60.4% → 54.6%, R@5 86.0% → 83.0%,
+`recall_all@10` 83.0% → 80.7%, NDCG@10 73.6% → 69.7% (n 1,531); per-query
+`recall_all@10` 42 up / 76 down. Worse on every aggregate. Recorded as a null result and
+not tuned. Consequence: `TODO.md` #12 buys *measurability* of the long corpora at a
+ranking cost; it is not a ranking lever.
+
+**Not done, and why.** `TODO.md` #17 (precision for small readers) cannot be selected
+on LoCoMo, where refusals are 12 of 245 wrong answers; it needs a dev set that exhibits
+the failure first. No LongMemEval number was used to choose anything.
+
+Test-set consultations this section: **0**.
+
+## 36. 2026-10-14: H1.0 — where the missed gold sessions sit (dev set, rank distribution, no LLM)
+
+Pre-registered as H1.0 in `docs/handoff/RND_PLAN.md` before any number existed: a
+reordering lever can only promote a session within reach, so before building H1a–c the
+plan needed the rank distribution of the gold sessions the shipped configuration
+leaves outside its top 10. Descriptive only — selects nothing, tunes nothing.
+
+**Instrument.** New `examples/locomo_ranks.rs`, sharing `eval/locomo_dev.rs` with
+`examples/locomo.rs` (same corpus, same ingestion, same metrics), one run per
+`eval/LOCOMO_RANKS.md`. Control first: a bare `locomo` run on this tree reproduces the
+committed `eval/LOCOMO.md` `0.25` row exactly (R@1 60.4%, R@5 86.0%, R@10 94.2%, R@20
+98.0%, NDCG@10 73.6%, MRR 71.8%, R@pool 100.0%, n 1,531), so the miss set the
+histogram is taken over is the committed record's own. The rank distribution is
+deterministic (no latency column; load `24.03`→`23.39` recorded in the artifact for
+completeness only). Per-question data in `eval/results_locomo_ranks.json`; every
+aggregate in the artifact was re-derived from that dump by an independent script
+before this section was written.
+
+**Finding (n 1,531 evaluated, 261 misses at `FusionWeights::SHIPPED`).** The
+worst-ranked gold session of a miss sits at rank:
+
+| worst gold | 11–15 | 16–20 | 21+ | absent |
+|---|---|---|---|---|
+| n | 89 | 73 | 99 | **0** |
+
+- **No gold session is ever absent from the fused list**, and the fused list equals
+  the whole bank on 261/261 misses (banks 19–32 documents, median 29). Every miss is
+  an ordering position inside a complete list; none is a matching or pool failure.
+- **162 of 261 misses (62.1%) hold their worst gold at rank 11–20**, inside the
+  pre-registered gate for "reordering levers worth building" (H1a–c). The remaining
+  99 (37.9%) sit at 21+ — bottom third of a median-29 list — and bound what any
+  reordering lever can recover.
+- Per session, not per query: 374 gold sessions missed, 146 at 11–15, 113 at 16–20,
+  115 at 21+, 0 absent.
+- Misses concentrate in multi-gold questions: miss rate 5.7% (1 gold, n 1,203), 44.6%
+  (2, n 202), 73.1% (3, n 67), 89.8% (≥4, n 59). The largest absolute block is
+  single-hop (160 misses of 281); multi-hop is the worst rate (43.8% of 89).
+
+**Consequence.** The stop condition does not fire: H1a–c (lexical reordering levers)
+are worth building — there is something within reach to promote for the majority of
+misses — with the 99 at 21+ explicitly not recoverable by reordering. H1d (the dense
+arm) remains the user's call and is not reopened by this measurement.
+
+Test-set consultations this section: **0**. LoCoMo dev set only; no LongMemEval
+process was started.
+
+## 37. 2026-10-14: H1a/H1b/H1c/H2/H3 on the LoCoMo dev set — all levers fail their pre-registered gates; H6 measured
+
+All pre-registered in `docs/handoff/RND_PLAN.md` before any number existed, run once, no
+iteration, no selection. Harness: new `examples/locomo_levers.rs` (H1a–c, H3 — one
+in-run shipped control plus one pre-registered value per lever, per-category and
+up/down counts, artifacts `eval/LOCOMO_LEVERS.md` + `eval/results_locomo_levers.json`);
+`examples/locomo.rs --windows 2` (H2, artifact `eval/LOCOMO_WINDOWS.md`,
+`eval/results_locomo_windows.json`). **Control:** the shipped arm reproduced the
+committed `eval/LOCOMO.md` `0.25` row exactly, and the harness's own session/turns
+controls were bit-identical after the `Granularity` refactor. Load 30.6→33.0 during the
+levers run — no latency is quoted anywhere below, the metric vector is deterministic
+and there is no wall-clock column, so the load row is completeness only.
+
+**H1a `keyword_scope: ExactAndPrefix` — gate FAIL, stays off.** Biggest single-lever
+R@1 gain measured on this dev set (R@1 60.4→63.4%, MRR 71.8→74.0%, NDCG@10
+73.6→75.3%) and `recall_all@10` 83.0→83.5% (34 up / 26 down), but the pre-registered
+gate required `recall_all@10` +>1pp **and** no category regression: single-hop R@5
+79.4→79.0% (−0.4pp, real — the harness is deterministic). Both sides recorded; the
+gate is the gate. No LongMemEval consultation (a LoCoMo fail closes it, plan §H1).
+
+**H1b `overlap_scope: BestSentence` — gate FAIL, decisively.** `recall_all@10`
+83.0→82.6% (14 up / 19 down), R@1 60.4→57.0% overall, multi-hop R@1 37.1→25.8%
+(−11.3pp). Concentrating overlap on one dense segment loses more than it gains.
+
+**H1c `bm25_magnitude: 1.0` — gate FAIL.** `recall_all@10` 83.0→82.8% (4 up / 7 down);
+multi-hop R@1 37.1→33.7%. The metric SELECTION's walk could not see (`recall_all@10`)
+was measured and is negative; the CLOSED row's re-open condition is discharged.
+
+**H2 windows of W=2 turns (stride 1) — gate FAIL, granularity closed.** Against the
+session arm: R@1 60.4→59.3%, `recall_all@10` 83.0→82.6%; and R@pool dropped
+100.0→98.7% — windowing pushes banks past the candidate-pool ceiling, so some gold
+becomes unreachable at any K. `Turns` (§35) and now `Windows(2)` are both worse than
+sessions; the hooks' turn-pair write path stays a *capture* decision, not a ranking one.
+
+**H3 recency 1.0 `TemporalQueriesOnly` — falsified, decisively.** Temporal-category
+`recall_all@10` 90.3→82.5% (−7.8pp), temporal R@1 57.2→23.8% (−33.4pp), with the
+policy's control held exactly: 1,025 of 1,025 detector-negative queries
+bit-identical. The `RecencyPolicy::TemporalQueriesOnly` gate is *grammatical*
+(`is_temporal_query`), not LoCoMo's category label — the plan's "other categories
+unchanged" clause was unsatisfiable as written (the detector fires on 506/1,531
+queries, 137 of them outside the temporal category); the honored contract is the
+detector's negative set, and the spillover is reported here rather than asserted away.
+Mechanism confirmed the plan's own warning: LoCoMo temporal questions ask *when a
+specific event happened* — a recency prior actively promotes the wrong sessions.
+Recency stays 0.0/`Always` (inert); the dated corpus (H0) remains available for any
+future date-*aware* mechanism that is not a recency prior.
+
+**H6 PrecisionMemBench scope-tag filters — measured, capability change.** The AMB
+adapter now ingests dataset tags and honours the filter's `any` scope groups via the
+store's include-any recall (`supports_filters = True`); the `narrow_any` identity
+clauses are not honoured (trigram tag-vocabulary resolution is Hindsight-native
+machinery). PMB: **14→19 of 77 passes, precision 0.17→0.24, recall unchanged 0.95**
+(n 77 cases, measure-only, no gate, no threshold chosen). The number moved because of
+the provider capability change, not a ranking change — ranking is byte-identical
+(filters are pre-fusion SQL narrowing). Artifact:
+`eval/amb/PRECISIONMEMBENCH-2026-10-14-h6-filters.json.gz`; note for the CLOSED
+instrument-artifact list: the old "filters not expressible" clause is now stale.
+
+Test-set consultations this section: **0**. LoCoMo and PrecisionMemBench only; no
+LongMemEval process was started. (In flight, uncounted until they land: H4 AMB rag
+k=3/5/10 and the H5 dated `answer_quality` — the latter is pre-registered as test
+consultation #3.)
+
+## 38. 2026-10-14: H4 — "reader drowns in context" fails to reproduce on the LoCoMo dev subset
+
+Pre-registered in `docs/handoff/RND_PLAN.md` H4 before the run existed: fixed 200-question
+subset (`eval/h4_subset.json`, harness `examples/locomo_h4_subset.rs` — eligibility = every
+gold session inside the shipped top-3; 1,035 of 1,531 eligible; 200 drawn proportional to
+category, 7/140/8/45 multi-hop/open-domain/single-hop/temporal, seeded permutation 42),
+served at k = 3/5/10 via the AMB adapter's `MEMORY_WIRE_TOPK` cap (`eval/amb/memory_wire.py`),
+AMB `rag` mode, same free `small-stack` answerer and judge as the committed AMB record, three
+separate scratch banks. Artifacts: `eval/amb/h4_locomo_rag_topk{3,5,10}.json.gz`. Privileged
+process: this was a **dev-judged** run on the LoCoMo manifold — no LongMemEval anywhere in it.
+
+**Measured (n = 200 per k, same questions each time):**
+
+| k | judge accuracy | median context tokens | p90 |
+|---|---|---|---|
+| 3 | 184/200 = **92.0%** | 4,273 | 5,645 |
+| 5 | 188/200 = **94.0%** | 7,234 | 9,083 |
+| 10 | 188/200 = **94.0%** | 14,580 | 18,390 |
+
+Wrong answers contain **zero refusal-styled responses** at any k (16 / 12 / 12 wrong).
+
+**Verdict: flat → the failure does not reproduce here.** Serving 3.4× the context at fixed
+gold coverage changed nothing the judge can see. The 10→20 accuracy dip observed on the
+LongMemEval probe (README instrument table) therefore attaches to that instrument — the 0.5B
+reader there drowns; a free-tier small-stack reader on 19–32-session banks does not — and is
+not evidence that memory-wire has a precision problem. **TODO #17 closes: not reproduced on
+independent data.** Precision levers remain unbuilt, and per AGENTS §6 nothing was ever
+selected against the LongMemEval probe anyway.
+
+Recorded interruptions on the run for honesty: the first launch (~14:06) lost ~11 min of k=3
+to an AFT daemon restart (checkpoint: 25 answers); relaunched setsid from `/var/tmp`, resumed
+via `--skip-ingested`. Aroute free-tier contention produced occasional 100–760 s calls; the
+chain absorbed them (n 200/200 at each k, verified above).
+
+Test-set consultations this section: **0**. (The H5 `answer_quality` re-measure follows in the
+same chain and is counted there.)
+
+## 39. 2026-10-14: H5 — dated `answer_quality` re-measure (test consultation #3)
+
+Pre-registered as H5 in `docs/handoff/RND_PLAN.md`: TODO #16 fixed the harness on
+2026-10-13 (sessions stored at `haystack_dates`, each served memory prefixed `[<date>]`,
+`question_date` in the prompt; ranking untouched — pool by rowid, recency weight 0) and the
+dated re-measure was owed, once. This is that run: **the third LongMemEval consultation**
+(§34 recorded the first two). It is a harness fix, not a retrieval change — every retrieval
+number in this repo is untouched by it.
+
+**Instrument.** `examples/answer_quality` as committed (fixed per #16), same free
+`small-stack` answerer and judge through `eval/llm_shim.py`, seed 42, n 500, budget 8000
+tokens. Wall clock 11,041 s over 2,000 LLM calls; load 20.91 at start (the AMB chain's tail)
+falling to 3.04 at end — the numbers below are judge accuracy, not latency, so load is
+recorded, not relied on. Artifact:
+`eval/baseline/2026-10-14-v0.7.0-dated-answer-quality/ANSWER_QUALITY_LME.md` (+ raw JSON,
+per-call `llm-calls.jsonl`, run log, PROVENANCE).
+
+**Result.**
+
+| arm | accuracy | scored | unscored |
+|---|---|---|---|
+| retrieval-conditioned, **dated** | **18.6%** | 93/499 | 1 |
+| closed-book control | 6.0% | 30/500 | 0 |
+| delta | **+12.6pp** | | |
+
+The undated 2026-10-13 instrument read **17.0%**. The dated number sits beside it as a
+*different instrument* (dates in the reader's prompt), not above it: +1.6pp is what a dated
+prompt is worth on this harness, and no retrieval conclusion may be drawn from the
+difference. Per the artifact's own rule, the 1 unscored question makes the cell provisional
+as a clean-run comparison (93/499 vs 93/500 changes nothing at this precision).
+
+Per question type (conditioned, n as scored): single-session-assistant 60.7% (56),
+knowledge-update 17.9% (78), single-session-user 31.4% (70), temporal-reasoning 8.3% (132),
+multi-session 9.0% (133), single-session-preference 0.0% (30). The disagreement shape the
+harness exists for is unchanged from the undated run: gold served in 90.8% of contexts
+(454/500), but only 89 of those were judged correct — **73.0% (365/500) served the gold and
+still answered wrong.** The answerer remains the bottleneck, not the ranking; dating the
+prompt moved knowledge-update the most (temporal questions remain near the floor, 8.3%,
++3.8pp over closed-book).
+
+Test-set consultations to date: **3** (§34: 2; this section: 1). All measurement, no
+selection — no retrieval parameter was read from this run.
+
+## 40. 2026-10-14: H7 — `bench_concurrency` on a quiet box: PASS, the 2026-10-13 failure was load noise
+
+TODO #14 owed one `bench_concurrency` run with `loadavg` < 4, recorded either way. Run
+2026-10-14 23:30 IST, loadavg **0.98 before / 4.33 after** (the sweep itself is the load;
+no other work running — the LLM chain had finished). Artifact:
+`eval/baseline/2026-10-14-bench-concurrency/BENCH_CONCURRENCY.md`, generator output
+unedited.
+
+**Result: PASS.** Aggregate ops/s grew **1.85×** from the 1-client step to 64 clients
+(931.8 → 1,726.9 ops/s), floor 1.50×. RSS flat at 12.9 MB across the whole sweep (ceiling
+71.8 MB), 0 panics. Scaling shape: 1.75× at 2 clients, peak 2.57× at 4 (the 4-connection WAL
+read pool saturating), gently declining efficiency to 64 — the documented writer-mutex +
+read-pool behaviour, not a serialization signature.
+
+The 2026-10-13 baseline reading (1.30× vs 1.50× floor, fail) was taken at load 17→22 on
+24 cores. Same binary, same sweep, quiet box: 1.85×. **The baseline's failure was load
+noise, exactly as suspected** — the committed 2026-10-13 artifact stays as the dated record
+of that load regime; this run is the clean reading. TODO #14 closes.
+
+Test-set consultations this section: **0.** Synthetic corpus, fixed seed, no LongMemEval.
+
+## 41. 2026-10-15: H1d — the dense arm measured on `recall_all@10` (dev set, gate FAILED; no test consultation)
+
+Pre-registered in `docs/handoff/RND_PLAN.md` H1d: the vector axis existed
+(`eval/SELECTION_VECTOR_AXIS_FIXED.md`) but had never reported `recall_all@10`, the metric
+the H1 gates are judged on. This run added `recall_all@10` to the shared metric vector
+(`eval/locomo_dev.rs::Agg::all`/`labelled` → 7 metrics; `select_fusion`'s `METRIC_NAMES`,
+`CONTROL`, grid table and JSON widened to match — the walk objective untouched, still the
+declared six) and re-measured the axis. One run, no selection: every value below is a
+walked candidate that already existed in the committed axis, re-scored with the added
+metric.
+
+**Instrument.** `cargo build --release --locked --features embed` in an isolated
+`CARGO_TARGET_DIR` (the default build's `target/release` untouched — verified: same
+binary, `DT_NEEDED` 3). Command mirrors the committed axis run:
+`select_fusion --axes vector --rounds 2 --budget-seconds 0`, artifact
+`eval/SELECTION_VECTOR_AXIS_ALL10.md`, per-question data
+`eval/results_selection_vector_all10.json` (incl. `all10_by_query` per run). 19
+configurations over 1,531 queries, 198 s wall clock, load 14.5→21.4 (throughput only; the
+metrics are deterministic and no latency is quoted). Coverage 272/272 vectors, 10/10 banks;
+the lexical-half equivalence check passed at 7 metrics ("interchangeable … to within one
+f64 ulp"). Control reproduced `eval/LOCOMO.md` (83.0% `recall_all@10` at `vec=0.00`).
+
+**The grid, `recall_all@10` vs the shipped control (n 1,531, all-up/all-down per-query
+counts from the committed JSON):**
+
+| `vector` | recall_all@10 | Δ | all10 up/down | R@1 | R@5 | NDCG@10 |
+|---|---|---|---|---|---|---|
+| 0.10 | 83.4% | +0.4 | 10/3 | 60.8% (+0.4) | 86.7% | 74.2% |
+| 0.25 | 83.9% | +0.9 | 25/10 | 57.2% (−3.2) | 87.4% | 73.0% |
+| 0.50 | 84.3% | +1.3 | 35/14 | 53.4% (−7.0) | 87.1% | 71.1% |
+| 0.75 | 84.8% | **+1.8** | 54/25 | 50.5% (−9.9) | 84.5% | 69.2% |
+| 1.00 | 84.3% | +1.3 | 59/38 | 48.1% (−12.3) | 82.0% | 67.4% |
+| 1.50 | 80.3% | −2.7 | 76/116 | 45.4% (−15.0) | 78.2% | 64.2% |
+
+**Gate verdict: FAILED at every value.** 0.10/0.25 sit below the +1pp threshold; 0.50–1.00
+cross +1pp only by trading double-digit R@1/NDCG/MRR regressions (the gate's
+"no category regression" clause, and the regressions are real — the harness is
+deterministic); 1.50 collapses outright. Per the pre-registered rule, a LoCoMo fail means
+**no LongMemEval run** — test-set consultations this section: **0** (total remains 3).
+
+**The mechanism claim is falsified where it mattered.** H1.0 left 99 misses whose worst
+gold sits at rank 21+, and H1d was the "only arm that reaches the deep misses". Measured
+against the committed cohort (`eval/results_locomo_ranks.json`, query-id join over
+`all10_by_query`): dense fusion improves the recall of **2 / 2 / 3 / 4 of the 99** at
+vec = 0.10 / 0.25 / 0.50 / 0.75. The aggregate +1.8pp at 0.75 comes almost entirely from
+borderline rank-11–20 multi-gold queries — the shallow end H1a–c already target — not from
+the semantic residue. A ~3× artifact would buy, at its best point, +1.8pp `recall_all@10`,
+−9.9pp R@1, and 4/99 deep rescues.
+
+**Consequence.** H1d closes as a *fusion-weight lever*; the `--features embed` capability
+itself remains what it was — an opt-in, off-by-default arm for users who want it, whose
+axis harness now reports the full seven metrics. The shipping decision is now an informed
+one (`docs/handoff/RND_PLAN.md` H1d row): the evidence says do not promote it.

@@ -90,13 +90,14 @@ use dev::{loadavg, Agg, Corpus, PerCategory, Row, UPSTREAM_REF};
 /// re-measures it as its own control and refuses to report a sweep beside it if the
 /// two disagree — the numbers are copied rather than computed so the check cannot be
 /// satisfied by the same code that produced them.
-const CONTROL: [(&str, f64); 6] = [
+const CONTROL: [(&str, f64); 7] = [
     ("R@1", 60.4),
     ("R@5", 86.0),
     ("R@10", 94.2),
     ("R@20", 98.0),
     ("NDCG@10", 73.6),
     ("MRR", 71.8),
+    ("recall_all@10", 83.0),
 ];
 
 /// The n behind `CONTROL`. `eval/LOCOMO.md` evaluates 1,531 of 1,540: nine queries
@@ -104,7 +105,7 @@ const CONTROL: [(&str, f64); 6] = [
 const CONTROL_N: usize = 1531;
 
 /// The columns of [`Agg::all`], in the order every table prints them.
-const METRIC_NAMES: [&str; 6] = ["R@1", "R@5", "R@10", "R@20", "NDCG@10", "MRR"];
+const METRIC_NAMES: [&str; 7] = ["R@1", "R@5", "R@10", "R@20", "NDCG@10", "MRR", "recall_all@10"];
 
 /// The weight on the token-overlap stream, swept **first and as a control**: the
 /// shipped value is `0.25`, `1.00` is the unfitted equal-weight baseline every
@@ -145,10 +146,12 @@ const K: &[f64] = &[5.0, 10.0, 20.0, 40.0, 60.0, 120.0];
 /// its retrieval path, and the "f2–f5 at 27% with token recency" figure that
 /// originally motivated this lever **does not exist in their repo**
 /// (`docs/EXCEED_PLAN.md` Phase C; the withdrawal is recorded in
-/// `docs/CONSISTENCY.md` §14.4). Second, and specific to *this* corpus, the LoCoMo
-/// ingestion writes no per-document date — see the recency caveat in the artifact,
-/// where the measured `created_at` spread is printed. A recency row here is a ranking
-/// by ingest order, so it is swept on its own merits and read as nothing more.
+/// `docs/CONSISTENCY.md` §14.4). Second, and specific to *this* corpus: before H0
+/// (2026-10-14) the LoCoMo ingestion wrote no per-document date, so the committed
+/// `eval/SELECTION.md`'s recency axis ranked ingest order — see its caveat, which
+/// stays valid for that dated record. Since H0 the corpus carries its own
+/// occurrence dates, so a recency row is a real recency measurement; the artifact
+/// branches on the measured `created_at` spread and says which of the two it is.
 const RECENCY: &[f64] = &[0.00, 0.10, 0.25, 0.50, 1.00];
 
 /// The recency half-life in days. Only reachable while `recency != 0.0`, because a
@@ -518,7 +521,7 @@ fn check_lexical_path_equivalence(
         bad.is_empty(),
         if bad.is_empty() {
             format!(
-                "The lexical half of `vector::recall` at `vector: 0.0` scores the same six metrics \
+                "The lexical half of `vector::recall` at `vector: 0.0` scores the same seven metrics \
                  and the same n as the service path over {} queries, to within one f64 ulp. The \
                  two functions are interchangeable on the lexical streams, so a `vector` row \
                  differs from the control in the dense stream and nothing else.",
@@ -599,6 +602,10 @@ struct Run {
     /// Per-query R@5 in plan order, so a config-to-config diff is a real
     /// per-question diff rather than a difference of means.
     r5_by_query: Vec<f64>,
+    /// Per-query `recall_all@10` in plan order, same reason. H1d's gate is
+    /// judged on this metric's up/down counts (`docs/handoff/RND_PLAN.md`
+    /// H1), which cannot be derived from a mean.
+    all10_by_query: Vec<f64>,
     /// [`objective`] of `agg`, cached for the comparisons.
     obj: [f64; 6],
     /// Harness throughput for this configuration's full pass. **Not** a recall
@@ -635,6 +642,7 @@ fn evaluate(
     let mut agg = Agg::default();
     let mut per_cat: PerCategory = BTreeMap::new();
     let mut r5_by_query = Vec::with_capacity(planned.len());
+    let mut all10_by_query = Vec::with_capacity(planned.len());
     let mut pool_len_sum = 0usize;
     for pq in planned {
         let q = pq.query;
@@ -663,6 +671,7 @@ fn evaluate(
         per_cat.entry(row.category.clone()).or_default().add(&row);
         agg.add(&row);
         r5_by_query.push(row.r5);
+        all10_by_query.push(row.all10);
         pool_len_sum += retrieved.len();
     }
     Ok(Run {
@@ -674,6 +683,7 @@ fn evaluate(
         agg,
         per_cat,
         r5_by_query,
+        all10_by_query,
         seconds: 0.0,
         pool_len_sum,
     })
@@ -693,6 +703,7 @@ fn evaluate(
     let mut agg = Agg::default();
     let mut per_cat: PerCategory = BTreeMap::new();
     let mut r5_by_query = Vec::with_capacity(planned.len());
+    let mut all10_by_query = Vec::with_capacity(planned.len());
     let mut pool_len_sum = 0usize;
     for pq in planned {
         let q = pq.query;
@@ -706,6 +717,7 @@ fn evaluate(
         per_cat.entry(row.category.clone()).or_default().add(&row);
         agg.add(&row);
         r5_by_query.push(row.r5);
+        all10_by_query.push(row.all10);
         pool_len_sum += retrieved.len();
     }
     Ok(Run {
@@ -717,6 +729,7 @@ fn evaluate(
         agg,
         per_cat,
         r5_by_query,
+        all10_by_query,
         seconds: 0.0,
         pool_len_sum,
     })
@@ -818,11 +831,40 @@ fn main() -> anyhow::Result<()> {
         "select_fusion: no query with a gold document — refusing to publish a 0% grid"
     );
 
-    // The measured `created_at` spread, which is what decides whether the recency
-    // axis means anything on this corpus. Read back through the public API rather
-    // than asserted: `Corpus::load` passes `created_at: None`, so the database stamps
-    // ingest time, and this prints how much spread that left.
-    let ingest_span = widest_created_at_span(&corpus)?;
+    // The measured `created_at` spread decides how the recency axis is read. Since
+    // H0, `Corpus::load` ingests each document's own occurrence date, so a wide
+    // spread means real calendar time and the recency axis is a genuine
+    // measurement; a span of seconds (an undated corpus) reproduces the committed
+    // SELECTION.md's ingest-order caveat. Read back through the public API rather
+    // than asserted.
+    let (span_text, span_secs) = widest_created_at_span(&corpus)?;
+    // The caveat paragraph, chosen by that spread. The dated-corpus arm is what
+    // a re-run on this corpus produces; the ingest-order arm keeps the old
+    // reading exact for an undated corpus, so the text a future run prints
+    // always matches the corpus it actually ingested.
+    let recency_caveat = if span_secs < 60.0 {
+        format!(
+            "`Corpus::load` writes every LoCoMo document with `created_at: None`, and the store \
+             stamps ingest time on insert — **LoCoMo documents carry no date of their own for the \
+             recency stream to read.** The widest `created_at` spread observed across any bank \
+             after ingestion was **{span_text}**, so `recency_rank` is ordering a bank whose \
+             documents all carry approximately the same timestamp, and its documented tiebreak \
+             (descending decay, then id ascending) is doing the work. **A delta on the `recency` \
+             axis here is a delta attributable to *ingest order*, not to recency as a retrieval \
+             signal, and must not be read as evidence for the mechanism.**"
+        )
+    } else {
+        format!(
+            "Since H0 (2026-10-14) `Corpus::load` ingests each LoCoMo document's own occurrence \
+             date; the widest `created_at` spread observed across any bank here is **{span_text}**, \
+             so `recency_rank` orders real calendar time and a delta on this axis is a genuine \
+             recency measurement. Read it beside H3, which measured `recency 1.0` \
+             `TemporalQueriesOnly` directly on this corpus and falsified it (temporal R@1 \
+             −33.4pp, control exact; `eval/LOCOMO_LEVERS.md`, `docs/CONSISTENCY.md` §37). \
+             The committed `eval/SELECTION.md` predates H0: its recency rows ranked ingest \
+             order and stay invalid as recency evidence — they are kept as a dated record."
+        )
+    };
 
     // ---- the dense arm, and the coverage check that gates every number below -------
     // The embedder is built only when this binary has the `embed` feature, and the
@@ -1503,23 +1545,18 @@ helps here is evidence *about this corpus*; generalization is what \
 {pool_mean:.1} documents per query, so a top-20 cut lands inside a {bank_min}–{bank_max} \
 document list. The discriminating columns are R@1, R@5 and NDCG@10 — ordering, which is what \
 a fusion weight controls.\n\
-         4. **The recency axis is measured, but what it measures is this harness.** See the \
-caveat below.\n\
+         4. **The `recency` axis is measured; read the caveat below before drawing anything \
+from it.** What the axis measures — real calendar time, or the harness's ingest clock — is \
+exactly what that caveat decides from the measured `created_at` spread.\n\
          5. **Two `FusionWeights` fields were not swept**, and a reader should not assume they \
 are inert: `overlap_scope` (whole-document vs per-segment overlap scoring) and \
 `recency_policy` (`Always` vs `TemporalQueriesOnly`). Both are shipped at their inert \
 defaults and neither is in `docs/EXCEED_PLAN.md` Phases A–B's scope; sweeping them is a \
 separate, separately-motivated job.\n\n\
-         ### The recency caveat, measured\n\n\
-         `Corpus::load` writes every LoCoMo document with `created_at: None`, and the store \
-stamps ingest time on insert — **LoCoMo documents carry no date of their own for the recency \
-stream to read.** The widest `created_at` spread observed across any bank after ingestion \
-was **{span}**, which means `recency_rank` is ordering a bank whose documents all carry \
-approximately the same timestamp, and its documented tiebreak (descending decay, then id \
-ascending) is doing the work. **So a delta on the `recency` axis here is a delta attributable \
-to *ingest order*, not to recency as a retrieval signal, and must not be read as evidence for \
-the mechanism.** This is stated because it is easy to miss: the axis produces plausible-looking \
-numbers, and those numbers are about the harness. It is also why `recency` is swept **last** — \
+         ### The recency caveat, measured
+
+\
+         {recency_caveat} It is also why `recency` is swept **last** — \
 `docs/EXCEED_PLAN.md` Phase C: agentmemory has no recency term anywhere in its retrieval path, \
 and the \"f2–f5 at 27% with token recency\" figure that originally motivated this lever **does \
 not exist in their repo** (exhaustive search; the withdrawal is recorded in \
@@ -1531,8 +1568,8 @@ holds every other at the shipped default — the conventional one-at-a-time swee
 the regime in which interactions are invisible. **`walk`** is coordinate descent: each candidate \
 is measured against the *current* values of all the other axes. The control row is `control`.\n\n\
          | # | pass | round | axis swept | configuration | R@1 | R@5 | R@10 | R@20 | NDCG@10 | MRR | \
-R@pool | R@5 vs shipped | n |\n\
-         |---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+recall_all@10 | R@pool | R@5 vs shipped | n |\n\
+         |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
         evaluations = runs.len(),
         distinct = distinct.len(),
         n_eval = n_eval,
@@ -1546,7 +1583,7 @@ R@pool | R@5 vs shipped | n |\n\
         half_life = fmt_list(RECENCY_HALF_LIFE),
         vector_axis_row = vector_axis_row,
         pool_mean = pool_mean,
-        span = ingest_span,
+        recency_caveat = recency_caveat,
         rounds = rounds,
     );
     for (i, r) in runs.iter().enumerate() {
@@ -1554,7 +1591,7 @@ R@pool | R@5 vs shipped | n |\n\
         let _ = writeln!(
             md,
             "| {i} | {phase} | {round} | {axis} | {cfg} | {r1:.1}% | {r5:.1}% | {r10:.1}% | {r20:.1}% | \
-{n:.1}% | {mrr:.1}% | {pool:.1}% | {up}/{down}/{same} | {cnt} |",
+{n:.1}% | {mrr:.1}% | {all10:.1}% | {pool:.1}% | {up}/{down}/{same} | {cnt} |",
             phase = r.phase,
             round = if r.phase == "control" { 0 } else { r.round },
             axis = r.axis.unwrap_or("— (start point)"),
@@ -1565,6 +1602,7 @@ R@pool | R@5 vs shipped | n |\n\
             r20 = r.agg.r20(),
             n = r.agg.ndcg10(),
             mrr = r.agg.mrr(),
+            all10 = r.agg.all10(),
             pool = r.agg.pool(),
             up = up,
             down = down,
@@ -1656,7 +1694,7 @@ R@pool | R@5 vs shipped | n |\n\
     // `recency != 0.0` rows are excluded deliberately — a recency stream covers the
     // whole bank, so it changes *membership*, not just order, and including it would
     // hide the effect being measured.
-    let mut zero_overlap: Vec<[f64; 6]> = runs
+    let mut zero_overlap: Vec<[f64; 7]> = runs
         .iter()
         .filter(|r| r.weights.overlap == 0.0 && r.weights.recency == 0.0)
         .map(|r| r.agg.all())
@@ -1682,6 +1720,40 @@ R@pool | R@5 vs shipped | n |\n\
     );
     let _ = axis_row;
 
+    // Reading 4, branching with the caveat: on a dated corpus the recency axis is
+    // a real measurement and the sweep agrees with H3's falsification; on an
+    // undated one it is about the harness, exactly as the committed SELECTION.md
+    // said.
+    let recency_reading = if span_secs < 60.0 {
+        format!(
+            "**`recency` is destructive on this corpus and the numbers are about the harness, \
+             not about recency.** At `recency: {:.2}`, R@1 falls to {:.1}% from {:.1}% and \
+             R@5 to {:.1}% from {:.1}% (n={}): the walk never moved it. Read the recency \
+             caveat above before drawing anything from this — every `created_at` here is \
+             the harness's own ingest clock, so this is a measurement of *ingest order* \
+             and must not be cited as evidence for or against a recency stream.",
+            rec_big.map_or(0.0, |r| r.weights.recency),
+            rec_big.map_or(0.0, |r| r.agg.r1()),
+            base.agg.r1(),
+            rec_big.map_or(0.0, |r| r.agg.r5()),
+            base.agg.r5(),
+            n_eval
+        )
+    } else {
+        format!(
+            "**`recency` is destructive on this corpus, measured on real calendar dates.** \
+             At `recency: {:.2}`, R@1 falls to {:.1}% from {:.1}% and R@5 to {:.1}% from \
+             {:.1}% (n={}): the walk never moved it. H3's direct falsification on this \
+             corpus (`eval/LOCOMO_LEVERS.md`, `docs/CONSISTENCY.md` §37) is the \
+             pre-registered record; this sweep's `Always` arm agrees with it.",
+            rec_big.map_or(0.0, |r| r.weights.recency),
+            rec_big.map_or(0.0, |r| r.agg.r1()),
+            base.agg.r1(),
+            rec_big.map_or(0.0, |r| r.agg.r5()),
+            base.agg.r5(),
+            n_eval
+        )
+    };
     let _ = write!(
         md,
         "\n## What the grid shows\n\n\
@@ -1702,12 +1774,7 @@ rank-1 hit on its own. This is a bounded-term null, not a general licence to use
 the unbounded `w · magnitude` form the rustdoc rejected is a different mechanism and was not \
 measured here.\n\
          3. {reading_k}\n\
-         4. **`recency` is destructive on this corpus and the numbers are about the harness, \
-not about recency.** At `recency: {rec_w:.2}`, R@1 falls to {rec_r1:.1}% from {base_r1:.1}% and \
-R@5 to {rec_r5:.1}% from {base_r5:.1}% (n={n_eval}); the walk never moved it. Read the recency \
-caveat above before drawing anything from this: every `created_at` here is the harness's own \
-ingest clock, spread over {span}, so this is a measurement of *ingest order* and must not be \
-cited as evidence for or against a recency stream.\n\
+         4. {recency_reading}\n\
          5. **The walk's own grid is degenerate after its first move, and the artifact says so \
 rather than letting three axes look dead.** The walk accepted {moves_n} move(s) across \
 {round_done} round(s), the first being {moves_first}. After it, the {zero_overlap_n} \
@@ -1747,10 +1814,6 @@ improved, {}/{} regressed — and the full metric vector is identical to the con
         base_r1 = base.agg.r1(),
         base_r5 = base.agg.r5(),
         base_r20 = base.agg.r20(),
-        rec_w = rec_big.map_or(0.0, |r| r.weights.recency),
-        rec_r1 = rec_big.map_or(0.0, |r| r.agg.r1()),
-        rec_r5 = rec_big.map_or(0.0, |r| r.agg.r5()),
-        span = ingest_span,
         moves_n = moves.len(),
         moves_first = moves
             .first()
@@ -2022,7 +2085,7 @@ impossible rather than to apologise for after the fact.\n",
         single_gold = single_gold,
         multi_gold = multi_gold,
         cat_list = cats.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", "),
-        span = ingest_span,
+        span = span_text,
         skipped_note = skipped_note,
         evaluations = runs.len(),
         distinct = distinct.len(),
@@ -2129,6 +2192,7 @@ ran. This file is the one-axis-at-a-time sweep only.**")
             "recall_any_at_5": r.agg.r5(),
             "recall_any_at_10": r.agg.r10(),
             "recall_any_at_20": r.agg.r20(),
+            "recall_all_at_10": r.agg.all10(),
             "ndcg_at_10": r.agg.ndcg10(),
             "mrr": r.agg.mrr(),
             "gold_in_pool": r.agg.pool(),
@@ -2139,10 +2203,12 @@ ran. This file is the one-axis-at-a-time sweep only.**")
                 "recall_any_at_5": a.r5(),
                 "recall_any_at_10": a.r10(),
                 "recall_any_at_20": a.r20(),
+                "recall_all_at_10": a.all10(),
                 "ndcg_at_10": a.ndcg10(),
                 "mrr": a.mrr(),
             })).collect::<Vec<_>>(),
             "r5_by_query": r.r5_by_query,
+            "all10_by_query": r.all10_by_query,
         })).collect::<Vec<_>>(),
         "moves": moves.iter().map(|(round, axis, from, to, delta, up)| serde_json::json!({
             "round": round, "axis": axis, "from": from, "to": to,
@@ -2352,10 +2418,11 @@ third stream before its half-life is read, so every value on the axis produces o
     )
 }
 
-/// The widest `created_at` spread across any bank, in seconds, read back through the
-/// public API. This is the measured basis for the recency caveat: it is what the
-/// recency stream has to work with, and it is the harness's own ingest clock.
-fn widest_created_at_span(corpus: &Corpus) -> anyhow::Result<String> {
+/// The widest `created_at` spread across any bank, as rendered text and seconds, read
+/// back through the public API. This is the measured basis for the recency caveat:
+/// it is what the recency stream has to work with — the corpus's own occurrence
+/// dates since H0, or the harness's ingest clock on a corpus that carries none.
+fn widest_created_at_span(corpus: &Corpus) -> anyhow::Result<(String, f64)> {
     let mut widest = 0f64;
     for (bank, svc) in &corpus.banks {
         let memories = svc
@@ -2372,11 +2439,18 @@ fn widest_created_at_span(corpus: &Corpus) -> anyhow::Result<String> {
         let span = (*hi - *lo).num_milliseconds() as f64 / 1000.0;
         widest = widest.max(span);
     }
-    if widest == 0.0 {
-        Ok("0 s (every row in every bank shares one timestamp)".to_string())
+    // Since H0 a real corpus spans months; "23,904,000.000 s" hides exactly the
+    // fact the caveat turns on, so scale the unit to what the span is.
+    let text = if widest == 0.0 {
+        "0 s (every row in every bank shares one timestamp)".to_string()
+    } else if widest >= 86_400.0 {
+        format!("{:.0} days", widest / 86_400.0)
+    } else if widest >= 3_600.0 {
+        format!("{:.1} hours", widest / 3_600.0)
     } else {
-        Ok(format!("{widest:.3} s"))
-    }
+        format!("{widest:.3} s")
+    };
+    Ok((text, widest))
 }
 
 /// Whether the working tree carried uncommitted changes when the sweep ran.

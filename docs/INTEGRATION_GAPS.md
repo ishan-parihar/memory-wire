@@ -10,6 +10,15 @@ current-state document for the installed surfaces is
 `docs/INTEGRATION_AUDIT.md` (with its 2026-10-08 addendum). Verify a row
 against the binary before acting on it — this doc's own convention.
 
+**Re-verified 2026-10-15** (TODO row 4): the "What is left" table below is
+corrected against the `v0.7.0` tree. G6.4 and G6.9 closed today
+(`--endpoint` on the hook path; `doctor --all-hosts` with per-host
+hook-liveness). G6.3 is a **recorded decision, not a gap**: refusing
+`--uninstall --guidelines` together is deliberate (`connect_conflict`,
+`src/main.rs` — the two flags write to disjoint places and disagree about
+what "installed" means), documented where the refusal is raised. G4's
+opt-in policy and G6.8 remain open.
+
 Sources: `_audit/agentmemory/` (rohitg00/agentmemory), `_audit/hindsight/`
 (vectorize-io/hindsight), and this tree at `eec026f`. Every claim below carries
 a `file:line` citation from those trees or a command run on this machine.
@@ -374,17 +383,23 @@ preference, since `paths.rs` is shared by G4 and G1, and `main.rs` by G2 and G1.
 ## What is left
 
 G1, G2, G3, G4 (collision), G5, G6.1, G6.5, G6.6 and G6.7 are **closed**,
-re-verified against the binary on 2026-09-29. G6.3 and G6.4 are **not** closed
-despite having appeared in an earlier version of this list; both are stated
-below. What remains:
+re-verified against the binary on 2026-09-29. **Re-verified 2026-10-15: G6.4
+and G6.9 are now closed too** (`hook --endpoint`, and `doctor --all-hosts`'s
+liveness finding), and G6.3 is a recorded decision rather than an open item.
+What remains:
 
 | | gap | why it is still open |
 |---|---|---|
 | **G4** | bank opt-in | A policy decision, not a bug: should a repo have to opt in to memory? Both parents fail closed; we do not. Not bundled into the collision fix. The measurement that informs it is in `docs/BANK_IDENTITY.md`: a **fork does not collide** (different owner, different `origin`, different bank), so the case the parents design against is already covered. The residual is two remote-less local directories sharing a basename. |
-| **G6.3** | `--uninstall --guidelines` still refused | `memory-wire connect --uninstall --guidelines` prints `cannot combine --uninstall with --guidelines`. Both parents fully reverse every write. The block is marker-delimited, so removal is easy to add. |
-| **G6.4** | no `--endpoint` flag on the hook path | Only `MEMORY_WIRE_URL` (`src/paths.rs:38-45`). Re-checked 2026-09-29: still absent, and the bare `memory-wire` home view now says so in as many words rather than leaving an agent to discover it. agentmemory threads `--api-url` through re-resolution with a `tokenProvider`. Minor. |
 | **G6.8** | no `system_prompt_block` injection | We inject at `UserPromptSubmit`; hermes wants a block in the system prompt. Different mechanism, not strictly missing. |
-| **G6.9** | `doctor` does not check that the *installed hook* still points at a live binary | `src/doctor.rs` has no reference to any host config. It checks the store and the server, not whether `~/.claude/settings.json` names an existing path. hindsight's installer refuses to write when a foreign server exists (`installer.ts:1766-1775`). Would catch a moved or deleted binary. |
+
+Closed 2026-10-15 against the binary:
+
+| | gap | closed by |
+|---|---|---|
+| **G6.3** | `--uninstall --guidelines` refusal | **Decision, not a defect** (`connect_conflict`, `src/main.rs`): the flags write to disjoint places and disagree about what "installed" means; the refusal fires before anything is written and is documented at the raise site. |
+| **G6.4** | no `--endpoint` on the hook path | `hook --endpoint`, outranking `MEMORY_WIRE_URL` and the daemon state file; empty reads as absent (`paths::endpoint_with`). |
+| **G6.9** | `doctor` blind to hooks pointing at a dead path | `doctor --all-hosts`: per-host detected/wired plus a finding when wired entries point at a binary that is not the running one, byte-compared like the stale-serve check (`connect::wired_exe`). |
 
 Closed since the register was first written, and previously miscounted here:
 

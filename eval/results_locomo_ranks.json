@@ -1,0 +1,5525 @@
+[
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-26_session_1",
+        "rank": 14
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q2",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-26_session_2",
+        "rank": 19
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q3",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_2",
+        "rank": 18
+      },
+      {
+        "id": "conv-26_session_3",
+        "rank": 16
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q7",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-26_session_1",
+        "rank": 11
+      },
+      {
+        "id": "conv-26_session_5",
+        "rank": 1
+      },
+      {
+        "id": "conv-26_session_9",
+        "rank": 9
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q15",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-26_session_4",
+        "rank": 13
+      },
+      {
+        "id": "conv-26_session_6",
+        "rank": 6
+      },
+      {
+        "id": "conv-26_session_8",
+        "rank": 12
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q18",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_4",
+        "rank": 6
+      },
+      {
+        "id": "conv-26_session_6",
+        "rank": 18
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q19",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_5",
+        "rank": 19
+      },
+      {
+        "id": "conv-26_session_7",
+        "rank": 1
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q24",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-26_session_1",
+        "rank": 7
+      },
+      {
+        "id": "conv-26_session_3",
+        "rank": 13
+      },
+      {
+        "id": "conv-26_session_5",
+        "rank": 3
+      },
+      {
+        "id": "conv-26_session_8",
+        "rank": 17
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q32",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_3",
+        "rank": 17
+      },
+      {
+        "id": "conv-26_session_9",
+        "rank": 16
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q34",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-26_session_1",
+        "rank": 6
+      },
+      {
+        "id": "conv-26_session_3",
+        "rank": 17
+      },
+      {
+        "id": "conv-26_session_6",
+        "rank": 5
+      },
+      {
+        "id": "conv-26_session_8",
+        "rank": 13
+      },
+      {
+        "id": "conv-26_session_9",
+        "rank": 19
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q38",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_11",
+        "rank": 2
+      },
+      {
+        "id": "conv-26_session_9",
+        "rank": 13
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q43",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_12",
+        "rank": 11
+      },
+      {
+        "id": "conv-26_session_3",
+        "rank": 2
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q47",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-26_session_12",
+        "rank": 11
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q49",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-26_session_1",
+        "rank": 1
+      },
+      {
+        "id": "conv-26_session_13",
+        "rank": 4
+      },
+      {
+        "id": "conv-26_session_8",
+        "rank": 14
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q51",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_14",
+        "rank": 4
+      },
+      {
+        "id": "conv-26_session_4",
+        "rank": 13
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q56",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_15",
+        "rank": 1
+      },
+      {
+        "id": "conv-26_session_2",
+        "rank": 19
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q60",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_11",
+        "rank": 16
+      },
+      {
+        "id": "conv-26_session_15",
+        "rank": 6
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q61",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-26_session_10",
+        "rank": 2
+      },
+      {
+        "id": "conv-26_session_16",
+        "rank": 16
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q66",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "multi-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-26_session_13",
+        "rank": 15
+      },
+      {
+        "id": "conv-26_session_16",
+        "rank": 2
+      },
+      {
+        "id": "conv-26_session_7",
+        "rank": 5
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q69",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-26_session_4",
+        "rank": 12
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-26_q95",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-30_session_1",
+        "rank": 15
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q2",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-30_session_1",
+        "rank": 12
+      },
+      {
+        "id": "conv-30_session_2",
+        "rank": 5
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q3",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-30_session_13",
+        "rank": 13
+      },
+      {
+        "id": "conv-30_session_16",
+        "rank": 15
+      },
+      {
+        "id": "conv-30_session_5",
+        "rank": 3
+      },
+      {
+        "id": "conv-30_session_8",
+        "rank": 10
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q23",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-30_session_10",
+        "rank": 11
+      },
+      {
+        "id": "conv-30_session_16",
+        "rank": 1
+      },
+      {
+        "id": "conv-30_session_8",
+        "rank": 3
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q24",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-30_session_15",
+        "rank": 15
+      },
+      {
+        "id": "conv-30_session_2",
+        "rank": 1
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q29",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-30_session_3",
+        "rank": 15
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q50",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-30_session_6",
+        "rank": 13
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q56",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-30_session_14",
+        "rank": 11
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q68",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 19,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-30_session_15",
+        "rank": 18
+      }
+    ],
+    "list_len": 19,
+    "query_id": "conv-30_q71",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_1",
+        "rank": 21
+      },
+      {
+        "id": "conv-41_session_2",
+        "rank": 24
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q2",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_2",
+        "rank": 25
+      },
+      {
+        "id": "conv-41_session_3",
+        "rank": 31
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q3",
+    "worst_rank": 31
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-41_session_14",
+        "rank": 24
+      },
+      {
+        "id": "conv-41_session_19",
+        "rank": 6
+      },
+      {
+        "id": "conv-41_session_2",
+        "rank": 19
+      },
+      {
+        "id": "conv-41_session_4",
+        "rank": 18
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q6",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_5",
+        "rank": 27
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q8",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-41_session_21",
+        "rank": 5
+      },
+      {
+        "id": "conv-41_session_27",
+        "rank": 16
+      },
+      {
+        "id": "conv-41_session_6",
+        "rank": 24
+      },
+      {
+        "id": "conv-41_session_7",
+        "rank": 1
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q11",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_8",
+        "rank": 11
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q14",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_7",
+        "rank": 7
+      },
+      {
+        "id": "conv-41_session_9",
+        "rank": 18
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q15",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_11",
+        "rank": 14
+      },
+      {
+        "id": "conv-41_session_12",
+        "rank": 5
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q21",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_13",
+        "rank": 1
+      },
+      {
+        "id": "conv-41_session_2",
+        "rank": 19
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q23",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_13",
+        "rank": 14
+      },
+      {
+        "id": "conv-41_session_8",
+        "rank": 6
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q25",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-41_session_1",
+        "rank": 13
+      },
+      {
+        "id": "conv-41_session_12",
+        "rank": 15
+      },
+      {
+        "id": "conv-41_session_15",
+        "rank": 9
+      },
+      {
+        "id": "conv-41_session_9",
+        "rank": 16
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q28",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_15",
+        "rank": 1
+      },
+      {
+        "id": "conv-41_session_16",
+        "rank": 12
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q29",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-41_session_11",
+        "rank": 2
+      },
+      {
+        "id": "conv-41_session_17",
+        "rank": 32
+      },
+      {
+        "id": "conv-41_session_2",
+        "rank": 10
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q30",
+    "worst_rank": 32
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_16",
+        "rank": 28
+      },
+      {
+        "id": "conv-41_session_18",
+        "rank": 15
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q32",
+    "worst_rank": 28
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_18",
+        "rank": 7
+      },
+      {
+        "id": "conv-41_session_19",
+        "rank": 13
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q35",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_22",
+        "rank": 13
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q41",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-41_session_24",
+        "rank": 1
+      },
+      {
+        "id": "conv-41_session_25",
+        "rank": 2
+      },
+      {
+        "id": "conv-41_session_28",
+        "rank": 12
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q44",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_24",
+        "rank": 26
+      },
+      {
+        "id": "conv-41_session_7",
+        "rank": 27
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q45",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-41_session_1",
+        "rank": 20
+      },
+      {
+        "id": "conv-41_session_10",
+        "rank": 22
+      },
+      {
+        "id": "conv-41_session_25",
+        "rank": 1
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q47",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_25",
+        "rank": 17
+      },
+      {
+        "id": "conv-41_session_26",
+        "rank": 1
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q49",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-41_session_2",
+        "rank": 14
+      },
+      {
+        "id": "conv-41_session_26",
+        "rank": 28
+      },
+      {
+        "id": "conv-41_session_3",
+        "rank": 31
+      },
+      {
+        "id": "conv-41_session_4",
+        "rank": 23
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q50",
+    "worst_rank": 31
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_28",
+        "rank": 11
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q54",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-41_session_30",
+        "rank": 20
+      },
+      {
+        "id": "conv-41_session_31",
+        "rank": 7
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q60",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-41_session_11",
+        "rank": 24
+      },
+      {
+        "id": "conv-41_session_27",
+        "rank": 25
+      },
+      {
+        "id": "conv-41_session_32",
+        "rank": 31
+      },
+      {
+        "id": "conv-41_session_5",
+        "rank": 10
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q64",
+    "worst_rank": 31
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_2",
+        "rank": 13
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q69",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_17",
+        "rank": 20
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q107",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_26",
+        "rank": 22
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q131",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 32,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-41_session_31",
+        "rank": 16
+      }
+    ],
+    "list_len": 32,
+    "query_id": "conv-41_q149",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-42_session_1",
+        "rank": 3
+      },
+      {
+        "id": "conv-42_session_10",
+        "rank": 26
+      },
+      {
+        "id": "conv-42_session_20",
+        "rank": 5
+      },
+      {
+        "id": "conv-42_session_3",
+        "rank": 25
+      },
+      {
+        "id": "conv-42_session_4",
+        "rank": 11
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q1",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_2",
+        "rank": 26
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q9",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_2",
+        "rank": 4
+      },
+      {
+        "id": "conv-42_session_5",
+        "rank": 19
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q12",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_7",
+        "rank": 21
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q14",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_7",
+        "rank": 21
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q16",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_10",
+        "rank": 14
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q17",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-42_session_14",
+        "rank": 16
+      },
+      {
+        "id": "conv-42_session_2",
+        "rank": 6
+      },
+      {
+        "id": "conv-42_session_24",
+        "rank": 3
+      },
+      {
+        "id": "conv-42_session_3",
+        "rank": 19
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q23",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_14",
+        "rank": 23
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q26",
+    "worst_rank": 23
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_16",
+        "rank": 29
+      },
+      {
+        "id": "conv-42_session_2",
+        "rank": 25
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q27",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-42_session_17",
+        "rank": 11
+      },
+      {
+        "id": "conv-42_session_18",
+        "rank": 12
+      },
+      {
+        "id": "conv-42_session_2",
+        "rank": 15
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q30",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_19",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_3",
+        "rank": 13
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q34",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-42_session_10",
+        "rank": 17
+      },
+      {
+        "id": "conv-42_session_22",
+        "rank": 3
+      },
+      {
+        "id": "conv-42_session_3",
+        "rank": 4
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q42",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_14",
+        "rank": 15
+      },
+      {
+        "id": "conv-42_session_24",
+        "rank": 21
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q49",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_13",
+        "rank": 12
+      },
+      {
+        "id": "conv-42_session_24",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q50",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-42_session_11",
+        "rank": 8
+      },
+      {
+        "id": "conv-42_session_25",
+        "rank": 11
+      },
+      {
+        "id": "conv-42_session_26",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_4",
+        "rank": 2
+      },
+      {
+        "id": "conv-42_session_7",
+        "rank": 4
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q55",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_26",
+        "rank": 9
+      },
+      {
+        "id": "conv-42_session_5",
+        "rank": 27
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q56",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-42_session_10",
+        "rank": 6
+      },
+      {
+        "id": "conv-42_session_19",
+        "rank": 11
+      },
+      {
+        "id": "conv-42_session_2",
+        "rank": 8
+      },
+      {
+        "id": "conv-42_session_27",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_9",
+        "rank": 12
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q58",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_15",
+        "rank": 21
+      },
+      {
+        "id": "conv-42_session_27",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q59",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_27",
+        "rank": 21
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q65",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-42_session_19",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_25",
+        "rank": 24
+      },
+      {
+        "id": "conv-42_session_28",
+        "rank": 11
+      },
+      {
+        "id": "conv-42_session_5",
+        "rank": 3
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q66",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-42_session_12",
+        "rank": 3
+      },
+      {
+        "id": "conv-42_session_28",
+        "rank": 14
+      },
+      {
+        "id": "conv-42_session_8",
+        "rank": 10
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q67",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-42_session_11",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_14",
+        "rank": 7
+      },
+      {
+        "id": "conv-42_session_28",
+        "rank": 15
+      },
+      {
+        "id": "conv-42_session_7",
+        "rank": 28
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q68",
+    "worst_rank": 28
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_28",
+        "rank": 10
+      },
+      {
+        "id": "conv-42_session_8",
+        "rank": 12
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q69",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_25",
+        "rank": 7
+      },
+      {
+        "id": "conv-42_session_28",
+        "rank": 12
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q70",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-42_session_1",
+        "rank": 2
+      },
+      {
+        "id": "conv-42_session_15",
+        "rank": 6
+      },
+      {
+        "id": "conv-42_session_19",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_23",
+        "rank": 10
+      },
+      {
+        "id": "conv-42_session_3",
+        "rank": 16
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q74",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_18",
+        "rank": 17
+      },
+      {
+        "id": "conv-42_session_21",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q76",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 9,
+    "golds": [
+      {
+        "id": "conv-42_session_1",
+        "rank": 6
+      },
+      {
+        "id": "conv-42_session_10",
+        "rank": 4
+      },
+      {
+        "id": "conv-42_session_14",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_17",
+        "rank": 10
+      },
+      {
+        "id": "conv-42_session_19",
+        "rank": 18
+      },
+      {
+        "id": "conv-42_session_20",
+        "rank": 7
+      },
+      {
+        "id": "conv-42_session_22",
+        "rank": 9
+      },
+      {
+        "id": "conv-42_session_27",
+        "rank": 3
+      },
+      {
+        "id": "conv-42_session_6",
+        "rank": 2
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q78",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-42_session_12",
+        "rank": 15
+      },
+      {
+        "id": "conv-42_session_2",
+        "rank": 18
+      },
+      {
+        "id": "conv-42_session_4",
+        "rank": 22
+      },
+      {
+        "id": "conv-42_session_5",
+        "rank": 28
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q79",
+    "worst_rank": 28
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-42_session_10",
+        "rank": 4
+      },
+      {
+        "id": "conv-42_session_19",
+        "rank": 11
+      },
+      {
+        "id": "conv-42_session_20",
+        "rank": 1
+      },
+      {
+        "id": "conv-42_session_21",
+        "rank": 2
+      },
+      {
+        "id": "conv-42_session_22",
+        "rank": 16
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q81",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_3",
+        "rank": 7
+      },
+      {
+        "id": "conv-42_session_4",
+        "rank": 18
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q82",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-42_session_14",
+        "rank": 2
+      },
+      {
+        "id": "conv-42_session_18",
+        "rank": 29
+      },
+      {
+        "id": "conv-42_session_26",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q83",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-42_session_20",
+        "rank": 15
+      },
+      {
+        "id": "conv-42_session_21",
+        "rank": 5
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q84",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_29",
+        "rank": 25
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q87",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_17",
+        "rank": 11
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q136",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_18",
+        "rank": 15
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q147",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_28",
+        "rank": 11
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q195",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-42_session_29",
+        "rank": 21
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-42_q198",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-43_session_1",
+        "rank": 24
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q3",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 7,
+    "golds": [
+      {
+        "id": "conv-43_session_1",
+        "rank": 12
+      },
+      {
+        "id": "conv-43_session_11",
+        "rank": 1
+      },
+      {
+        "id": "conv-43_session_2",
+        "rank": 18
+      },
+      {
+        "id": "conv-43_session_20",
+        "rank": 7
+      },
+      {
+        "id": "conv-43_session_22",
+        "rank": 2
+      },
+      {
+        "id": "conv-43_session_26",
+        "rank": 5
+      },
+      {
+        "id": "conv-43_session_6",
+        "rank": 10
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q4",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-43_session_1",
+        "rank": 17
+      },
+      {
+        "id": "conv-43_session_2",
+        "rank": 7
+      },
+      {
+        "id": "conv-43_session_3",
+        "rank": 11
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q11",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-43_session_15",
+        "rank": 3
+      },
+      {
+        "id": "conv-43_session_2",
+        "rank": 15
+      },
+      {
+        "id": "conv-43_session_4",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q14",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-43_session_22",
+        "rank": 6
+      },
+      {
+        "id": "conv-43_session_23",
+        "rank": 16
+      },
+      {
+        "id": "conv-43_session_24",
+        "rank": 5
+      },
+      {
+        "id": "conv-43_session_3",
+        "rank": 1
+      },
+      {
+        "id": "conv-43_session_5",
+        "rank": 11
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q17",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 6,
+    "golds": [
+      {
+        "id": "conv-43_session_1",
+        "rank": 18
+      },
+      {
+        "id": "conv-43_session_2",
+        "rank": 16
+      },
+      {
+        "id": "conv-43_session_20",
+        "rank": 8
+      },
+      {
+        "id": "conv-43_session_26",
+        "rank": 7
+      },
+      {
+        "id": "conv-43_session_4",
+        "rank": 21
+      },
+      {
+        "id": "conv-43_session_5",
+        "rank": 6
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q18",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_3",
+        "rank": 21
+      },
+      {
+        "id": "conv-43_session_6",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q19",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-43_session_3",
+        "rank": 5
+      },
+      {
+        "id": "conv-43_session_5",
+        "rank": 26
+      },
+      {
+        "id": "conv-43_session_6",
+        "rank": 2
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q20",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-43_session_3",
+        "rank": 1
+      },
+      {
+        "id": "conv-43_session_6",
+        "rank": 27
+      },
+      {
+        "id": "conv-43_session_9",
+        "rank": 7
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q21",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_6",
+        "rank": 13
+      },
+      {
+        "id": "conv-43_session_7",
+        "rank": 3
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q24",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_16",
+        "rank": 8
+      },
+      {
+        "id": "conv-43_session_7",
+        "rank": 26
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q25",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_17",
+        "rank": 11
+      },
+      {
+        "id": "conv-43_session_26",
+        "rank": 1
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q26",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-43_session_27",
+        "rank": 12
+      },
+      {
+        "id": "conv-43_session_3",
+        "rank": 1
+      },
+      {
+        "id": "conv-43_session_6",
+        "rank": 14
+      },
+      {
+        "id": "conv-43_session_9",
+        "rank": 3
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q30",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-43_session_11",
+        "rank": 3
+      },
+      {
+        "id": "conv-43_session_26",
+        "rank": 14
+      },
+      {
+        "id": "conv-43_session_27",
+        "rank": 6
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q34",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-43_session_1",
+        "rank": 9
+      },
+      {
+        "id": "conv-43_session_13",
+        "rank": 26
+      },
+      {
+        "id": "conv-43_session_18",
+        "rank": 24
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q38",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-43_session_14",
+        "rank": 20
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q40",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_10",
+        "rank": 25
+      },
+      {
+        "id": "conv-43_session_15",
+        "rank": 19
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q42",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-43_session_18",
+        "rank": 18
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q45",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-43_session_18",
+        "rank": 21
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q46",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_18",
+        "rank": 16
+      },
+      {
+        "id": "conv-43_session_19",
+        "rank": 3
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q49",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_20",
+        "rank": 18
+      },
+      {
+        "id": "conv-43_session_8",
+        "rank": 5
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q53",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-43_session_23",
+        "rank": 1
+      },
+      {
+        "id": "conv-43_session_3",
+        "rank": 16
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q59",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-43_session_11",
+        "rank": 1
+      },
+      {
+        "id": "conv-43_session_17",
+        "rank": 8
+      },
+      {
+        "id": "conv-43_session_19",
+        "rank": 3
+      },
+      {
+        "id": "conv-43_session_22",
+        "rank": 2
+      },
+      {
+        "id": "conv-43_session_4",
+        "rank": 17
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q61",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-43_session_15",
+        "rank": 19
+      },
+      {
+        "id": "conv-43_session_27",
+        "rank": 3
+      },
+      {
+        "id": "conv-43_session_4",
+        "rank": 18
+      },
+      {
+        "id": "conv-43_session_6",
+        "rank": 10
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q67",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-43_session_23",
+        "rank": 29
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q151",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 29,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-43_session_29",
+        "rank": 20
+      }
+    ],
+    "list_len": 29,
+    "query_id": "conv-43_q175",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-44_session_1",
+        "rank": 27
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q0",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-44_session_13",
+        "rank": 10
+      },
+      {
+        "id": "conv-44_session_19",
+        "rank": 12
+      },
+      {
+        "id": "conv-44_session_23",
+        "rank": 13
+      },
+      {
+        "id": "conv-44_session_25",
+        "rank": 14
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q2",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 7,
+    "golds": [
+      {
+        "id": "conv-44_session_13",
+        "rank": 9
+      },
+      {
+        "id": "conv-44_session_23",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_25",
+        "rank": 17
+      },
+      {
+        "id": "conv-44_session_27",
+        "rank": 12
+      },
+      {
+        "id": "conv-44_session_3",
+        "rank": 2
+      },
+      {
+        "id": "conv-44_session_4",
+        "rank": 21
+      },
+      {
+        "id": "conv-44_session_6",
+        "rank": 16
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q3",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-44_session_2",
+        "rank": 16
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q8",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 16
+      },
+      {
+        "id": "conv-44_session_14",
+        "rank": 2
+      },
+      {
+        "id": "conv-44_session_16",
+        "rank": 24
+      },
+      {
+        "id": "conv-44_session_27",
+        "rank": 3
+      },
+      {
+        "id": "conv-44_session_6",
+        "rank": 4
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q9",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_14",
+        "rank": 3
+      },
+      {
+        "id": "conv-44_session_17",
+        "rank": 28
+      },
+      {
+        "id": "conv-44_session_8",
+        "rank": 2
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q12",
+    "worst_rank": 28
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_3",
+        "rank": 6
+      },
+      {
+        "id": "conv-44_session_9",
+        "rank": 20
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q14",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 4
+      },
+      {
+        "id": "conv-44_session_7",
+        "rank": 27
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q15",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_11",
+        "rank": 22
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 10
+      },
+      {
+        "id": "conv-44_session_26",
+        "rank": 5
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q17",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_12",
+        "rank": 23
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q19",
+    "worst_rank": 23
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 16
+      },
+      {
+        "id": "conv-44_session_14",
+        "rank": 1
+      },
+      {
+        "id": "conv-44_session_6",
+        "rank": 2
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q21",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_2",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_5",
+        "rank": 25
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q23",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_13",
+        "rank": 4
+      },
+      {
+        "id": "conv-44_session_2",
+        "rank": 19
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q24",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_12",
+        "rank": 28
+      },
+      {
+        "id": "conv-44_session_16",
+        "rank": 20
+      },
+      {
+        "id": "conv-44_session_18",
+        "rank": 11
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q26",
+    "worst_rank": 28
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 16
+      },
+      {
+        "id": "conv-44_session_12",
+        "rank": 7
+      },
+      {
+        "id": "conv-44_session_16",
+        "rank": 14
+      },
+      {
+        "id": "conv-44_session_18",
+        "rank": 9
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q27",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_1",
+        "rank": 1
+      },
+      {
+        "id": "conv-44_session_19",
+        "rank": 4
+      },
+      {
+        "id": "conv-44_session_2",
+        "rank": 24
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q29",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_14",
+        "rank": 19
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 2
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q31",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "multi-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_12",
+        "rank": 12
+      },
+      {
+        "id": "conv-44_session_18",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_21",
+        "rank": 11
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q33",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "temporal",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_12",
+        "rank": 14
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 2
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q34",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_12",
+        "rank": 2
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 26
+      },
+      {
+        "id": "conv-44_session_28",
+        "rank": 10
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q35",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 1
+      },
+      {
+        "id": "conv-44_session_25",
+        "rank": 2
+      },
+      {
+        "id": "conv-44_session_3",
+        "rank": 20
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q36",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_2",
+        "rank": 13
+      },
+      {
+        "id": "conv-44_session_23",
+        "rank": 5
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q39",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_14",
+        "rank": 17
+      },
+      {
+        "id": "conv-44_session_23",
+        "rank": 6
+      },
+      {
+        "id": "conv-44_session_4",
+        "rank": 3
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q40",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_26",
+        "rank": 7
+      },
+      {
+        "id": "conv-44_session_6",
+        "rank": 16
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q42",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-44_session_11",
+        "rank": 24
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q43",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "temporal",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_12",
+        "rank": 13
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_28",
+        "rank": 1
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q45",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_15",
+        "rank": 5
+      },
+      {
+        "id": "conv-44_session_28",
+        "rank": 19
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q48",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-44_session_1",
+        "rank": 25
+      },
+      {
+        "id": "conv-44_session_18",
+        "rank": 9
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 1
+      },
+      {
+        "id": "conv-44_session_9",
+        "rank": 14
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q51",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "multi-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_1",
+        "rank": 16
+      },
+      {
+        "id": "conv-44_session_20",
+        "rank": 1
+      },
+      {
+        "id": "conv-44_session_23",
+        "rank": 11
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q52",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-44_session_2",
+        "rank": 20
+      },
+      {
+        "id": "conv-44_session_3",
+        "rank": 17
+      },
+      {
+        "id": "conv-44_session_5",
+        "rank": 16
+      },
+      {
+        "id": "conv-44_session_8",
+        "rank": 21
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q53",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-44_session_10",
+        "rank": 14
+      },
+      {
+        "id": "conv-44_session_13",
+        "rank": 23
+      },
+      {
+        "id": "conv-44_session_23",
+        "rank": 1
+      },
+      {
+        "id": "conv-44_session_27",
+        "rank": 11
+      },
+      {
+        "id": "conv-44_session_4",
+        "rank": 4
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q54",
+    "worst_rank": 23
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-44_session_28",
+        "rank": 27
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q55",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-44_session_28",
+        "rank": 20
+      },
+      {
+        "id": "conv-44_session_5",
+        "rank": 3
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q56",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-44_session_12",
+        "rank": 22
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q59",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-44_session_12",
+        "rank": 22
+      },
+      {
+        "id": "conv-44_session_24",
+        "rank": 25
+      },
+      {
+        "id": "conv-44_session_28",
+        "rank": 1
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q60",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 28,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-44_session_27",
+        "rank": 13
+      }
+    ],
+    "list_len": 28,
+    "query_id": "conv-44_q117",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_1",
+        "rank": 17
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q1",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-47_session_1",
+        "rank": 20
+      },
+      {
+        "id": "conv-47_session_21",
+        "rank": 25
+      },
+      {
+        "id": "conv-47_session_23",
+        "rank": 9
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q2",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_1",
+        "rank": 11
+      },
+      {
+        "id": "conv-47_session_2",
+        "rank": 8
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q3",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_3",
+        "rank": 4
+      },
+      {
+        "id": "conv-47_session_4",
+        "rank": 11
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q5",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_1",
+        "rank": 11
+      },
+      {
+        "id": "conv-47_session_5",
+        "rank": 3
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q8",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_1",
+        "rank": 1
+      },
+      {
+        "id": "conv-47_session_5",
+        "rank": 20
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q9",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_6",
+        "rank": 27
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q11",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_6",
+        "rank": 11
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q12",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_9",
+        "rank": 29
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q19",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_10",
+        "rank": 2
+      },
+      {
+        "id": "conv-47_session_29",
+        "rank": 29
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q20",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_10",
+        "rank": 1
+      },
+      {
+        "id": "conv-47_session_29",
+        "rank": 14
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q22",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-47_session_1",
+        "rank": 1
+      },
+      {
+        "id": "conv-47_session_13",
+        "rank": 17
+      },
+      {
+        "id": "conv-47_session_27",
+        "rank": 29
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q24",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-47_session_16",
+        "rank": 25
+      },
+      {
+        "id": "conv-47_session_17",
+        "rank": 19
+      },
+      {
+        "id": "conv-47_session_6",
+        "rank": 1
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q26",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_13",
+        "rank": 15
+      },
+      {
+        "id": "conv-47_session_23",
+        "rank": 17
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q27",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_16",
+        "rank": 17
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q29",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_16",
+        "rank": 1
+      },
+      {
+        "id": "conv-47_session_17",
+        "rank": 24
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q34",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-47_session_14",
+        "rank": 13
+      },
+      {
+        "id": "conv-47_session_17",
+        "rank": 2
+      },
+      {
+        "id": "conv-47_session_2",
+        "rank": 1
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q40",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_20",
+        "rank": 13
+      },
+      {
+        "id": "conv-47_session_23",
+        "rank": 2
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q49",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 5,
+    "golds": [
+      {
+        "id": "conv-47_session_19",
+        "rank": 26
+      },
+      {
+        "id": "conv-47_session_24",
+        "rank": 15
+      },
+      {
+        "id": "conv-47_session_30",
+        "rank": 18
+      },
+      {
+        "id": "conv-47_session_5",
+        "rank": 27
+      },
+      {
+        "id": "conv-47_session_8",
+        "rank": 23
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q51",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_27",
+        "rank": 31
+      },
+      {
+        "id": "conv-47_session_28",
+        "rank": 6
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q54",
+    "worst_rank": 31
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_27",
+        "rank": 17
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q55",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_17",
+        "rank": 5
+      },
+      {
+        "id": "conv-47_session_28",
+        "rank": 23
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q56",
+    "worst_rank": 23
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-47_session_10",
+        "rank": 1
+      },
+      {
+        "id": "conv-47_session_29",
+        "rank": 11
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q60",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_5",
+        "rank": 26
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q78",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 31,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-47_session_10",
+        "rank": 12
+      }
+    ],
+    "list_len": 31,
+    "query_id": "conv-47_q88",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_1",
+        "rank": 17
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q6",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-48_session_1",
+        "rank": 3
+      },
+      {
+        "id": "conv-48_session_15",
+        "rank": 16
+      },
+      {
+        "id": "conv-48_session_2",
+        "rank": 10
+      },
+      {
+        "id": "conv-48_session_6",
+        "rank": 5
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q8",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "multi-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-48_session_19",
+        "rank": 21
+      },
+      {
+        "id": "conv-48_session_2",
+        "rank": 5
+      },
+      {
+        "id": "conv-48_session_23",
+        "rank": 10
+      },
+      {
+        "id": "conv-48_session_28",
+        "rank": 2
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q11",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-48_session_12",
+        "rank": 8
+      },
+      {
+        "id": "conv-48_session_2",
+        "rank": 1
+      },
+      {
+        "id": "conv-48_session_29",
+        "rank": 16
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q14",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-48_session_15",
+        "rank": 8
+      },
+      {
+        "id": "conv-48_session_19",
+        "rank": 2
+      },
+      {
+        "id": "conv-48_session_2",
+        "rank": 1
+      },
+      {
+        "id": "conv-48_session_20",
+        "rank": 22
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q20",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-48_session_2",
+        "rank": 10
+      },
+      {
+        "id": "conv-48_session_3",
+        "rank": 22
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q23",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_7",
+        "rank": 11
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q34",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "multi-hop",
+    "gold_size": 7,
+    "golds": [
+      {
+        "id": "conv-48_session_13",
+        "rank": 13
+      },
+      {
+        "id": "conv-48_session_21",
+        "rank": 23
+      },
+      {
+        "id": "conv-48_session_22",
+        "rank": 1
+      },
+      {
+        "id": "conv-48_session_24",
+        "rank": 8
+      },
+      {
+        "id": "conv-48_session_25",
+        "rank": 30
+      },
+      {
+        "id": "conv-48_session_26",
+        "rank": 28
+      },
+      {
+        "id": "conv-48_session_8",
+        "rank": 20
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q36",
+    "worst_rank": 30
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_12",
+        "rank": 12
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q43",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_13",
+        "rank": 15
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q45",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_23",
+        "rank": 22
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q68",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-48_session_27",
+        "rank": 12
+      },
+      {
+        "id": "conv-48_session_29",
+        "rank": 2
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q77",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-48_session_2",
+        "rank": 10
+      },
+      {
+        "id": "conv-48_session_3",
+        "rank": 24
+      },
+      {
+        "id": "conv-48_session_4",
+        "rank": 12
+      },
+      {
+        "id": "conv-48_session_6",
+        "rank": 14
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q82",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-48_session_1",
+        "rank": 11
+      },
+      {
+        "id": "conv-48_session_17",
+        "rank": 5
+      },
+      {
+        "id": "conv-48_session_3",
+        "rank": 2
+      },
+      {
+        "id": "conv-48_session_4",
+        "rank": 7
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q84",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-48_session_2",
+        "rank": 1
+      },
+      {
+        "id": "conv-48_session_23",
+        "rank": 14
+      },
+      {
+        "id": "conv-48_session_4",
+        "rank": 11
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q86",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-48_session_12",
+        "rank": 11
+      },
+      {
+        "id": "conv-48_session_15",
+        "rank": 10
+      },
+      {
+        "id": "conv-48_session_28",
+        "rank": 14
+      },
+      {
+        "id": "conv-48_session_29",
+        "rank": 27
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q88",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_16",
+        "rank": 11
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q146",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-48_session_26",
+        "rank": 26
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-48_q174",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_1",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_18",
+        "rank": 14
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q1",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_2",
+        "rank": 11
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q5",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_1",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 16
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q6",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 7,
+    "golds": [
+      {
+        "id": "conv-49_session_1",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_10",
+        "rank": 17
+      },
+      {
+        "id": "conv-49_session_13",
+        "rank": 7
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 21
+      },
+      {
+        "id": "conv-49_session_20",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_21",
+        "rank": 10
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 9
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q7",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_19",
+        "rank": 11
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 16
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q10",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 15,
+    "golds": [
+      {
+        "id": "conv-49_session_10",
+        "rank": 25
+      },
+      {
+        "id": "conv-49_session_12",
+        "rank": 17
+      },
+      {
+        "id": "conv-49_session_13",
+        "rank": 19
+      },
+      {
+        "id": "conv-49_session_14",
+        "rank": 14
+      },
+      {
+        "id": "conv-49_session_15",
+        "rank": 10
+      },
+      {
+        "id": "conv-49_session_16",
+        "rank": 18
+      },
+      {
+        "id": "conv-49_session_17",
+        "rank": 20
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 8
+      },
+      {
+        "id": "conv-49_session_24",
+        "rank": 4
+      },
+      {
+        "id": "conv-49_session_25",
+        "rank": 6
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 2
+      },
+      {
+        "id": "conv-49_session_5",
+        "rank": 5
+      },
+      {
+        "id": "conv-49_session_6",
+        "rank": 16
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 11
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q11",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-49_session_22",
+        "rank": 25
+      },
+      {
+        "id": "conv-49_session_23",
+        "rank": 2
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 4
+      },
+      {
+        "id": "conv-49_session_5",
+        "rank": 13
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q14",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-49_session_22",
+        "rank": 9
+      },
+      {
+        "id": "conv-49_session_24",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 7
+      },
+      {
+        "id": "conv-49_session_4",
+        "rank": 14
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q18",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 6,
+    "golds": [
+      {
+        "id": "conv-49_session_12",
+        "rank": 11
+      },
+      {
+        "id": "conv-49_session_14",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_22",
+        "rank": 21
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 13
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 16
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 8
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q19",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 8,
+    "golds": [
+      {
+        "id": "conv-49_session_14",
+        "rank": 9
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 10
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 6
+      },
+      {
+        "id": "conv-49_session_4",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_5",
+        "rank": 14
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 2
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 5
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 18
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q20",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_5",
+        "rank": 25
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q22",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_5",
+        "rank": 11
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q24",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_5",
+        "rank": 14
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q25",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 6,
+    "golds": [
+      {
+        "id": "conv-49_session_10",
+        "rank": 17
+      },
+      {
+        "id": "conv-49_session_11",
+        "rank": 5
+      },
+      {
+        "id": "conv-49_session_18",
+        "rank": 25
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 8
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 2
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q37",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-49_session_12",
+        "rank": 6
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 14
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 11
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q43",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_8",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 12
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q45",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-49_session_21",
+        "rank": 13
+      },
+      {
+        "id": "conv-49_session_22",
+        "rank": 6
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 2
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 5
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q48",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-49_session_11",
+        "rank": 10
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 20
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 16
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q49",
+    "worst_rank": 20
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 6,
+    "golds": [
+      {
+        "id": "conv-49_session_1",
+        "rank": 4
+      },
+      {
+        "id": "conv-49_session_25",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_4",
+        "rank": 16
+      },
+      {
+        "id": "conv-49_session_6",
+        "rank": 5
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 12
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 19
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q50",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_14",
+        "rank": 24
+      },
+      {
+        "id": "conv-49_session_4",
+        "rank": 17
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q51",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-49_session_11",
+        "rank": 16
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 8
+      },
+      {
+        "id": "conv-49_session_9",
+        "rank": 18
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q54",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_13",
+        "rank": 21
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q57",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_13",
+        "rank": 13
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q60",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-49_session_14",
+        "rank": 13
+      },
+      {
+        "id": "conv-49_session_17",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_3",
+        "rank": 12
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q62",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-49_session_12",
+        "rank": 10
+      },
+      {
+        "id": "conv-49_session_14",
+        "rank": 11
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 7
+      },
+      {
+        "id": "conv-49_session_7",
+        "rank": 4
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q64",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_18",
+        "rank": 16
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q68",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_19",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_21",
+        "rank": 14
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q69",
+    "worst_rank": 14
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "temporal",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_21",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_5",
+        "rank": 17
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q70",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-49_session_23",
+        "rank": 4
+      },
+      {
+        "id": "conv-49_session_24",
+        "rank": 12
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q77",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-49_session_21",
+        "rank": 17
+      },
+      {
+        "id": "conv-49_session_22",
+        "rank": 7
+      },
+      {
+        "id": "conv-49_session_23",
+        "rank": 1
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q78",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "single-hop",
+    "gold_size": 8,
+    "golds": [
+      {
+        "id": "conv-49_session_1",
+        "rank": 8
+      },
+      {
+        "id": "conv-49_session_10",
+        "rank": 4
+      },
+      {
+        "id": "conv-49_session_11",
+        "rank": 1
+      },
+      {
+        "id": "conv-49_session_16",
+        "rank": 10
+      },
+      {
+        "id": "conv-49_session_18",
+        "rank": 5
+      },
+      {
+        "id": "conv-49_session_2",
+        "rank": 3
+      },
+      {
+        "id": "conv-49_session_24",
+        "rank": 9
+      },
+      {
+        "id": "conv-49_session_8",
+        "rank": 11
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q81",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_11",
+        "rank": 11
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q118",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 25,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-49_session_14",
+        "rank": 25
+      }
+    ],
+    "list_len": 25,
+    "query_id": "conv-49_q122",
+    "worst_rank": 25
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_1",
+        "rank": 18
+      },
+      {
+        "id": "conv-50_session_2",
+        "rank": 6
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q1",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_2",
+        "rank": 1
+      },
+      {
+        "id": "conv-50_session_23",
+        "rank": 15
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q3",
+    "worst_rank": 15
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "multi-hop",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-50_session_3",
+        "rank": 12
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q4",
+    "worst_rank": 12
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_4",
+        "rank": 10
+      },
+      {
+        "id": "conv-50_session_5",
+        "rank": 24
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q5",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_1",
+        "rank": 14
+      },
+      {
+        "id": "conv-50_session_3",
+        "rank": 19
+      },
+      {
+        "id": "conv-50_session_4",
+        "rank": 12
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q6",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_6",
+        "rank": 3
+      },
+      {
+        "id": "conv-50_session_9",
+        "rank": 26
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q11",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_1",
+        "rank": 23
+      },
+      {
+        "id": "conv-50_session_8",
+        "rank": 1
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q15",
+    "worst_rank": 23
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_12",
+        "rank": 16
+      },
+      {
+        "id": "conv-50_session_24",
+        "rank": 1
+      },
+      {
+        "id": "conv-50_session_3",
+        "rank": 6
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q19",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_12",
+        "rank": 18
+      },
+      {
+        "id": "conv-50_session_26",
+        "rank": 7
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q20",
+    "worst_rank": 18
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "multi-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_12",
+        "rank": 13
+      },
+      {
+        "id": "conv-50_session_27",
+        "rank": 16
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q21",
+    "worst_rank": 16
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-50_session_13",
+        "rank": 9
+      },
+      {
+        "id": "conv-50_session_3",
+        "rank": 29
+      },
+      {
+        "id": "conv-50_session_4",
+        "rank": 12
+      },
+      {
+        "id": "conv-50_session_5",
+        "rank": 11
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q23",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_13",
+        "rank": 19
+      },
+      {
+        "id": "conv-50_session_20",
+        "rank": 3
+      },
+      {
+        "id": "conv-50_session_22",
+        "rank": 1
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q24",
+    "worst_rank": 19
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_27",
+        "rank": 16
+      },
+      {
+        "id": "conv-50_session_5",
+        "rank": 3
+      },
+      {
+        "id": "conv-50_session_8",
+        "rank": 24
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q29",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_10",
+        "rank": 22
+      },
+      {
+        "id": "conv-50_session_2",
+        "rank": 16
+      },
+      {
+        "id": "conv-50_session_28",
+        "rank": 1
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q30",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_14",
+        "rank": 14
+      },
+      {
+        "id": "conv-50_session_17",
+        "rank": 27
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q31",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "multi-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_16",
+        "rank": 7
+      },
+      {
+        "id": "conv-50_session_18",
+        "rank": 11
+      },
+      {
+        "id": "conv-50_session_7",
+        "rank": 1
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q37",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-50_session_21",
+        "rank": 26
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q43",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_19",
+        "rank": 2
+      },
+      {
+        "id": "conv-50_session_21",
+        "rank": 21
+      },
+      {
+        "id": "conv-50_session_22",
+        "rank": 16
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q46",
+    "worst_rank": 21
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_22",
+        "rank": 10
+      },
+      {
+        "id": "conv-50_session_3",
+        "rank": 24
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q47",
+    "worst_rank": 24
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_12",
+        "rank": 3
+      },
+      {
+        "id": "conv-50_session_22",
+        "rank": 13
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q49",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_14",
+        "rank": 7
+      },
+      {
+        "id": "conv-50_session_26",
+        "rank": 11
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q56",
+    "worst_rank": 11
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-50_session_27",
+        "rank": 27
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q57",
+    "worst_rank": 27
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_12",
+        "rank": 29
+      },
+      {
+        "id": "conv-50_session_25",
+        "rank": 1
+      },
+      {
+        "id": "conv-50_session_26",
+        "rank": 15
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q58",
+    "worst_rank": 29
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_2",
+        "rank": 5
+      },
+      {
+        "id": "conv-50_session_23",
+        "rank": 22
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q59",
+    "worst_rank": 22
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 2,
+    "golds": [
+      {
+        "id": "conv-50_session_16",
+        "rank": 10
+      },
+      {
+        "id": "conv-50_session_4",
+        "rank": 13
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q60",
+    "worst_rank": 13
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "temporal",
+    "gold_size": 3,
+    "golds": [
+      {
+        "id": "conv-50_session_14",
+        "rank": 17
+      },
+      {
+        "id": "conv-50_session_20",
+        "rank": 3
+      },
+      {
+        "id": "conv-50_session_21",
+        "rank": 1
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q61",
+    "worst_rank": 17
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "single-hop",
+    "gold_size": 4,
+    "golds": [
+      {
+        "id": "conv-50_session_13",
+        "rank": 5
+      },
+      {
+        "id": "conv-50_session_20",
+        "rank": 11
+      },
+      {
+        "id": "conv-50_session_25",
+        "rank": 3
+      },
+      {
+        "id": "conv-50_session_27",
+        "rank": 28
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q66",
+    "worst_rank": 28
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-50_session_26",
+        "rank": 26
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q140",
+    "worst_rank": 26
+  },
+  {
+    "any_absent": false,
+    "bank_size": 30,
+    "category": "open-domain",
+    "gold_size": 1,
+    "golds": [
+      {
+        "id": "conv-50_session_30",
+        "rank": 11
+      }
+    ],
+    "list_len": 30,
+    "query_id": "conv-50_q151",
+    "worst_rank": 11
+  }
+]

@@ -1,0 +1,27 @@
+=== concurrency soak ===
+workload   16 clients x 4 banks x 10s · db /var/tmp/ishanp-agentic/mw-soak-3643306.db
+           wall 10.0s · 8 seeded document rows
+
+| op      | count  | p50 us | p95 us | p99 us |
+|---|---|---|---|---|
+| retain | 5416 | 9436 | 39938 | 62683 |
+| recall | 5413 | 774 | 1697 | 2158 |
+| stats | 5412 | 868 | 2294 | 3080 |
+| page | 5411 | 57 | 195 | 321 |
+| replace | 2708 | 15649 | 46195 | 69920 |
+| append | 2700 | 4856 | 26710 | 42347 |
+| all     | 27060 | 830 | 28446 | 48721 |
+
+statuses   ok 24360 · 409 2700 · 5xx 0 · other 0
+sqlite     SQLITE_BUSY 0 · panics 0 · post-storm probe ok
+rows       per bank [1350, 1362, 1352, 1360]
+           expected sum 5424 · db sum 5424 · per bank exact true
+documents  replace-storm [1, 1, 1, 1] · append-storm [1, 1, 1, 1]
+rss        7.6 MB -> 24.5 MB (delta +16.9 MB) · db on disk 2.2 MB · ceiling 23.8 MB (page cache + 1 MB/client)
+pre-check  SCAN CONSTANT ROW | SCALAR SUBQUERY 1 | SEARCH memories USING COVERING INDEX idx_memories_bank_doc (bank_id=? AND document_id=?)
+           conflict p50 29 us on a 2-row bank -> 29 us on a full one (1.0x, limit 25x)
+baseline   p99 48721 us · no --baseline-p99-us given, so this run establishes it
+
+throughput 2704 ops/s over 27060 attempts in 10.0s
+wrote /home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/eval/baseline/2026-10-13-v0.7.0/SOAK.md
+verdict    PASS

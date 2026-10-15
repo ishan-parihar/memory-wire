@@ -9,6 +9,15 @@ one exception is `answer_quality`, called out below.
 | **test** | LongMemEval-S, 500 questions | measurement and release acceptance only — **never selection** |
 | **dev** | LoCoMo, 1,540 queries / 272 documents | **all selection happens here** |
 | synthetic | `bench_recall_curve`, `tests/scale.rs` | scaling and regression assertions; we author the distractors, so weak evidence about ranking quality — do not tune against it either |
+| measure-only | PrecisionMemBench via AMB — `eval/amb/` | external, 77 cases; report, never select |
+
+Every other external benchmark — what it is, what it costs, whether its gold
+labels are even usable — is mapped in `docs/BENCHMARK_LANDSCAPE.md`.
+
+**To measure everything at once**, run `eval/baseline/run_baseline.sh`: every
+harness below, each artifact written unedited into one dated directory under
+`eval/baseline/`, with loadavg around every step. That directory, not a single
+artifact here, is what an R&D change is compared against (`eval/baseline/README.md`).
 
 ## Quick start
 

@@ -23,7 +23,7 @@ use crate::recall::{
     RankedHit,
 };
 pub use crate::store::BankStats;
-use crate::store::{LexicalQuery, Store, StoreError, UpdateMode};
+use crate::store::{LexicalQuery, Store, StoreError, UpdateMode, CREATED_AT_FORMAT};
 
 /// FTS5 candidates pulled per recall — the LIMIT is pushed into the SQL.
 ///
@@ -165,6 +165,41 @@ pub fn to_http(e: ApiError) -> (StatusCode, String) {
 /// table callers are told is fixed must stay fixed.
 pub fn parse_update_mode(raw: Option<&str>) -> Result<UpdateMode, ApiError> {
     UpdateMode::parse(raw).ok_or(ApiError::InvalidContent)
+}
+
+/// A client's `created_at` — when the memory *happened* — parsed once at the
+/// boundary into the store's own [`CREATED_AT_FORMAT`].
+///
+/// Absent or blank is `None` (the store stamps "now"). An RFC 3339 time with any
+/// offset is converted to UTC, and a bare `YYYY-MM-DD` is that day's midnight
+/// UTC. Anything else is the frozen table's existing bad-input 400, never a
+/// stored string: the retention sweep compares stamps as bytes, and a
+/// malformed one would sort as if it were newer than every real memory.
+pub fn parse_created_at(raw: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
+        return Ok(None);
+    };
+    let utc = match chrono::DateTime::parse_from_rfc3339(raw) {
+        Ok(t) => t.with_timezone(&chrono::Utc),
+        Err(_) => chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+            .map_err(|_| ApiError::InvalidContent)?
+            .and_time(chrono::NaiveTime::MIN)
+            .and_utc(),
+    };
+    Ok(Some(utc.format(CREATED_AT_FORMAT).to_string()))
+}
+
+/// One recall hit in the `format: "full"` citing shape, shared by the HTTP and
+/// MCP adapters so the two cannot drift: `{id, score, created_at, content}`.
+/// `created_at` is the memory's stored time — a caller-stated occurrence time if
+/// retain was given one — so a reader can order or date what it was served.
+pub fn full_hit_json(hit: &ScoredMemory) -> serde_json::Value {
+    serde_json::json!({
+        "id": hit.memory.id,
+        "score": hit.score,
+        "created_at": hit.memory.created_at,
+        "content": hit.memory.content
+    })
 }
 
 /// Normalize a client tag list: trim, lowercase, drop empties, dedupe, cap at
@@ -479,6 +514,28 @@ impl<S: Store> MemoryService<S> {
         document_id: Option<&str>,
         update_mode: UpdateMode,
     ) -> Result<String, ApiError> {
+        self.retain_doc_at(bank_id, content, context, tags, document_id, update_mode, None)
+    }
+
+    /// [`Self::retain_doc`] with a caller-stated occurrence time.
+    ///
+    /// `created_at` is a [`parse_created_at`] result: `None` lets the store stamp
+    /// "now", `Some` dates the memory to when it happened — an imported
+    /// conversation's own session date, which is what a reader needs to answer
+    /// "when". It is the same column a bank's `ttl_days` sweep reads, so a
+    /// backdated memory is as old as it says it is. A write deduplicated against
+    /// an existing row keeps that row's time.
+    #[allow(clippy::too_many_arguments)] // one more optional field on the same write
+    pub fn retain_doc_at(
+        &self,
+        bank_id: &str,
+        content: &str,
+        context: Option<String>,
+        tags: &[String],
+        document_id: Option<&str>,
+        update_mode: UpdateMode,
+        created_at: Option<String>,
+    ) -> Result<String, ApiError> {
         Self::require_bank(bank_id)?;
         if content.trim().is_empty() {
             // A memory of nothing matches no query and cites nothing, so it is
@@ -502,9 +559,9 @@ impl<S: Store> MemoryService<S> {
             bank_id: bank_id.to_string(),
             content: redact_pii(content),
             context: context.as_deref().map(redact_pii),
-            // The store stamps this on insert; `None` means "not yet known", and
-            // is now the only way to ask for that.
-            created_at: None,
+            // `None`: the store stamps it on insert. `Some`: already normalized
+            // by `parse_created_at`, so the stored stamp is byte-comparable.
+            created_at,
         };
         // The store returns the id of the row that now holds the content, which is
         // this memory's own id unless the write was deduplicated.

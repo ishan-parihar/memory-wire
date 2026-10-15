@@ -1,0 +1,13 @@
+wrote /home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/eval/baseline/2026-10-13-v0.7.0/BENCH_WRITE.md
+=== write path ===
+profile release · sizes 1000,10000 · repeats 1
+store connection (audit handle): journal_mode=wal synchronous=2 (FULL) (the store sets both: wal + NORMAL)
+
+| 1000 | service retain | 0.47s | 2119.3 | 472 | 283 | 450560 | 451 |
+| 1000 | store put | 0.37s | 2671.6 | 374 | 220 | 389120 | 389 |
+| 1000 | batched insert | 0.05s | 19750.2 | 51 | n/a | 311296 | 311 |
+| 10000 | service retain | 4.96s | 2017.7 | 496 | 288 | 3608576 | 361 |
+| 10000 | store put | 4.03s | 2484.0 | 403 | 231 | 3035136 | 304 |
+| 10000 | batched insert | 1.08s | 9244.7 | 108 | n/a | 2265088 | 227 |
+ratio     1000: store put is 7.4x the batch, service retain is 9.3x the batch
+ratio     10000: store put is 3.7x the batch, service retain is 4.6x the batch

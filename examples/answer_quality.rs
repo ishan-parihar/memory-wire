@@ -36,6 +36,11 @@
 //! truncation rule is a different instrument. The numbers are this harness's, labelled
 //! as such.
 //!
+//! **The prompt changed on 2026-10-14**: each memory now carries its session date and
+//! the question its `question_date` (TODO row 16). Runs before that, including the
+//! `2026-10-13-v0.7.0` baseline's 17.0%, used an undated prompt and are a different
+//! instrument; the artifact's verbatim prompt says which one produced it.
+//!
 //! PII redaction is **not** exercised: the haystack is indexed through `Store::put`,
 //! exactly as `examples/longmemeval.rs` does, so this measures the ranking and the
 //! answer loop, not the redacted write path.
@@ -67,7 +72,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use memory_wire::api::{MemoryService, DEFAULT_RECALL_BUDGET};
 use memory_wire::memory::{Bank, Memory};
-use memory_wire::store::{SqliteStore, Store};
+use memory_wire::store::{SqliteStore, Store, CREATED_AT_FORMAT};
 use serde::Deserialize;
 
 // The `--out-md` policy (a bare run must not be able to overwrite a committed
@@ -112,6 +117,22 @@ struct Entry {
     answer_session_ids: Vec<String>,
     haystack_session_ids: Vec<String>,
     haystack_sessions: Vec<Vec<Turn>>,
+    /// One per session, `2023/05/20 (Sat) 02:21`; stored as each memory's
+    /// `created_at`, so the reader is served the date the product would serve.
+    haystack_dates: Vec<String>,
+    /// When the question is asked, same format. Without it and the session dates,
+    /// "how many days ago" and "what is my current…" questions are unanswerable
+    /// by construction (TODO row 16).
+    question_date: String,
+}
+
+/// A LongMemEval date (`2023/05/20 (Sat) 02:21`) in the store's `created_at` shape.
+fn lme_date(raw: &str) -> Result<String> {
+    Ok(chrono::NaiveDateTime::parse_from_str(raw, "%Y/%m/%d (%a) %H:%M")
+        .with_context(|| format!("unparseable LongMemEval date {raw:?}"))?
+        .and_utc()
+        .format(CREATED_AT_FORMAT)
+        .to_string())
 }
 
 // ---------------------------------------------------------------- LLM plumbing
@@ -308,7 +329,7 @@ impl Llm {
 /// `I don't know` is the only permitted non-answer, so a question whose evidence is
 /// absent produces a stated refusal rather than a plausible invention; that is what
 /// makes the closed-book arm meaningful instead of a second chance to guess.
-fn answer_prompt(question: &str, contexts: &[String]) -> String {
+fn answer_prompt(question: &str, asked_on: &str, contexts: &[String]) -> String {
     let memories = if contexts.is_empty() {
         "(none - no memories were retrieved for this question)".to_string()
     } else {
@@ -325,7 +346,7 @@ fn answer_prompt(question: &str, contexts: &[String]) -> String {
          \n\
          Memories:\n{memories}\n\
          \n\
-         Question: {question}\n\
+         Question (asked on {asked_on}): {question}\n\
          \n\
          Answer with the shortest span that answers the question. If the memories do not \
          contain the answer, reply exactly: I don't know. Do not use outside knowledge."
@@ -640,10 +661,11 @@ fn main() -> Result<()> {
             id: "eval".into(),
             name: "eval".into(),
         })?;
-        for (sid, turns) in e
+        for ((sid, turns), date) in e
             .haystack_session_ids
             .iter()
             .zip(e.haystack_sessions.iter())
+            .zip(e.haystack_dates.iter())
         {
             let text: Vec<String> = turns
                 .iter()
@@ -654,16 +676,25 @@ fn main() -> Result<()> {
                 bank_id: "eval".into(),
                 content: text.join("\n"),
                 context: None,
-                created_at: None,
+                created_at: Some(lme_date(date)?),
             })?;
         }
         let svc = MemoryService::new(store);
         let hits = svc
             .recall("eval", &e.question, budget)
             .with_context(|| format!("recall for question {}", e.question_id))?;
-        // The default `recall` surface serves bare content, so that is what the
-        // answerer gets: no ids, no scores, nothing an agent would not have had.
-        let contexts: Vec<String> = hits.iter().map(|h| h.memory.content.clone()).collect();
+        // Each memory as `format: "full"` serves it to an agent, minus id and score:
+        // its date, then its content. Ranking ignores `created_at` (the candidate
+        // pool is by rowid and the recency stream ships at 0), so the dates change
+        // what the reader sees and nothing about what was retrieved.
+        let contexts: Vec<String> = hits
+            .iter()
+            .map(|h| {
+                let at = h.memory.created_at.as_deref().unwrap_or("undated");
+                format!("[{at}]\n{}", h.memory.content)
+            })
+            .collect();
+        let asked_on = lme_date(&e.question_date)?;
         let first_gold = hits
             .iter()
             .position(|h| e.answer_session_ids.contains(&h.memory.id));
@@ -672,7 +703,7 @@ fn main() -> Result<()> {
         let ask = |question_contexts: &[String]| match llm.chat(
             &client,
             &llm.answer_model,
-            &answer_prompt(&e.question, question_contexts),
+            &answer_prompt(&e.question, &asked_on, question_contexts),
         ) {
             Ok(c) => (Some(c.text), c.usage, None),
             Err(err) => (None, Usage::default(), Some(err.to_string())),
@@ -950,7 +981,8 @@ fn main() -> Result<()> {
         judge = judge_prompt("<question>", "<gold answer>", "<candidate answer>"),
         answer = answer_prompt(
             "<question>",
-            &["<memory 0, as recall served it>".to_string()]
+            "<question_date>",
+            &["[<session date>]\n<memory 0, as recall served it>".to_string()]
         ),
     ));
     if errors.is_empty() {
@@ -1052,8 +1084,9 @@ mod tests {
     /// with the memory block emptied, or the delta measures wording too.
     #[test]
     fn closed_book_prompt_is_the_same_prompt_without_memories() {
-        let book = answer_prompt("q?", &[]);
-        let served = answer_prompt("q?", &["a".to_string(), "b".to_string()]);
+        let book = answer_prompt("q?", "d", &[]);
+        let served = answer_prompt("q?", "d", &["a".to_string(), "b".to_string()]);
+        assert!(book.contains("Question (asked on d): q?"), "both arms are dated");
         assert!(book.contains("no memories were retrieved"));
         assert!(!book.contains("[memory 0]"));
         assert!(served.contains("[memory 0]\na"));
@@ -1062,6 +1095,14 @@ mod tests {
             book.replace("(none - no memories were retrieved for this question)", ""),
             served.replace("[memory 0]\na\n\n[memory 1]\nb", "")
         );
+    }
+
+    /// The dataset's date shape becomes the store's, so the reader sees the same
+    /// stamp a `format: "full"` recall would serve.
+    #[test]
+    fn lme_dates_take_the_stores_shape() {
+        assert_eq!(lme_date("2023/05/20 (Sat) 02:21").expect("date"), "2023-05-20T02:21:00.000Z");
+        assert!(lme_date("May 20").is_err());
     }
 
     /// 32 of the 500 `answer` fields in `longmemeval_s_cleaned.json` are bare

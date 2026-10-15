@@ -4,6 +4,30 @@ Written 2026-09-30. Executes [`INTEGRATION_AUDIT.md`](INTEGRATION_AUDIT.md); fin
 references (`F1`…`F7`) point into it. Ordered cheapest-first, and within each item the
 correctness gain per byte edited.
 
+> **Re-verified against the binary 2026-10-15 (TODO row 4).** Row-by-row: **P0.1 done** —
+> `paths::endpoint()` resolves `$MEMORY_WIRE_URL` → daemon `serve.json` → default, with
+> the regression suite in `src/paths.rs`. **P0.2 resolved as (a)+(c)-at-daemon** —
+> `DEFAULT_ADDR` stays 8888, `daemon start` probes the bind itself and refuses with the
+> occupant's reason; a second `connect`-time probe was deliberately not added (the hook
+> cannot error, so a dead endpoint there is the never-fail contract's business, and
+> `doctor --all-hosts` now surfaces it instead). **P1.1 done** (`src/connect_codex.rs`,
+> surgical TOML, url-identity ownership). **P1.2 done — both halves** (2026-10-15):
+> claude-code (`src/connect_claude.rs`, `~/.claude.json` `mcpServers`) and copilot-cli
+> (`src/connect_copilot.rs`, `~/.copilot/mcp-config.json` — a plain user definitions
+> file, schema verified from GitHub's own Copilot CLI config-dir reference and the
+> github-mcp-server install guide; the earlier blocker applied to the *other* file, the
+> tool-managed `config.json`). **P1.3 done 2026-10-15** — `edit_mcp`
+> refuses a foreign server under our name in both directions. **P2.1 done 2026-10-15**
+> (`connect::tests::golden_install_shapes`: a pristine `HOME` plus one `connect` must
+> equal the golden bytes of every file the host parses — seven hosts, reviewed against
+> live configs; shape drift now fails at the diff). **P2.2 done 2026-10-15** —
+> `doctor --all-hosts`, including the G6.9 liveness finding. **P3.1**: the recorder
+> exists (DT_NEEDED row in `bench_footprint`, `readelf -d`); the v0.5.0 published-asset
+> byte-compare remains unrun. **P4.1 done 2026-10-15** — the slot binds by directory name
+> per hermes' own `find_provider_dir`; the audit-era state was a dead slot, the live one
+> is empty, and the false-positive `wired` check is fixed (see §P4.1). **P4.2 done** —
+> `INTEGRATION_GAPS.md` corrected in place the same day.
+
 Two rules govern everything below, both learned the hard way in this repo:
 
 - **A hook that cannot reach the server must not degrade silently.** The never-fail
@@ -184,10 +208,35 @@ worth failing a build over.
 
 ### P4.1 Explain the hermes slot before displacing it
 
-F6: `config.yaml` says `provider: agentgateway`, the plugin directory is named
-`agentmemory`, and a provider directory's name must equal `memory.provider`. Until that
-is explained, `connect hermes` risks displacing a provider whose identity we cannot state.
-This is read-only research; **no config change until it is understood.**
+> **Resolved 2026-10-15, read-only, from hermes' own loader source.**
+>
+> **F6 explained:** `memory.provider` binds to a **directory name** —
+> `plugins/memory/__init__.py::find_provider_dir` resolves the config value as
+> `plugins/memory/<name>/` (bundled, takes precedence) then
+> `$HERMES_HOME/plugins/<name>/`, and only a directory that is a *loadable
+> provider* counts. So the audit-era state (`provider: agentgateway`, plugin
+> dir `agentmemory`) was not a working provider under a mismatched name — it
+> was a **dead slot**: `find_provider_dir("agentgateway")` found no such
+> directory, returned `None`, and hermes ran with no memory at all, silently.
+> The audit's refusal to displace it until understood was right, and the
+> understanding is now on record.
+>
+> **The live slot today (2026-10-15):** empty, and our own install is residue.
+> `~/.hermes/config.yaml` is 3 lines — no `memory:` block at all — and
+> `~/.hermes/plugins/memory-wire/` exists only as a stale `__pycache__`: the
+> files this installer writes (`plugin.yaml`, `__init__.py`, `README.md`) were
+> removed by something other than `connect --uninstall`. Two consequences:
+>
+> 1. **Re-running `connect hermes` is safe and idempotent** — the exclusion from
+>   the implicit set still stands (the slot is single and global), but the P4.1
+>   blocker ("risks displacing a provider whose identity we cannot state") is
+>   discharged: the slot holds nothing, and if it ever holds a foreign provider
+>   again, `connect_plugin`'s ownership check already refuses to move a value it
+>   does not recognize as ours.
+> 2. **`wired=yes` for hermes was a false positive** — the wired check counted
+>   the bare directory. Fixed the same day: the check now requires a *loadable,
+>   ours* `plugin.yaml` inside it (`connect::wired_with`, with a regression
+>   test naming the live husk case).
 
 ### P4.2 Re-examine `INTEGRATION_GAPS.md` against today's tree
 

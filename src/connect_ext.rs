@@ -97,7 +97,6 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
         return Outcome::Skipped("no extension surface for this host".to_string());
     };
     let path = home.join(&rel);
-    let source = baked(bank);
     let current = version(SOURCE).unwrap_or("?");
 
     if uninstall {
@@ -130,6 +129,14 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     }
 
     let existing = std::fs::read_to_string(&path).ok();
+    // A bare re-wire preserves the pin a previous `--bank` baked into the
+    // installed file (TODO #1): without this, `connect <host>` on a machine
+    // pinned to a second bank would silently re-write every extension back to
+    // the default and the surfaces would split from the hooks and MCP entries
+    // that did keep their pin. Only a file carrying our marker contributes.
+    let baked_pin = existing.as_deref().and_then(crate::connect::bank_from_extension);
+    let bank = bank.or(baked_pin.as_deref());
+    let source = baked(bank);
     if let Some(have) = existing.as_deref() {
         if !carries_marker(have) {
             return Outcome::Failed(format!(

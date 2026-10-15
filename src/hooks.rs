@@ -112,9 +112,9 @@ pub enum Lifecycle {
 /// `MEMORY_WIRE_BANK` and over the repository the process is running in — see
 /// [`paths::resolve_bank_with`] for the full order and `docs/BANK_IDENTITY.md`
 /// for why the order is what it is.
-pub fn run(lifecycle: Lifecycle, bank: Option<&str>) -> i32 {
+pub fn run(lifecycle: Lifecycle, bank: Option<&str>, endpoint: Option<&str>) -> i32 {
     let input = read_input(std::io::stdin(), STDIN_TIMEOUT);
-    let endpoint = paths::endpoint();
+    let endpoint = paths::endpoint_with(endpoint);
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let bank = paths::resolve_bank_with(bank, &cwd);
     let out = match lifecycle {

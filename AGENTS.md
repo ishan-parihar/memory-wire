@@ -24,7 +24,8 @@ should not be eroded casually:
 Three properties are load-bearing and each has been paid for:
 
 - **The default build must not gain a dependency or grow materially.** It is
-  currently 9.7 MiB with `DT_NEEDED` = 3. Verify `ldd` after touching anything
+  10.25 MiB at `v0.7.0` with `DT_NEEDED` = 3 (`eval/baseline/2026-10-13-v0.7.0/BENCH_FOOTPRINT.md`;
+  the 9.7 MiB this line used to state was an earlier build). Verify `ldd` after touching anything
   that links.
 - **Retrieval reports are the record.** The competitor whose retrieval number we
   can actually compare against is agentmemory, on LongMemEval-S, and we lead it
@@ -32,7 +33,10 @@ Three properties are load-bearing and each has been paid for:
   a committed artifact.
 - **Retrieval is a reordering problem, not a coverage problem.** The candidate
   pool contains the gold memory in 500 of 500 LongMemEval questions. Work on
-  ordering; do not spend effort on recall/coverage mechanisms.
+  ordering; do not spend effort on recall/coverage mechanisms. (Pool membership is
+  not the same as the *top-k a reader is served*: on LoCoMo, questions with several
+  gold sessions miss at k = 10 — `recall_all@10` 83.0% vs `recall_any@10` 94.2% —
+  and that is still an ordering problem inside the pool. See `docs/handoff/RND_PLAN.md`.)
 
 The parent projects are `rohitg00/agentmemory` and the Hindsight repositories,
 audited read-only under `_audit/`. This is a deliberate Tier-C extraction: the
@@ -96,6 +100,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 `tests/` — `backup.rs`, `daemon.rs`, `e2e.rs`, `recall_budget.rs`, `scale.rs`.
 `examples/` — 14 benchmark and evaluation harnesses.
+`eval/amb/` — our provider for vectorize-io's AMB harness, and its committed runs.
 
 ## 4. The surface, and which document answers what
 
@@ -104,7 +109,11 @@ the wrong one is how claims drift.
 
 | if you are asking about… | read |
 |---|---|
+| **I am continuing the memory-performance R&D — what is the state, the hypotheses, the commands?** | **`docs/handoff/README.md`** first, then its STATE, RND_PLAN, RUNBOOK, CLOSED |
 | can I tune this against the benchmark? | **this file**, §6, then `docs/EVALUATION_HYGIENE.md` |
+| which external benchmarks exist (BEAM, PrecisionMemBench, AMB, OAMB, MemBase, memorybench, agent-memory-bench…), what each costs, how we plug in, what role it may play, and what was measured | **`docs/BENCHMARK_LANDSCAPE.md`** — start here before running or citing anything external |
+| what the current performance is, everywhere at once, and how to re-measure after a change | **`eval/baseline/README.md`** and `eval/baseline/run_baseline.sh` — one dated directory per run; compare directory to directory |
+| why an LLM-judged run through aroute needs `eval/llm_shim.py`, and what aroute must fix before it can go | `docs/AROUTE_BUGS.md` — a handoff for the aroute repo; memory-wire agents do not edit aroute |
 | what was measured, on what, at what load, and what was rejected | `docs/CONSISTENCY.md` — **append-only, never rewrite** |
 | how memory-wire compares to agentmemory and Hindsight | `README.md`, then `docs/EXCEED_PLAN.md` |
 | what a latency number means and how to take one | `docs/BENCHMARK.md`, `docs/BENCHMARK_SCALE.md` |
@@ -209,6 +218,10 @@ independent data as outstanding work.
   their own corpora with fixed seeds. Useful for scaling and regression
   assertions, but we author the distractors, so it is weak evidence about
   ranking quality. Do not tune against it either.
+- **measure-only** — every other external set (PrecisionMemBench, BEAM,
+  agent-memory-bench, …). Same rule as test: report, never select. Any harness
+  that runs LongMemEval (OAMB, MemBase, memorybench) *is* a test consultation.
+  Roles are assigned in `docs/BENCHMARK_LANDSCAPE.md` before a set's first number.
 
 **A constant changed in response to a bug is derived from mechanism, then
 measured exactly once.** Never iterate until a metric improves — that yields a
@@ -331,3 +344,28 @@ The CLI and the HTTP surface are read by other agents, so:
 - A null result is a result. Record it.
 - Verify before reporting. Run the gate yourself; do not cite a subagent's
   summary as if it were a measurement.
+
+## 13. R&D in flight — read this if you were handed the work
+
+State as of 2026-10-14; the authoritative, kept-current record is
+`docs/handoff/` (index: `docs/handoff/README.md`).
+
+- **The tree is uncommitted on purpose.** A full-scale baseline
+  (`eval/baseline/2026-10-13-v0.7.0/`), an occurrence-time capability on `retain`/`full`
+  recall, a date-aware `answer_quality`, and the `recall_all@10` dev metric are all in the
+  working tree. Do not commit, tag or push; the user decides.
+- **The open work is a hypothesis list with pre-registered tests** —
+  `docs/handoff/RND_PLAN.md` (H1.0 first: where do the missing gold sessions sit?).
+  `docs/handoff/CLOSED.md` lists what is already rejected; do not re-propose.
+- **Inner loop = LoCoMo retrieval harness (free, ~25 s).** The LLM instrument
+  (aroute `small-stack` through `eval/llm_shim.py`) is slow, free-tier and has known
+  defects (`docs/AROUTE_BUGS.md`); use it for confirmation, never for iteration. Never
+  edit the aroute repo or its service, never read its credentials, never put a real API
+  key in a harness (`env -u GOOGLE_API_KEY`).
+- **Every LongMemEval run is counted** in `docs/CONSISTENCY.md` (§34: 2 consultations for
+  the v0.7.0 baseline; §35: 0). The dated `answer_quality` re-measure (H5) will be the
+  next, and is measurement only.
+- **Append to `docs/CONSISTENCY.md`, never rewrite.** Next free section: §36.
+- When you finish a unit of work, update `docs/handoff/STATE.md` and the status line of
+  the hypothesis in `RND_PLAN.md`; a handoff that is not kept current is the next
+  agent's phantom.

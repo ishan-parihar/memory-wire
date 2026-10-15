@@ -63,7 +63,8 @@ use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use serde_json::{json, Map, Value};
 
 use memory_wire::api::{
-    http_error, parse_update_mode, ApiError, MemoryService, REFLECT_SYSTEM_PROMPT,
+    full_hit_json, http_error, parse_created_at, parse_update_mode, ApiError, MemoryService,
+    REFLECT_SYSTEM_PROMPT,
 };
 use memory_wire::memory::Memory;
 use memory_wire::store::{default_db_path, SqliteStore, Store};
@@ -308,7 +309,8 @@ impl<S: Store> Server<S> {
                         "context": { "type": "string", "description": "Optional capture context; redacted too." },
                         "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags for this memory." },
                         "document_id": { "type": "string", "description": "Re-write this document instead of adding another memory." },
-                        "update_mode": { "type": "string", "enum": ["replace", "append"], "description": "Whether a document_id write overwrites or extends it. Defaults to replace." }
+                        "update_mode": { "type": "string", "enum": ["replace", "append"], "description": "Whether a document_id write overwrites or extends it. Defaults to replace." },
+                        "created_at": { "type": "string", "description": "When this happened: RFC 3339 or YYYY-MM-DD. Defaults to now." }
                     },
                     "required": ["content"]
                 })),
@@ -320,7 +322,7 @@ impl<S: Store> Server<S> {
                  array of content strings. `budget` is a hard token cap, \
                  `tags` restricts the search to memories carrying any of them, \
                  `exclude_tags` drops rows carrying any of them before ranking, \
-                 and `format: \"full\"` returns {id, score, content} objects \
+                 and `format: \"full\"` returns {id, score, created_at, content} objects \
                  instead so the caller can cite what it got.",
                 schema(json!({
                     "type": "object",
@@ -330,7 +332,7 @@ impl<S: Store> Server<S> {
                         "budget": { "type": "integer", "description": "Token cap; falls back to the bank's recallMaxTokens, then 2000." },
                         "tags": { "type": "array", "items": { "type": "string" }, "description": "Only memories carrying any of these tags." },
                         "exclude_tags": { "type": "array", "items": { "type": "string" }, "description": "Drop memories carrying any of these tags before ranking. Absent = no exclusion." },
-                        "format": { "type": "string", "enum": ["full"], "description": "Return {id, score, content} objects instead of bare strings." }
+                        "format": { "type": "string", "enum": ["full"], "description": "Return {id, score, created_at, content} objects instead of bare strings." }
                     },
                     "required": ["query"]
                 })),
@@ -544,15 +546,17 @@ impl<S: Store> Server<S> {
             RETAIN => {
                 let content = required_str(args, "content")?;
                 let mode = parse_update_mode(arg_str(args, "update_mode").as_deref())?;
+                let created_at = parse_created_at(arg_str(args, "created_at").as_deref())?;
                 // The service declares the bank itself; declaring it here too was
                 // a second write per retain for nothing.
-                let id = self.svc.retain_doc(
+                let id = self.svc.retain_doc_at(
                     &bank,
                     content,
                     arg_str(args, "context"),
                     &tags,
                     arg_str(args, "document_id").as_deref(),
                     mode,
+                    created_at,
                 )?;
                 Ok(json!({ "id": id }))
             }
@@ -567,13 +571,7 @@ impl<S: Store> Server<S> {
                 // `format: "full"` is the citing shape; the default stays a bare
                 // array of content strings, exactly as the HTTP route serves it.
                 Ok(if arg_str(args, "format").as_deref() == Some("full") {
-                    Value::Array(
-                        hits.iter()
-                            .map(|h| {
-                                json!({ "id": h.memory.id, "score": h.score, "content": h.memory.content })
-                            })
-                            .collect(),
-                    )
+                    Value::Array(hits.iter().map(full_hit_json).collect())
                 } else {
                     Value::Array(
                         hits.into_iter().map(|h| Value::String(h.memory.content)).collect(),
@@ -1227,6 +1225,18 @@ mod tests {
             explicit[0].chars().count() > bank_default[0].chars().count(),
             "an explicit budget must override the bank default"
         );
+    }
+
+    // The occurrence time round-trips over MCP exactly as over HTTP, and an
+    // undatable one is refused rather than stored.
+    #[test]
+    fn retain_created_at_should_round_trip_through_full_recall() {
+        let s = server();
+        call_json(&s, RETAIN, json!({ "content": "jose dated", "created_at": "2023-05-08T13:56:00+05:30" }))
+            .expect("retain");
+        let full = call_json(&s, RECALL, json!({ "query": "jose", "format": "full" })).expect("full");
+        assert_eq!(full[0]["created_at"], json!("2023-05-08T08:26:00.000Z"), "{full}");
+        assert!(call_json(&s, RETAIN, json!({ "content": "jose bad", "created_at": "May 8" })).is_err());
     }
 
     // `format: "full"` is the citing shape over MCP too; the default stays the

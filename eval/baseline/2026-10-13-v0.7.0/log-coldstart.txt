@@ -1,0 +1,10 @@
+wrote /home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/eval/baseline/2026-10-13-v0.7.0/BENCH_COLDSTART.md
+=== cold start ===
+profile release
+start/health   first 15.5 ms · subsequent min 13.2 / median 15.3 / max 15.3 ms
+
+| memories | open ms | integrity ms | verdict | rebuilt FTS | first ms | warm p50 | warm p95 | first/warm | main B |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 3.11 | 0.35 | ok | 0 | 0.13 | 0.08 | 0.11 | 1.6x | 81920 |
+| 1000 | 7.18 | 3.72 | ok | 0 | 2.27 | 1.87 | 2.02 | 1.2x | 389120 |
+| 10000 | 29.44 | 24.01 | ok | 0 | 7.28 | 11.78 | 14.28 | 0.6x | 3035136 |

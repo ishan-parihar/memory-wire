@@ -98,4 +98,19 @@ locomo_fetch queries \
   d74b7a7c4c2de0369091952d29f83b395a91c23694da7740260cc523aefa1ed1 \
   gold_ids 1540
 
+# The raw upstream LoCoMo file, for AMB's `rag` mode (its loader would otherwise
+# fetch snap-research `main`, unpinned). CC BY-NC 4.0: fetched, never vendored.
+RAW_LOCOMO=data/locomo/locomo10.json
+RAW_LOCOMO_SHA=79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4
+if [ -f "$RAW_LOCOMO" ] && [ "$(sha256_of "$RAW_LOCOMO")" = "$RAW_LOCOMO_SHA" ]; then
+  echo "already present: $RAW_LOCOMO"
+else
+  curl -fsSL -o "$RAW_LOCOMO.part" \
+    "https://raw.githubusercontent.com/snap-research/locomo/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/data/locomo10.json"
+  if [ "$(sha256_of "$RAW_LOCOMO.part")" != "$RAW_LOCOMO_SHA" ]; then
+    rm -f "$RAW_LOCOMO.part"; echo "download.sh: CHECKSUM MISMATCH for $RAW_LOCOMO" >&2; exit 1
+  fi
+  mv "$RAW_LOCOMO.part" "$RAW_LOCOMO"
+fi
+
 ls -la data/ data/locomo/

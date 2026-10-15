@@ -197,6 +197,9 @@ fn main() -> anyhow::Result<()> {
         ms: Vec<u128>,
     }
     let mut total = Agg::default();
+    // Upstream's retrieval protocol skips the 30 abstention questions; this
+    // row is the one comparable to the paper's tables (BENCHMARK_LANDSCAPE §5.2).
+    let mut answerable = Agg::default();
     let mut by_type: HashMap<String, Agg> = HashMap::new();
     let mut rows: Vec<serde_json::Value> = Vec::new();
     // The methodology note quotes the haystack size per question. Measured here
@@ -246,8 +249,14 @@ fn main() -> anyhow::Result<()> {
             "mrr": mrr(&retrieved, &gold),
             "latency_ms": ms,
         });
-        for agg in [Some(&mut total), Some(by_type.entry(e.question_type.clone()).or_default())]
-            .into_iter()
+        // Upstream marks abstention only in the id suffix, never in `question_type`.
+        let answerable_agg = (!e.question_id.ends_with("_abs")).then_some(&mut answerable);
+        for agg in [
+            Some(&mut total),
+            Some(by_type.entry(e.question_type.clone()).or_default()),
+            answerable_agg,
+        ]
+        .into_iter()
             .flatten()
         {
             agg.count += 1;
@@ -345,6 +354,25 @@ fn main() -> anyhow::Result<()> {
         ms[ms.len() / 2],
         total.count
     ));
+    let mut ms = answerable.ms.clone();
+    ms.sort();
+    if !ms.is_empty() {
+        md.push_str(&format!(
+            "| overall, abstention excluded (upstream's retrieval protocol) | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {} | {} |\n\n\
+             The last row drops the `_abs` questions, as upstream's retrieval evaluation does; \
+             it is the row comparable to the LongMemEval paper. The **overall** row keeps all \
+             of them, as agentmemory's harness does in practice (its filter tests \
+             `question_type`, which never carries the marker).\n",
+            pct(answerable.r1, answerable.count),
+            pct(answerable.r5, answerable.count),
+            pct(answerable.r10, answerable.count),
+            pct(answerable.r20, answerable.count),
+            pct(answerable.ndcg10, answerable.count),
+            pct(answerable.mrr, answerable.count),
+            ms[ms.len() / 2],
+            answerable.count
+        ));
+    }
     fs::write(&out_json, serde_json::to_string(&rows)?)?;
     fs::write(&out_md, &md)?;
     eprintln!("wrote {out_json} + {out_md}");

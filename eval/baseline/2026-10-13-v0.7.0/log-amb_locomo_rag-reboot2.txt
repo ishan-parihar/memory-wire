@@ -1,0 +1,1739 @@
+
+Dataset: locomo  Split: locomo10  Memory: memory-wire  Mode: rag
+
+Loading queries...
+  1540 queries loaded
+Loading documents...
+  272 documents loaded
+Skipping 6 already-ingested units: conv-26, conv-30, conv-41, conv-42, conv-43, 
+conv-44
+Ingesting 4 units into memory-wire (unit-sequential)...
+2026-10-14 02:31:36,958 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:36,968 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:36,976 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:36,990 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:36,996 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,001 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,005 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,008 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,011 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,014 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,021 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,024 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,027 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,029 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,032 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,038 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,042 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,047 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,051 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,055 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,059 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,065 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,075 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,080 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,085 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,090 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,103 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,121 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,131 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,134 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,137 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/retain "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,139 [INFO] [query:conv-47_q0] start — What are John's suspected health problems?
+2026-10-14 02:31:37,140 [INFO] [query:conv-47_q1] start — Which recreational activity was James pursuing on March 16, 2022?
+2026-10-14 02:31:37,144 [INFO] [query:conv-47_q2] start — Which places or events have John and James planned to meet at?
+2026-10-14 02:31:37,150 [INFO] [query:conv-47_q3] start — Do both James and John have pets?
+2026-10-14 02:31:37,190 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,195 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,206 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:31:37,207 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:31:55,927 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:31:55,940 [INFO] [query:conv-47_q3] answer done in 18.8s (retrieve=43ms)
+2026-10-14 02:31:56,200 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:31:56,205 [INFO] [query:conv-47_q1] answer done in 19.1s (retrieve=101ms)
+2026-10-14 02:31:58,527 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:31:58,529 [INFO] [query:conv-47_q0] answer done in 21.4s (retrieve=103ms)
+2026-10-14 02:32:00,715 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:00,718 [INFO] [query:conv-47_q2] answer done in 23.6s (retrieve=57ms)
+2026-10-14 02:32:05,101 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:05,103 [INFO] [query:conv-47_q3] done in 28.0s — correct=True score=None
+2026-10-14 02:32:05,285 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:05,703 [INFO] [query:conv-47_q4] start — When did John resume playing drums in his adulthood?
+2026-10-14 02:32:05,704 [INFO] [query:conv-47_q1] done in 28.6s — correct=False score=None
+2026-10-14 02:32:05,721 [INFO] [query:conv-47_q5] start — What are John and James' favorite games?
+2026-10-14 02:32:05,745 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:05,756 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:06,205 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:06,209 [INFO] [query:conv-47_q0] done in 29.1s — correct=True score=None
+2026-10-14 02:32:06,223 [INFO] [query:conv-47_q6] start — Does James live in Connecticut?
+2026-10-14 02:32:06,250 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:08,633 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:08,636 [INFO] [query:conv-47_q2] done in 31.5s — correct=False score=None
+2026-10-14 02:32:08,651 [INFO] [query:conv-47_q7] start — In which state is the shelter from which James adopted the puppy?
+2026-10-14 02:32:08,678 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:22,898 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:22,900 [INFO] [query:conv-47_q7] answer done in 14.2s (retrieve=30ms)
+2026-10-14 02:32:24,871 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:24,873 [INFO] [query:conv-47_q6] answer done in 18.7s (retrieve=30ms)
+2026-10-14 02:32:25,556 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:25,558 [INFO] [query:conv-47_q7] done in 16.9s — correct=True score=None
+2026-10-14 02:32:25,570 [INFO] [query:conv-47_q8] start — How many pets does James have?
+2026-10-14 02:32:25,590 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:31,852 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:31,856 [INFO] [query:conv-47_q6] done in 25.6s — correct=True score=None
+2026-10-14 02:32:31,870 [INFO] [query:conv-47_q9] start — What are the names of James's dogs?
+2026-10-14 02:32:31,886 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:37,501 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:37,505 [INFO] [query:conv-47_q5] answer done in 31.8s (retrieve=92ms)
+2026-10-14 02:32:46,945 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:46,947 [INFO] [query:conv-47_q9] answer done in 15.1s (retrieve=19ms)
+2026-10-14 02:32:49,743 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:49,744 [INFO] [query:conv-47_q5] done in 44.0s — correct=False score=None
+2026-10-14 02:32:49,754 [INFO] [query:conv-47_q10] start — When did James adopt Ned?
+2026-10-14 02:32:49,776 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:32:53,722 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:32:53,724 [INFO] [query:conv-47_q9] done in 21.9s — correct=True score=None
+2026-10-14 02:32:53,732 [INFO] [query:conv-47_q11] start — How was John feeling on April 10, 2022?
+2026-10-14 02:32:53,761 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:33:13,206 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:33:13,208 [INFO] [query:conv-47_q11] answer done in 19.5s (retrieve=31ms)
+2026-10-14 02:33:23,066 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:33:23,069 [INFO] [query:conv-47_q11] done in 29.3s — correct=False score=None
+2026-10-14 02:33:23,085 [INFO] [query:conv-47_q12] start — Did James have a girlfriend during April 2022?
+2026-10-14 02:33:23,113 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:33:38,550 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:33:38,552 [INFO] [query:conv-47_q12] answer done in 15.5s (retrieve=31ms)
+2026-10-14 02:33:50,047 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:33:50,048 [INFO] [query:conv-47_q12] done in 27.0s — correct=True score=None
+2026-10-14 02:33:50,058 [INFO] [query:conv-47_q13] start — When did James visit Italy?
+2026-10-14 02:33:50,077 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:34:05,825 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:05,829 [INFO] [query:conv-47_q13] answer done in 15.8s (retrieve=21ms)
+2026-10-14 02:34:10,090 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:10,093 [INFO] [query:conv-47_q13] done in 20.0s — correct=True score=None
+2026-10-14 02:34:10,099 [INFO] [query:conv-47_q14] start — When did James buy himself a new adventure book?
+2026-10-14 02:34:10,118 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:34:23,064 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:23,066 [INFO] [query:conv-47_q14] answer done in 13.0s (retrieve=20ms)
+2026-10-14 02:34:29,499 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:29,503 [INFO] [query:conv-47_q14] done in 19.4s — correct=True score=None
+2026-10-14 02:34:29,522 [INFO] [query:conv-47_q15] start — When did James start playing Civilization VI?
+2026-10-14 02:34:29,555 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:34:50,430 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:50,433 [INFO] [query:conv-47_q8] answer done in 144.9s (retrieve=23ms)
+2026-10-14 02:34:50,516 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:50,521 [INFO] [query:conv-47_q15] answer done in 21.0s (retrieve=41ms)
+2026-10-14 02:34:57,599 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:57,600 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:34:57,602 [INFO] [query:conv-47_q8] done in 152.0s — correct=True score=None
+2026-10-14 02:34:57,618 [INFO] [query:conv-47_q16] start — What is the game with different colored cards that was John talking about with J
+2026-10-14 02:34:57,620 [INFO] [query:conv-47_q15] done in 28.1s — correct=True score=None
+2026-10-14 02:34:57,637 [INFO] [query:conv-47_q17] start — What is the board game where you have to find the imposter that John mentions to
+2026-10-14 02:34:57,656 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:34:57,665 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:35:13,035 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:13,039 [INFO] [query:conv-47_q16] answer done in 15.4s (retrieve=64ms)
+2026-10-14 02:35:17,533 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:17,537 [INFO] [query:conv-47_q17] answer done in 19.9s (retrieve=48ms)
+2026-10-14 02:35:20,371 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:20,375 [INFO] [query:conv-47_q16] done in 22.8s — correct=True score=None
+2026-10-14 02:35:20,402 [INFO] [query:conv-47_q18] start — Which books has John recommended to James?
+2026-10-14 02:35:20,472 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:35:25,459 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:25,463 [INFO] [query:conv-47_q17] done in 27.8s — correct=False score=None
+2026-10-14 02:35:25,482 [INFO] [query:conv-47_q19] start — Was James feeling lonely before meeting Samantha?
+2026-10-14 02:35:25,502 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:35:34,334 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:34,339 [INFO] [query:conv-47_q18] answer done in 13.9s (retrieve=71ms)
+2026-10-14 02:35:42,957 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:42,960 [INFO] [query:conv-47_q18] done in 22.6s — correct=True score=None
+2026-10-14 02:35:42,975 [INFO] [query:conv-47_q20] start — How many charity tournaments has John organized till date?
+2026-10-14 02:35:42,999 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:35:58,082 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:35:58,084 [INFO] [query:conv-47_q20] answer done in 15.1s (retrieve=29ms)
+2026-10-14 02:36:04,361 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:36:04,362 [INFO] [query:conv-47_q20] done in 21.4s — correct=False score=None
+2026-10-14 02:36:04,368 [INFO] [query:conv-47_q21] start — When did John first organize a charity tournament with his friends?
+2026-10-14 02:36:04,394 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:36:21,121 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:36:21,127 [INFO] [query:conv-47_q21] answer done in 16.8s (retrieve=34ms)
+2026-10-14 02:36:27,386 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:36:27,389 [INFO] [query:conv-47_q21] done in 23.0s — correct=False score=None
+2026-10-14 02:36:27,398 [INFO] [query:conv-47_q22] start — Who or which organizations have been the beneficiaries of John's charity tournam
+2026-10-14 02:36:27,421 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:36:41,779 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:36:41,784 [INFO] [query:conv-47_q22] answer done in 14.4s (retrieve=24ms)
+2026-10-14 02:36:55,699 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:36:55,700 [INFO] [query:conv-47_q22] done in 28.3s — correct=True score=None
+2026-10-14 02:36:55,711 [INFO] [query:conv-47_q23] start — When will John start his new job?
+2026-10-14 02:36:55,733 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:37:10,261 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:37:10,262 [INFO] [query:conv-47_q23] answer done in 14.6s (retrieve=24ms)
+2026-10-14 02:37:18,134 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:37:18,137 [INFO] [query:conv-47_q23] done in 22.4s — correct=True score=None
+2026-10-14 02:37:18,148 [INFO] [query:conv-47_q24] start — What kind of games has James tried to develop?
+2026-10-14 02:37:18,169 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:37:41,272 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:37:41,276 [INFO] [query:conv-47_q24] answer done in 23.1s (retrieve=24ms)
+2026-10-14 02:37:47,980 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:37:47,986 [INFO] [query:conv-47_q24] done in 29.8s — correct=False score=None
+2026-10-14 02:37:48,021 [INFO] [query:conv-47_q25] start — Are John and James fans of the same football team?
+2026-10-14 02:37:48,066 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:37:52,521 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:37:52,528 [INFO] [query:conv-47_q19] answer done in 147.0s (retrieve=22ms)
+2026-10-14 02:38:01,768 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:38:01,773 [INFO] [query:conv-47_q19] done in 156.3s — correct=False score=None
+2026-10-14 02:38:01,790 [INFO] [query:conv-47_q26] start — Which countries has James visited?
+2026-10-14 02:38:01,816 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:38:03,277 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:38:03,283 [INFO] [query:conv-47_q25] answer done in 15.3s (retrieve=46ms)
+2026-10-14 02:38:11,682 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:38:11,684 [INFO] [query:conv-47_q25] done in 23.7s — correct=True score=None
+2026-10-14 02:38:11,695 [INFO] [query:conv-47_q27] start — What kind of classes has James joined?
+2026-10-14 02:38:11,748 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:38:17,494 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:38:17,501 [INFO] [query:conv-47_q26] answer done in 15.7s (retrieve=30ms)
+2026-10-14 02:38:25,228 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:38:25,230 [INFO] [query:conv-47_q26] done in 23.4s — correct=False score=None
+2026-10-14 02:38:25,237 [INFO] [query:conv-47_q28] start — When did James volunteer at an organization?
+2026-10-14 02:38:25,277 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:39:49,327 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:39:49,329 [INFO] [query:conv-47_q10] answer done in 419.6s (retrieve=25ms)
+2026-10-14 02:39:56,012 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:39:56,014 [INFO] [query:conv-47_q10] done in 426.3s — correct=True score=None
+2026-10-14 02:39:56,024 [INFO] [query:conv-47_q29] start — When did James depart for his trip to Canada?
+2026-10-14 02:39:56,051 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:40:05,912 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 502 Bad Gateway"
+2026-10-14 02:40:05,913 [INFO] Retrying request to /chat/completions in 0.442704 seconds
+2026-10-14 02:40:28,211 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:28,213 [INFO] [query:conv-47_q29] answer done in 32.2s (retrieve=29ms)
+2026-10-14 02:40:34,870 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:34,872 [INFO] [query:conv-47_q27] answer done in 143.2s (retrieve=54ms)
+2026-10-14 02:40:37,913 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:37,918 [INFO] [query:conv-47_q29] done in 41.9s — correct=False score=None
+2026-10-14 02:40:37,932 [INFO] [query:conv-47_q30] start — Which country did James book tickets for in July 2022?
+2026-10-14 02:40:37,957 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:40:43,544 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:43,546 [INFO] [query:conv-47_q27] done in 151.9s — correct=False score=None
+2026-10-14 02:40:43,557 [INFO] [query:conv-47_q31] start — How many days did James plan to spend on his trip in Canada?
+2026-10-14 02:40:43,578 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:40:50,694 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:50,699 [INFO] [query:conv-47_q30] answer done in 12.8s (retrieve=28ms)
+2026-10-14 02:40:52,403 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:52,405 [INFO] [query:conv-47_q28] answer done in 147.2s (retrieve=44ms)
+2026-10-14 02:40:58,778 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:40:58,779 [INFO] [query:conv-47_q30] done in 20.8s — correct=True score=None
+2026-10-14 02:40:58,786 [INFO] [query:conv-47_q32] start — Where was James at on July 12, 2022?
+2026-10-14 02:40:58,798 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:00,260 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:00,261 [INFO] [query:conv-47_q31] answer done in 16.7s (retrieve=22ms)
+2026-10-14 02:41:01,406 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:01,407 [INFO] [query:conv-47_q28] done in 156.2s — correct=True score=None
+2026-10-14 02:41:01,410 [INFO] [query:conv-47_q33] start — Did John and James study together?
+2026-10-14 02:41:01,421 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:06,470 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:06,495 [INFO] [query:conv-47_q31] done in 22.9s — correct=False score=None
+2026-10-14 02:41:06,588 [INFO] [query:conv-47_q34] start — Which countries did James visit in July 2022?
+2026-10-14 02:41:06,625 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:14,876 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:14,878 [INFO] [query:conv-47_q32] answer done in 16.1s (retrieve=12ms)
+2026-10-14 02:41:21,348 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:21,349 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:21,353 [INFO] [query:conv-47_q34] answer done in 14.8s (retrieve=39ms)
+2026-10-14 02:41:21,353 [INFO] [query:conv-47_q33] answer done in 19.9s (retrieve=12ms)
+2026-10-14 02:41:21,393 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:21,394 [INFO] [query:conv-47_q32] done in 22.6s — correct=True score=None
+2026-10-14 02:41:21,425 [INFO] [query:conv-47_q35] start — What additional country did James visit during his trip to Canada?
+2026-10-14 02:41:21,461 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:32,473 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:32,499 [INFO] [query:conv-47_q33] done in 31.1s — correct=False score=None
+2026-10-14 02:41:32,525 [INFO] [query:conv-47_q36] start — Who is Jill?
+2026-10-14 02:41:32,575 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:34,424 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:34,431 [INFO] [query:conv-47_q34] done in 27.8s — correct=False score=None
+2026-10-14 02:41:34,456 [INFO] [query:conv-47_q37] start — When did John spend time with his sister and dogs?
+2026-10-14 02:41:34,493 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:39,936 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:39,938 [INFO] [query:conv-47_q35] answer done in 18.5s (retrieve=42ms)
+2026-10-14 02:41:46,970 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:46,972 [INFO] [query:conv-47_q35] done in 25.5s — correct=True score=None
+2026-10-14 02:41:46,987 [INFO] [query:conv-47_q38] start — What happened to John's job situation in 2022?
+2026-10-14 02:41:47,011 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:47,364 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:47,369 [INFO] [query:conv-47_q36] answer done in 14.8s (retrieve=53ms)
+2026-10-14 02:41:58,991 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:58,995 [INFO] [query:conv-47_q36] done in 26.5s — correct=True score=None
+2026-10-14 02:41:59,032 [INFO] [query:conv-47_q39] start — When did John start his job in IT?
+2026-10-14 02:41:59,073 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:41:59,524 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:41:59,526 [INFO] [query:conv-47_q37] answer done in 25.1s (retrieve=41ms)
+2026-10-14 02:42:28,872 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:42:28,875 [INFO] [query:conv-47_q39] answer done in 29.8s (retrieve=44ms)
+2026-10-14 02:42:38,662 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:42:38,665 [INFO] [query:conv-47_q39] done in 39.6s — correct=True score=None
+2026-10-14 02:42:38,680 [INFO] [query:conv-47_q40] start — What kind of tricks do James's pets know?
+2026-10-14 02:42:38,714 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:43:11,326 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:43:11,331 [INFO] [query:conv-47_q37] done in 96.9s — correct=False score=None
+2026-10-14 02:43:11,344 [INFO] [query:conv-47_q41] start — When did James meet Samantha?
+2026-10-14 02:43:11,369 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:43:18,666 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:43:18,668 [INFO] [query:conv-47_q40] answer done in 40.0s (retrieve=35ms)
+2026-10-14 02:43:26,724 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:43:26,733 [INFO] [query:conv-47_q4] answer done in 681.0s (retrieve=114ms)
+2026-10-14 02:43:29,352 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:43:29,356 [INFO] [query:conv-47_q40] done in 50.7s — correct=False score=None
+2026-10-14 02:43:29,376 [INFO] [query:conv-47_q42] start — When did James take his 3 dogs to the beach?
+2026-10-14 02:43:29,426 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:43:35,474 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:43:35,480 [INFO] [query:conv-47_q4] done in 689.8s — correct=True score=None
+2026-10-14 02:43:35,516 [INFO] [query:conv-47_q43] start — When did John plan his next meeting with his siblings?
+2026-10-14 02:43:35,556 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:43:56,074 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:43:56,075 [INFO] [query:conv-47_q42] answer done in 26.7s (retrieve=57ms)
+2026-10-14 02:44:01,001 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:01,004 [INFO] [query:conv-47_q43] answer done in 25.5s (retrieve=53ms)
+2026-10-14 02:44:02,154 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:02,158 [INFO] [query:conv-47_q42] done in 32.8s — correct=True score=None
+2026-10-14 02:44:02,176 [INFO] [query:conv-47_q44] start — Why didn't John want to go to Starbucks?
+2026-10-14 02:44:02,203 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:44:13,552 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:13,555 [INFO] [query:conv-47_q43] done in 38.0s — correct=True score=None
+2026-10-14 02:44:13,570 [INFO] [query:conv-47_q45] start — What kind of beer does McGee's bar serve?
+2026-10-14 02:44:13,634 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:44:18,455 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:18,458 [INFO] [query:conv-47_q44] answer done in 16.3s (retrieve=28ms)
+2026-10-14 02:44:26,887 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:26,892 [INFO] [query:conv-47_q44] done in 24.7s — correct=True score=None
+2026-10-14 02:44:26,920 [INFO] [query:conv-47_q46] start — When did John and James meet at McGee's bar?
+2026-10-14 02:44:26,991 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:44:29,904 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:29,916 [INFO] [query:conv-47_q45] answer done in 16.3s (retrieve=76ms)
+2026-10-14 02:44:43,011 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:43,017 [INFO] [query:conv-47_q45] done in 29.4s — correct=True score=None
+2026-10-14 02:44:43,057 [INFO] [query:conv-47_q47] start — When did James ask Samantha to be his girlfriend?
+2026-10-14 02:44:43,151 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:44:51,520 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:51,525 [INFO] [query:conv-47_q46] answer done in 24.6s (retrieve=82ms)
+2026-10-14 02:44:56,988 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:44:57,034 [INFO] [query:conv-47_q46] done in 30.1s — correct=True score=None
+2026-10-14 02:44:57,087 [INFO] [query:conv-47_q48] start — When did James, Samantha and John go to the baseball game together?
+2026-10-14 02:44:57,182 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:45:00,298 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:00,302 [INFO] [query:conv-47_q47] answer done in 17.2s (retrieve=106ms)
+2026-10-14 02:45:05,377 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:05,381 [INFO] [query:conv-47_q47] done in 22.3s — correct=True score=None
+2026-10-14 02:45:05,402 [INFO] [query:conv-47_q49] start — What gaming equipments did John buy or refurbish?
+2026-10-14 02:45:05,430 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:45:08,436 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:08,442 [INFO] [query:conv-47_q48] answer done in 11.4s (retrieve=112ms)
+2026-10-14 02:45:15,695 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:15,701 [INFO] [query:conv-47_q48] done in 18.6s — correct=True score=None
+2026-10-14 02:45:15,755 [INFO] [query:conv-47_q50] start — When did James start taking cooking classes?
+2026-10-14 02:45:15,787 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:45:29,154 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:29,158 [INFO] [query:conv-47_q49] answer done in 23.8s (retrieve=30ms)
+2026-10-14 02:45:30,903 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:30,905 [INFO] [query:conv-47_q50] answer done in 15.2s (retrieve=38ms)
+2026-10-14 02:45:34,425 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:34,427 [INFO] [query:conv-47_q50] done in 18.7s — correct=True score=None
+2026-10-14 02:45:34,450 [INFO] [query:conv-47_q51] start — Which new games did John start play during the course of the conversation with J
+2026-10-14 02:45:34,486 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:45:37,795 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:37,799 [INFO] [query:conv-47_q49] done in 32.4s — correct=False score=None
+2026-10-14 02:45:37,814 [INFO] [query:conv-47_q52] start — When did John start working on his 2D Adventure mobile game?
+2026-10-14 02:45:37,855 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:45:42,270 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:42,273 [INFO] [query:conv-47_q41] answer done in 150.9s (retrieve=28ms)
+2026-10-14 02:45:48,084 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:48,087 [INFO] [query:conv-47_q41] done in 156.7s — correct=True score=None
+2026-10-14 02:45:48,103 [INFO] [query:conv-47_q53] start — How long did it take for James to complete his Witcher-inspired game?
+2026-10-14 02:45:48,144 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:45:55,840 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:45:55,844 [INFO] [query:conv-47_q51] answer done in 21.4s (retrieve=40ms)
+2026-10-14 02:46:04,946 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:46:04,949 [INFO] [query:conv-47_q51] done in 30.5s — correct=False score=None
+2026-10-14 02:46:04,960 [INFO] [query:conv-47_q54] start — What kind of programming-related events has John hosted?
+2026-10-14 02:46:05,059 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:46:14,169 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:46:14,173 [INFO] [query:conv-47_q53] answer done in 26.1s (retrieve=45ms)
+2026-10-14 02:46:27,929 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:46:27,931 [INFO] [query:conv-47_q53] done in 39.8s — correct=False score=None
+2026-10-14 02:46:27,945 [INFO] [query:conv-47_q55] start — When did John and his programming friends host an online programming competition
+2026-10-14 02:46:27,983 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:46:44,487 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:46:44,492 [INFO] [query:conv-47_q54] answer done in 39.5s (retrieve=106ms)
+2026-10-14 02:48:02,597 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:48:02,606 [INFO] [query:conv-47_q52] answer done in 144.8s (retrieve=46ms)
+2026-10-14 02:48:12,132 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:48:12,145 [INFO] [query:conv-47_q52] done in 154.3s — correct=True score=None
+2026-10-14 02:48:12,195 [INFO] [query:conv-47_q56] start — Which of James's family members have visited him in the last year?
+2026-10-14 02:48:12,288 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:48:49,877 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:48:49,884 [INFO] [query:conv-47_q55] answer done in 141.9s (retrieve=40ms)
+2026-10-14 02:49:01,751 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:49:01,759 [INFO] [query:conv-47_q55] done in 153.8s — correct=True score=None
+2026-10-14 02:49:01,770 [INFO] [query:conv-47_q57] start — When did James' mother and her friend visit him?
+2026-10-14 02:49:01,817 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:49:16,700 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:49:16,703 [INFO] [query:conv-47_q57] answer done in 14.9s (retrieve=53ms)
+2026-10-14 02:49:27,860 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:49:27,862 [INFO] [query:conv-47_q57] done in 26.1s — correct=True score=None
+2026-10-14 02:49:27,877 [INFO] [query:conv-47_q58] start — When did James try Cyberpunk 2077 game?
+2026-10-14 02:49:27,915 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:49:45,337 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:49:45,340 [INFO] [query:conv-47_q58] answer done in 17.5s (retrieve=53ms)
+2026-10-14 02:49:47,034 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 502 Bad Gateway"
+2026-10-14 02:49:47,047 [INFO] Retrying request to /chat/completions in 0.380039 seconds
+2026-10-14 02:50:00,735 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:50:00,738 [INFO] [query:conv-47_q58] done in 32.9s — correct=True score=None
+2026-10-14 02:50:00,751 [INFO] [query:conv-47_q59] start — When did John and his gaming friends organize the charity tournament?
+2026-10-14 02:50:00,777 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:50:18,132 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:50:18,137 [INFO] [query:conv-47_q59] answer done in 17.4s (retrieve=31ms)
+2026-10-14 02:50:29,352 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:50:29,355 [INFO] [query:conv-47_q59] done in 28.6s — correct=True score=None
+2026-10-14 02:50:29,362 [INFO] [query:conv-47_q60] start — What games has John played with his friends at charity tournaments?
+2026-10-14 02:50:29,394 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:50:41,104 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:50:41,114 [INFO] [query:conv-47_q60] answer done in 11.8s (retrieve=40ms)
+2026-10-14 02:50:48,336 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:50:48,339 [INFO] [query:conv-47_q60] done in 19.0s — correct=True score=None
+2026-10-14 02:50:48,359 [INFO] [query:conv-47_q61] start — What was James' big moment with Samantha in October 2023?
+2026-10-14 02:50:48,397 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:50:59,523 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:50:59,524 [INFO] [query:conv-47_q61] answer done in 11.2s (retrieve=48ms)
+2026-10-14 02:51:07,646 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:51:07,649 [INFO] [query:conv-47_q61] done in 19.3s — correct=False score=None
+2026-10-14 02:51:07,664 [INFO] [query:conv-47_q62] start — How long did James and Samantha date for before deciding to move in together?
+2026-10-14 02:51:07,705 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:51:30,977 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:51:30,982 [INFO] [query:conv-47_q62] answer done in 23.3s (retrieve=46ms)
+2026-10-14 02:51:42,984 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:51:42,987 [INFO] [query:conv-47_q62] done in 35.3s — correct=False score=None
+2026-10-14 02:51:43,003 [INFO] [query:conv-47_q63] start — When did James, his family and his dogs start on a road trip together?
+2026-10-14 02:51:43,028 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:51:56,890 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:51:56,892 [INFO] [query:conv-47_q63] answer done in 13.9s (retrieve=28ms)
+2026-10-14 02:52:01,229 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:52:01,231 [INFO] [query:conv-47_q63] done in 18.2s — correct=True score=None
+2026-10-14 02:52:01,246 [INFO] [query:conv-47_q64] start — How long did John practice chess for before winning the chess tournament?
+2026-10-14 02:52:01,294 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:52:33,858 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:52:33,863 [INFO] [query:conv-47_q64] answer done in 32.6s (retrieve=53ms)
+2026-10-14 02:52:45,193 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:52:45,195 [INFO] [query:conv-47_q64] done in 43.9s — correct=True score=None
+2026-10-14 02:52:45,205 [INFO] [query:conv-47_q65] start — When did James and his family visit Mark and Josh?
+2026-10-14 02:52:45,252 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:53:06,858 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:53:06,864 [INFO] [query:conv-47_q65] answer done in 21.7s (retrieve=60ms)
+2026-10-14 02:53:20,749 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:53:20,753 [INFO] [query:conv-47_q65] done in 35.5s — correct=False score=None
+2026-10-14 02:53:20,770 [INFO] [query:conv-47_q66] start — When did John work with a game developer on a project?
+2026-10-14 02:53:20,804 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:53:40,162 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:53:40,167 [INFO] [query:conv-47_q66] answer done in 19.4s (retrieve=40ms)
+2026-10-14 02:53:47,695 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:53:47,701 [INFO] [query:conv-47_q66] done in 26.9s — correct=False score=None
+2026-10-14 02:53:47,713 [INFO] [query:conv-47_q67] start — What programming languages has James worked with?
+2026-10-14 02:53:47,761 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:54:00,810 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:00,814 [INFO] [query:conv-47_q67] answer done in 13.1s (retrieve=54ms)
+2026-10-14 02:54:05,224 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:05,242 [INFO] [query:conv-47_q67] done in 17.5s — correct=True score=None
+2026-10-14 02:54:05,274 [INFO] [query:conv-47_q68] start — What type of mobile application does James plan to build with John?
+2026-10-14 02:54:05,342 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:54:16,421 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:16,429 [INFO] [query:conv-47_q68] answer done in 11.2s (retrieve=81ms)
+2026-10-14 02:54:22,917 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:22,922 [INFO] [query:conv-47_q68] done in 17.6s — correct=True score=None
+2026-10-14 02:54:22,944 [INFO] [query:conv-47_q69] start — How does James plan to make his dog-sitting app unique?
+2026-10-14 02:54:22,965 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:54:34,484 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:34,486 [INFO] [query:conv-47_q69] answer done in 11.5s (retrieve=22ms)
+2026-10-14 02:54:40,164 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:40,170 [INFO] [query:conv-47_q69] done in 17.2s — correct=True score=None
+2026-10-14 02:54:40,202 [INFO] [query:conv-47_q70] start — What has John mostly found with the metal detector so far?
+2026-10-14 02:54:40,258 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:54:44,602 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 502 Bad Gateway"
+2026-10-14 02:54:44,609 [INFO] Retrying request to /chat/completions in 0.498745 seconds
+2026-10-14 02:54:51,516 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:51,519 [INFO] [query:conv-47_q70] answer done in 11.3s (retrieve=59ms)
+2026-10-14 02:54:59,139 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:54:59,141 [INFO] [query:conv-47_q70] done in 18.9s — correct=True score=None
+2026-10-14 02:54:59,153 [INFO] [query:conv-47_q71] start — What did James offer to do for John regarding pets?
+2026-10-14 02:54:59,179 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:55:07,735 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:07,746 [INFO] [query:conv-47_q56] answer done in 415.6s (retrieve=110ms)
+2026-10-14 02:55:15,503 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:15,506 [INFO] [query:conv-47_q71] answer done in 16.4s (retrieve=28ms)
+2026-10-14 02:55:17,809 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:17,812 [INFO] [query:conv-47_q56] done in 425.6s — correct=False score=None
+2026-10-14 02:55:17,826 [INFO] [query:conv-47_q72] start — What instrument is John learning to play as of 27 March, 2022?
+2026-10-14 02:55:17,860 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:55:21,864 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:21,867 [INFO] [query:conv-47_q71] done in 22.7s — correct=True score=None
+2026-10-14 02:55:21,891 [INFO] [query:conv-47_q73] start — How long has John been playing the drums as of 27 March, 2022?
+2026-10-14 02:55:21,932 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:55:37,758 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:37,764 [INFO] [query:conv-47_q73] answer done in 15.9s (retrieve=54ms)
+2026-10-14 02:55:45,350 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:45,354 [INFO] [query:conv-47_q73] done in 23.5s — correct=True score=None
+2026-10-14 02:55:45,368 [INFO] [query:conv-47_q74] start — What game did John play in an intense tournament at the gaming convention in Mar
+2026-10-14 02:55:45,424 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:55:58,566 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:55:58,569 [INFO] [query:conv-47_q74] answer done in 13.2s (retrieve=63ms)
+2026-10-14 02:56:07,246 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:56:07,247 [INFO] [query:conv-47_q74] done in 21.9s — correct=True score=None
+2026-10-14 02:56:07,257 [INFO] [query:conv-47_q75] start — What game was James playing in the online gaming tournament in April 2022?
+2026-10-14 02:56:07,299 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:56:39,128 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:56:39,133 [INFO] [query:conv-47_q75] answer done in 31.9s (retrieve=46ms)
+2026-10-14 02:56:45,466 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:56:45,468 [INFO] [query:conv-47_q75] done in 38.2s — correct=True score=None
+2026-10-14 02:56:45,481 [INFO] [query:conv-47_q76] start — How does James communicate with his gaming team?
+2026-10-14 02:56:45,507 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:57:00,492 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:00,494 [INFO] [query:conv-47_q76] answer done in 15.0s (retrieve=29ms)
+2026-10-14 02:57:05,238 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:05,240 [INFO] [query:conv-47_q76] done in 19.8s — correct=True score=None
+2026-10-14 02:57:05,250 [INFO] [query:conv-47_q77] start — What advice did James receive from the famous players he met at the tournament?
+2026-10-14 02:57:05,275 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:57:07,702 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:07,705 [INFO] [query:conv-47_q38] answer done in 920.7s (retrieve=28ms)
+2026-10-14 02:57:14,628 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:14,631 [INFO] [query:conv-47_q77] answer done in 9.4s (retrieve=29ms)
+2026-10-14 02:57:21,244 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:21,255 [INFO] [query:conv-47_q77] done in 16.0s — correct=True score=None
+2026-10-14 02:57:21,275 [INFO] [query:conv-47_q78] start — What did James adopt in April 2022?
+2026-10-14 02:57:21,312 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:57:27,445 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:27,448 [INFO] [query:conv-47_q38] done in 940.5s — correct=True score=None
+2026-10-14 02:57:27,462 [INFO] [query:conv-47_q79] start — What is the name of the pup that was adopted by James?
+2026-10-14 02:57:27,489 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:57:40,137 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:40,139 [INFO] [query:conv-47_q79] answer done in 12.7s (retrieve=31ms)
+2026-10-14 02:57:43,794 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:43,796 [INFO] [query:conv-47_q72] answer done in 146.0s (retrieve=37ms)
+2026-10-14 02:57:47,165 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:47,169 [INFO] [query:conv-47_q79] done in 19.7s — correct=True score=None
+2026-10-14 02:57:47,181 [INFO] [query:conv-47_q80] start — Why did James embody the appearance of the game character from the woman he saw 
+2026-10-14 02:57:47,203 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:57:54,174 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:57:54,181 [INFO] [query:conv-47_q72] done in 156.4s — correct=True score=None
+2026-10-14 02:57:54,203 [INFO] [query:conv-47_q81] start — What inspired James to create the game character in the virtual world?
+2026-10-14 02:57:54,228 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:01,510 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:01,512 [INFO] [query:conv-47_q78] answer done in 40.2s (retrieve=39ms)
+2026-10-14 02:58:03,671 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:03,674 [INFO] [query:conv-47_q80] answer done in 16.5s (retrieve=23ms)
+2026-10-14 02:58:07,670 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:07,673 [INFO] [query:conv-47_q81] answer done in 13.5s (retrieve=30ms)
+2026-10-14 02:58:09,345 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:09,348 [INFO] [query:conv-47_q78] done in 48.1s — correct=False score=None
+2026-10-14 02:58:09,367 [INFO] [query:conv-47_q82] start — Which country did James visit in 2021?
+2026-10-14 02:58:09,403 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:10,302 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:10,303 [INFO] [query:conv-47_q80] done in 23.1s — correct=True score=None
+2026-10-14 02:58:10,311 [INFO] [query:conv-47_q83] start — What impresses John about Japan?
+2026-10-14 02:58:10,328 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:17,066 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:17,068 [INFO] [query:conv-47_q81] done in 22.9s — correct=True score=None
+2026-10-14 02:58:17,088 [INFO] [query:conv-47_q84] start — What kind of assignment was giving John a hard time at work?
+2026-10-14 02:58:17,113 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:21,531 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:21,533 [INFO] [query:conv-47_q83] answer done in 11.2s (retrieve=29ms)
+2026-10-14 02:58:24,032 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:24,035 [INFO] [query:conv-47_q82] answer done in 14.7s (retrieve=42ms)
+2026-10-14 02:58:31,759 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:31,762 [INFO] [query:conv-47_q82] done in 22.4s — correct=True score=None
+2026-10-14 02:58:31,775 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:31,783 [INFO] [query:conv-47_q85] start — What breed is Daisy, one of James' dogs?
+2026-10-14 02:58:31,783 [INFO] [query:conv-47_q83] done in 21.5s — correct=True score=None
+2026-10-14 02:58:31,800 [INFO] [query:conv-47_q86] start — What type of pizza is James' favorite?
+2026-10-14 02:58:31,819 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:31,829 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:33,836 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:33,838 [INFO] [query:conv-47_q84] answer done in 16.7s (retrieve=28ms)
+2026-10-14 02:58:40,522 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:40,524 [INFO] [query:conv-47_q84] done in 23.4s — correct=True score=None
+2026-10-14 02:58:40,532 [INFO] [query:conv-47_q87] start — What type of pizza is John's favorite?
+2026-10-14 02:58:40,552 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:48,683 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:48,687 [INFO] [query:conv-47_q85] answer done in 16.9s (retrieve=40ms)
+2026-10-14 02:58:51,058 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:51,061 [INFO] [query:conv-47_q86] answer done in 19.3s (retrieve=31ms)
+2026-10-14 02:58:56,297 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:56,298 [INFO] [query:conv-47_q86] done in 24.5s — correct=True score=None
+2026-10-14 02:58:56,313 [INFO] [query:conv-47_q88] start — What did John organize with his friends on May 8, 2022?
+2026-10-14 02:58:56,351 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:58,643 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:58,645 [INFO] [query:conv-47_q85] done in 26.9s — correct=True score=None
+2026-10-14 02:58:58,652 [INFO] [query:conv-47_q89] start — What did John and his friends do with the remaining money after helping the dog 
+2026-10-14 02:58:58,680 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:58:59,370 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:58:59,373 [INFO] [query:conv-47_q87] answer done in 18.8s (retrieve=23ms)
+2026-10-14 02:59:07,688 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:07,689 [INFO] [query:conv-47_q87] done in 27.2s — correct=True score=None
+2026-10-14 02:59:07,700 [INFO] [query:conv-47_q90] start — What was the main goal of the money raised from the charity tournament organized
+2026-10-14 02:59:07,730 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:10,369 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:10,371 [INFO] [query:conv-47_q89] answer done in 11.7s (retrieve=31ms)
+2026-10-14 02:59:11,010 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:11,013 [INFO] [query:conv-47_q88] answer done in 14.7s (retrieve=45ms)
+2026-10-14 02:59:12,984 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:12,986 [INFO] [query:conv-47_q54] done in 788.0s — correct=False score=None
+2026-10-14 02:59:13,000 [INFO] [query:conv-47_q91] start — What did the system John created help the charitable foundation with?
+2026-10-14 02:59:13,015 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:17,598 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:17,600 [INFO] [query:conv-47_q89] done in 18.9s — correct=True score=None
+2026-10-14 02:59:17,615 [INFO] [query:conv-47_q92] start — What did John create for the charitable foundation that helped generate reports 
+2026-10-14 02:59:17,644 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:18,144 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:18,146 [INFO] [query:conv-47_q88] done in 21.8s — correct=False score=None
+2026-10-14 02:59:18,154 [INFO] [query:conv-47_q93] start — What did John receive for achieving second place in the tournament?
+2026-10-14 02:59:18,185 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:23,660 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:23,663 [INFO] [query:conv-47_q90] answer done in 16.0s (retrieve=31ms)
+2026-10-14 02:59:26,316 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:26,318 [INFO] [query:conv-47_q91] answer done in 13.3s (retrieve=17ms)
+2026-10-14 02:59:29,768 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:29,769 [INFO] [query:conv-47_q92] answer done in 12.2s (retrieve=35ms)
+2026-10-14 02:59:31,768 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:31,769 [INFO] [query:conv-47_q93] answer done in 13.6s (retrieve=254ms)
+2026-10-14 02:59:31,869 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:31,871 [INFO] [query:conv-47_q90] done in 24.2s — correct=True score=None
+2026-10-14 02:59:31,877 [INFO] [query:conv-47_q94] start — What project is James working on in his game design course?
+2026-10-14 02:59:31,898 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:32,307 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:32,310 [INFO] [query:conv-47_q91] done in 19.3s — correct=True score=None
+2026-10-14 02:59:32,326 [INFO] [query:conv-47_q95] start — Who does James support in football matches?
+2026-10-14 02:59:32,351 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:36,777 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:36,779 [INFO] [query:conv-47_q93] done in 18.6s — correct=True score=None
+2026-10-14 02:59:36,790 [INFO] [query:conv-47_q96] start — Which football club does John support?
+2026-10-14 02:59:36,816 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:39,053 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:39,055 [INFO] [query:conv-47_q92] done in 21.4s — correct=True score=None
+2026-10-14 02:59:39,064 [INFO] [query:conv-47_q97] start — What disagreement do James and John have about their football teams?
+2026-10-14 02:59:39,083 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:47,426 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:47,428 [INFO] [query:conv-47_q94] answer done in 15.6s (retrieve=24ms)
+2026-10-14 02:59:51,256 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:51,258 [INFO] [query:conv-47_q97] answer done in 12.2s (retrieve=23ms)
+2026-10-14 02:59:52,557 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:52,559 [INFO] [query:conv-47_q95] answer done in 20.2s (retrieve=28ms)
+2026-10-14 02:59:54,919 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:54,921 [INFO] [query:conv-47_q94] done in 23.0s — correct=True score=None
+2026-10-14 02:59:54,932 [INFO] [query:conv-47_q98] start — What is Max good at doing according to James?
+2026-10-14 02:59:54,953 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:56,429 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:56,431 [INFO] [query:conv-47_q96] answer done in 19.6s (retrieve=28ms)
+2026-10-14 02:59:58,564 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:58,566 [INFO] [query:conv-47_q95] done in 26.2s — correct=True score=None
+2026-10-14 02:59:58,583 [INFO] [query:conv-47_q99] start — What is the main focus of the organization that James volunteered with?
+2026-10-14 02:59:58,606 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 02:59:59,276 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 02:59:59,277 [INFO] [query:conv-47_q97] done in 20.2s — correct=True score=None
+2026-10-14 02:59:59,286 [INFO] [query:conv-47_q100] start — Will there be an interview required to volunteer with the organization James vol
+2026-10-14 02:59:59,313 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:02,884 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:02,887 [INFO] [query:conv-47_q96] done in 26.1s — correct=True score=None
+2026-10-14 03:00:02,903 [INFO] [query:conv-47_q101] start — How did John relax in his free time on 9 July, 2022?
+2026-10-14 03:00:02,932 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:06,618 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:06,620 [INFO] [query:conv-47_q98] answer done in 11.7s (retrieve=22ms)
+2026-10-14 03:00:07,811 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:07,814 [INFO] [query:conv-47_q99] answer done in 9.2s (retrieve=26ms)
+2026-10-14 03:00:09,309 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:09,313 [INFO] [query:conv-47_q100] answer done in 10.0s (retrieve=29ms)
+2026-10-14 03:00:11,949 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:11,952 [INFO] [query:conv-47_q99] done in 13.4s — correct=True score=None
+2026-10-14 03:00:11,968 [INFO] [query:conv-47_q102] start — What did James enjoy doing on cold winter days?
+2026-10-14 03:00:11,993 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:12,177 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:12,179 [INFO] [query:conv-47_q98] done in 17.2s — correct=True score=None
+2026-10-14 03:00:12,189 [INFO] [query:conv-47_q103] start — What new hobby did James become interested in on 9 July, 2022?
+2026-10-14 03:00:12,219 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:14,250 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:14,252 [INFO] [query:conv-47_q101] answer done in 11.3s (retrieve=34ms)
+2026-10-14 03:00:16,973 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:16,976 [INFO] [query:conv-47_q100] done in 17.7s — correct=True score=None
+2026-10-14 03:00:16,986 [INFO] [query:conv-47_q104] start — Where did James plan to visit after Toronto?
+2026-10-14 03:00:17,005 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:21,514 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:21,516 [INFO] [query:conv-47_q101] done in 18.6s — correct=True score=None
+2026-10-14 03:00:21,535 [INFO] [query:conv-47_q105] start — When did James plan to return from his trip to Toronto and Vancouver?
+2026-10-14 03:00:21,559 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:25,913 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:25,916 [INFO] [query:conv-47_q104] answer done in 8.9s (retrieve=22ms)
+2026-10-14 03:00:26,702 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:26,704 [INFO] [query:conv-47_q102] answer done in 14.7s (retrieve=27ms)
+2026-10-14 03:00:30,027 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:30,029 [INFO] [query:conv-47_q103] answer done in 17.8s (retrieve=35ms)
+2026-10-14 03:00:35,453 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:35,458 [INFO] [query:conv-47_q104] done in 18.5s — correct=True score=None
+2026-10-14 03:00:35,479 [INFO] [query:conv-47_q106] start — What online game did John start playing recently for improving strategy?
+2026-10-14 03:00:35,522 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:35,650 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:35,653 [INFO] [query:conv-47_q105] answer done in 14.1s (retrieve=30ms)
+2026-10-14 03:00:36,882 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:36,885 [INFO] [query:conv-47_q103] done in 24.7s — correct=True score=None
+2026-10-14 03:00:36,893 [INFO] [query:conv-47_q107] start — What made John leave his IT job?
+2026-10-14 03:00:36,912 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:37,881 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:37,884 [INFO] [query:conv-47_q102] done in 25.9s — correct=True score=None
+2026-10-14 03:00:37,897 [INFO] [query:conv-47_q108] start — Which game tournaments does John plan to organize besides CS:GO?
+2026-10-14 03:00:37,920 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:44,488 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:44,492 [INFO] [query:conv-47_q105] done in 23.0s — correct=True score=None
+2026-10-14 03:00:44,506 [INFO] [query:conv-47_q109] start — What happened to James's puppy during the recent visit to the clinic?
+2026-10-14 03:00:44,536 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:48,544 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:48,546 [INFO] [query:conv-47_q107] answer done in 11.7s (retrieve=21ms)
+2026-10-14 03:00:55,089 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:55,092 [INFO] [query:conv-47_q107] done in 18.2s — correct=True score=None
+2026-10-14 03:00:55,117 [INFO] [query:conv-47_q110] start — What game genre did John start exploring instead of shooters?
+2026-10-14 03:00:55,145 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:00:58,005 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:58,008 [INFO] [query:conv-47_q108] answer done in 20.1s (retrieve=26ms)
+2026-10-14 03:00:59,822 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:00:59,825 [INFO] [query:conv-47_q109] answer done in 15.3s (retrieve=36ms)
+2026-10-14 03:01:05,225 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:05,227 [INFO] [query:conv-47_q108] done in 27.3s — correct=True score=None
+2026-10-14 03:01:05,244 [INFO] [query:conv-47_q111] start — Which RPG game is John playing and enjoying on 10 August, 2022?
+2026-10-14 03:01:05,275 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:06,550 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:06,552 [INFO] [query:conv-47_q109] done in 22.0s — correct=True score=None
+2026-10-14 03:01:06,564 [INFO] [query:conv-47_q112] start — What aspect of "The Witcher 3" does John find immersive?
+2026-10-14 03:01:06,612 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:06,731 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:06,737 [INFO] [query:conv-47_q106] answer done in 31.3s (retrieve=48ms)
+2026-10-14 03:01:07,184 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:07,195 [INFO] [query:conv-47_q110] answer done in 12.1s (retrieve=31ms)
+2026-10-14 03:01:13,976 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:13,978 [INFO] [query:conv-47_q106] done in 38.5s — correct=True score=None
+2026-10-14 03:01:13,989 [INFO] [query:conv-47_q113] start — Whose phone number did James receive during the beach outing?
+2026-10-14 03:01:14,018 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:19,562 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:19,564 [INFO] [query:conv-47_q110] done in 24.4s — correct=True score=None
+2026-10-14 03:01:19,577 [INFO] [query:conv-47_q114] start — What is James planning to do after receiving Samantha's phone number?
+2026-10-14 03:01:19,602 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:20,543 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:20,545 [INFO] [query:conv-47_q112] answer done in 14.0s (retrieve=49ms)
+2026-10-14 03:01:21,546 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:21,548 [INFO] [query:conv-47_q111] answer done in 16.3s (retrieve=33ms)
+2026-10-14 03:01:27,420 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:27,424 [INFO] [query:conv-47_q112] done in 20.9s — correct=True score=None
+2026-10-14 03:01:27,439 [INFO] [query:conv-47_q115] start — What is John organizing with his siblings?
+2026-10-14 03:01:27,461 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:28,128 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:28,131 [INFO] [query:conv-47_q111] done in 22.9s — correct=True score=None
+2026-10-14 03:01:28,143 [INFO] [query:conv-47_q116] start — What type of beer does John not like?
+2026-10-14 03:01:28,167 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:29,358 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:29,361 [INFO] [query:conv-47_q113] answer done in 15.4s (retrieve=31ms)
+2026-10-14 03:01:35,603 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:35,605 [INFO] [query:conv-47_q113] done in 21.6s — correct=True score=None
+2026-10-14 03:01:35,619 [INFO] [query:conv-47_q117] start — What were some difficulties James faced during the development of his game?
+2026-10-14 03:01:35,640 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:36,825 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:36,829 [INFO] [query:conv-47_q114] answer done in 17.3s (retrieve=25ms)
+2026-10-14 03:01:39,093 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:39,095 [INFO] [query:conv-47_q115] answer done in 11.7s (retrieve=25ms)
+2026-10-14 03:01:42,075 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:42,077 [INFO] [query:conv-47_q114] done in 22.5s — correct=True score=None
+2026-10-14 03:01:42,088 [INFO] [query:conv-47_q118] start — What has John been teaching his siblings?
+2026-10-14 03:01:42,117 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:42,699 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:42,701 [INFO] [query:conv-47_q116] answer done in 14.6s (retrieve=28ms)
+2026-10-14 03:01:44,525 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:44,527 [INFO] [query:conv-47_q115] done in 17.1s — correct=True score=None
+2026-10-14 03:01:44,554 [INFO] [query:conv-47_q119] start — What kind of programs are John's siblings making?
+2026-10-14 03:01:44,592 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:48,083 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:48,085 [INFO] [query:conv-47_q116] done in 19.9s — correct=True score=None
+2026-10-14 03:01:48,100 [INFO] [query:conv-47_q120] start — Which company's headphones did John choose for gaming?
+2026-10-14 03:01:48,127 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:01:54,748 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:54,750 [INFO] [query:conv-47_q117] answer done in 19.1s (retrieve=23ms)
+2026-10-14 03:01:55,637 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:55,639 [INFO] [query:conv-47_q119] answer done in 11.1s (retrieve=46ms)
+2026-10-14 03:01:57,871 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:01:57,873 [INFO] [query:conv-47_q120] answer done in 9.8s (retrieve=33ms)
+2026-10-14 03:02:00,386 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:00,390 [INFO] [query:conv-47_q119] done in 15.8s — correct=True score=None
+2026-10-14 03:02:00,411 [INFO] [query:conv-47_q121] start — What did James and Samantha discover they both enjoy at McGee's bar?
+2026-10-14 03:02:00,435 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:00,965 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:00,968 [INFO] [query:conv-47_q117] done in 25.3s — correct=True score=None
+2026-10-14 03:02:00,984 [INFO] [query:conv-47_q122] start — How much does James pay per cooking class?
+2026-10-14 03:02:01,014 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:01,617 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:01,621 [INFO] [query:conv-47_q118] answer done in 19.5s (retrieve=33ms)
+2026-10-14 03:02:01,981 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:01,983 [INFO] [query:conv-47_q120] done in 13.9s — correct=True score=None
+2026-10-14 03:02:01,993 [INFO] [query:conv-47_q123] start — What did James learn to make in the cooking class besides omelette and meringue?
+2026-10-14 03:02:02,018 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:09,743 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:09,745 [INFO] [query:conv-47_q118] done in 27.7s — correct=True score=None
+2026-10-14 03:02:09,758 [INFO] [query:conv-47_q124] start — Why did James sign up for a cooking class?
+2026-10-14 03:02:09,801 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:12,537 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:12,538 [INFO] [query:conv-47_q122] answer done in 11.6s (retrieve=34ms)
+2026-10-14 03:02:13,234 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:13,237 [INFO] [query:conv-47_q123] answer done in 11.2s (retrieve=28ms)
+2026-10-14 03:02:15,641 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:15,643 [INFO] [query:conv-47_q121] answer done in 15.2s (retrieve=29ms)
+2026-10-14 03:02:17,997 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:17,999 [INFO] [query:conv-47_q122] done in 17.0s — correct=True score=None
+2026-10-14 03:02:18,011 [INFO] [query:conv-47_q125] start — What did James prepare for the first time in the cooking class?
+2026-10-14 03:02:18,027 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:19,180 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:19,183 [INFO] [query:conv-47_q123] done in 17.2s — correct=True score=None
+2026-10-14 03:02:19,196 [INFO] [query:conv-47_q126] start — What is the name of the board game John tried in September 2022?
+2026-10-14 03:02:19,216 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:21,453 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:21,455 [INFO] [query:conv-47_q121] done in 21.0s — correct=True score=None
+2026-10-14 03:02:21,465 [INFO] [query:conv-47_q127] start — Where does James get his ideas from?
+2026-10-14 03:02:21,483 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:23,361 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:23,363 [INFO] [query:conv-47_q124] answer done in 13.6s (retrieve=74ms)
+2026-10-14 03:02:28,488 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:28,495 [INFO] [query:conv-47_q124] done in 18.7s — correct=True score=None
+2026-10-14 03:02:28,504 [INFO] [query:conv-47_q128] start — What kind of dream did James have recently?
+2026-10-14 03:02:28,534 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:31,860 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:31,862 [INFO] [query:conv-47_q125] answer done in 13.9s (retrieve=18ms)
+2026-10-14 03:02:34,580 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:34,582 [INFO] [query:conv-47_q126] answer done in 15.4s (retrieve=22ms)
+2026-10-14 03:02:39,263 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:39,784 [INFO] [query:conv-47_q125] done in 21.8s — correct=True score=None
+2026-10-14 03:02:39,795 [INFO] [query:conv-47_q129] start — What kind of music does John like?
+2026-10-14 03:02:39,820 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:39,967 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:39,970 [INFO] [query:conv-47_q127] answer done in 18.5s (retrieve=19ms)
+2026-10-14 03:02:40,408 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:40,410 [INFO] [query:conv-47_q126] done in 21.2s — correct=True score=None
+2026-10-14 03:02:40,421 [INFO] [query:conv-47_q130] start — What instrument did James used to play when he was younger?
+2026-10-14 03:02:40,449 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:46,132 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:46,135 [INFO] [query:conv-47_q127] done in 24.7s — correct=True score=None
+2026-10-14 03:02:46,153 [INFO] [query:conv-47_q131] start — What did John use to play when he was younger to let off steam?
+2026-10-14 03:02:46,182 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:02:49,510 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:49,513 [INFO] [query:conv-47_q130] answer done in 9.1s (retrieve=32ms)
+2026-10-14 03:02:52,412 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:52,414 [INFO] [query:conv-47_q129] answer done in 12.6s (retrieve=28ms)
+2026-10-14 03:02:55,037 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:55,040 [INFO] [query:conv-47_q131] answer done in 8.9s (retrieve=34ms)
+2026-10-14 03:02:55,158 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:55,160 [INFO] [query:conv-47_q128] answer done in 26.7s (retrieve=36ms)
+2026-10-14 03:02:56,354 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:02:56,365 [INFO] [query:conv-47_q130] done in 15.9s — correct=True score=None
+2026-10-14 03:02:56,394 [INFO] [query:conv-47_q132] start — What career milestone did John achieve recently in September 2022?
+2026-10-14 03:02:56,439 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:00,467 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:00,470 [INFO] [query:conv-47_q129] done in 20.7s — correct=True score=None
+2026-10-14 03:03:00,484 [INFO] [query:conv-47_q133] start — What type of game is John's upcoming mobile game?
+2026-10-14 03:03:00,514 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:06,312 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:06,315 [INFO] [query:conv-47_q128] done in 37.8s — correct=True score=None
+2026-10-14 03:03:06,329 [INFO] [query:conv-47_q134] start — What does John do to stay informed and constantly learn about game design?
+2026-10-14 03:03:06,361 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:12,908 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:12,911 [INFO] [query:conv-47_q132] answer done in 16.5s (retrieve=52ms)
+2026-10-14 03:03:14,746 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:14,748 [INFO] [query:conv-47_q133] answer done in 14.3s (retrieve=33ms)
+2026-10-14 03:03:16,406 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:16,408 [INFO] [query:conv-47_q131] done in 30.3s — correct=True score=None
+2026-10-14 03:03:16,420 [INFO] [query:conv-47_q135] start — What kind of gig was John offered at the game dev non-profit organization?
+2026-10-14 03:03:16,445 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:18,986 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:18,988 [INFO] [query:conv-47_q132] done in 22.6s — correct=False score=None
+2026-10-14 03:03:18,996 [INFO] [query:conv-47_q136] start — What does John feel about starting the journey as a programming mentor for game 
+2026-10-14 03:03:19,015 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:20,482 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:20,484 [INFO] [query:conv-47_q133] done in 20.0s — correct=True score=None
+2026-10-14 03:03:20,496 [INFO] [query:conv-47_q137] start — What kind of games is James excited to play with his new video card?
+2026-10-14 03:03:20,524 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:27,846 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:27,850 [INFO] [query:conv-47_q134] answer done in 21.5s (retrieve=34ms)
+2026-10-14 03:03:29,243 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:29,245 [INFO] [query:conv-47_q135] answer done in 12.8s (retrieve=29ms)
+2026-10-14 03:03:33,267 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:33,269 [INFO] [query:conv-47_q137] answer done in 12.8s (retrieve=31ms)
+2026-10-14 03:03:33,343 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:33,350 [INFO] [query:conv-47_q134] done in 27.0s — correct=True score=None
+2026-10-14 03:03:33,371 [INFO] [query:conv-47_q138] start — What inspired James to create his game?
+2026-10-14 03:03:33,400 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:35,664 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:35,666 [INFO] [query:conv-47_q135] done in 19.2s — correct=True score=None
+2026-10-14 03:03:35,675 [INFO] [query:conv-47_q139] start — What sparked James' passion for gaming when he was a kid?
+2026-10-14 03:03:35,696 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:38,610 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:38,612 [INFO] [query:conv-47_q136] answer done in 19.6s (retrieve=21ms)
+2026-10-14 03:03:40,151 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:40,154 [INFO] [query:conv-47_q137] done in 19.7s — correct=True score=None
+2026-10-14 03:03:40,172 [INFO] [query:conv-47_q140] start — What did James lose progress on due to a power outage?
+2026-10-14 03:03:40,189 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:49,227 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:49,230 [INFO] [query:conv-47_q136] done in 30.2s — correct=True score=None
+2026-10-14 03:03:49,248 [INFO] [query:conv-47_q141] start — What games were played at the gaming tournament organized by John on 31 October,
+2026-10-14 03:03:49,369 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:50,836 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:50,839 [INFO] [query:conv-47_q139] answer done in 15.2s (retrieve=24ms)
+2026-10-14 03:03:51,143 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:51,149 [INFO] [query:conv-47_q140] answer done in 11.0s (retrieve=18ms)
+2026-10-14 03:03:56,162 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:56,167 [INFO] [query:conv-47_q140] done in 16.0s — correct=True score=None
+2026-10-14 03:03:56,197 [INFO] [query:conv-47_q142] start — What was the purpose of the gaming tournament organized by John on 31 October, 2
+2026-10-14 03:03:56,206 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:03:56,212 [INFO] [query:conv-47_q139] done in 20.5s — correct=True score=None
+2026-10-14 03:03:56,246 [INFO] [query:conv-47_q143] start — What decision did James and Samantha make on 31 October, 2022?
+2026-10-14 03:03:56,252 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:03:56,300 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:02,662 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:02,667 [INFO] [query:conv-47_q138] answer done in 29.3s (retrieve=27ms)
+2026-10-14 03:04:04,559 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:04,565 [INFO] [query:conv-47_q142] answer done in 8.4s (retrieve=57ms)
+2026-10-14 03:04:07,626 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:07,628 [INFO] [query:conv-47_q138] done in 34.3s — correct=True score=None
+2026-10-14 03:04:07,641 [INFO] [query:conv-47_q144] start — Where did James and Samantha decide to live together on 31 October, 2022?
+2026-10-14 03:04:07,674 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:07,734 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:07,736 [INFO] [query:conv-47_q143] answer done in 11.5s (retrieve=56ms)
+2026-10-14 03:04:08,750 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:08,752 [INFO] [query:conv-47_q141] answer done in 19.5s (retrieve=39ms)
+2026-10-14 03:04:12,929 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:12,931 [INFO] [query:conv-47_q141] done in 23.7s — correct=True score=None
+2026-10-14 03:04:12,940 [INFO] [query:conv-47_q145] start — Why did James and Samantha choose an apartment near McGee's bar?
+2026-10-14 03:04:12,964 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:13,885 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:13,890 [INFO] [query:conv-47_q142] done in 17.7s — correct=True score=None
+2026-10-14 03:04:13,926 [INFO] [query:conv-47_q146] start — What game is John hooked on playing on 5 November, 2022?
+2026-10-14 03:04:13,980 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:17,535 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:17,540 [INFO] [query:conv-47_q143] done in 21.3s — correct=True score=None
+2026-10-14 03:04:17,560 [INFO] [query:conv-47_q147] start — What did John suggest James practice before playing FIFA 23 together?
+2026-10-14 03:04:17,590 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:20,240 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:20,244 [INFO] [query:conv-47_q144] answer done in 12.6s (retrieve=37ms)
+2026-10-14 03:04:25,346 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:25,351 [INFO] [query:conv-47_q146] answer done in 11.4s (retrieve=216ms)
+2026-10-14 03:04:25,877 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:25,881 [INFO] [query:conv-47_q145] answer done in 12.9s (retrieve=28ms)
+2026-10-14 03:04:26,204 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:26,207 [INFO] [query:conv-47_q144] done in 18.6s — correct=True score=None
+2026-10-14 03:04:26,225 [INFO] [query:conv-47_q148] start — What project did John work on with a game developer by 7 November, 2022?
+2026-10-14 03:04:26,252 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:29,894 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:29,899 [INFO] [query:conv-47_q147] answer done in 12.3s (retrieve=35ms)
+2026-10-14 03:04:32,778 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:32,781 [INFO] [query:conv-47_q145] done in 19.8s — correct=True score=None
+2026-10-14 03:04:32,789 [INFO] [query:conv-47_q149] start — What is the name of John's cousin's dog?
+2026-10-14 03:04:32,819 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-47/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:34,609 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:34,611 [INFO] [query:conv-47_q146] done in 20.7s — correct=True score=None
+2026-10-14 03:04:40,189 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:40,192 [INFO] [query:conv-47_q149] answer done in 7.4s (retrieve=32ms)
+2026-10-14 03:04:41,620 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:41,623 [INFO] [query:conv-47_q148] answer done in 15.4s (retrieve=31ms)
+2026-10-14 03:04:44,703 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:44,710 [INFO] [query:conv-47_q147] done in 27.2s — correct=False score=None
+2026-10-14 03:04:45,834 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:45,836 [INFO] [query:conv-47_q149] done in 13.0s — correct=True score=None
+2026-10-14 03:04:48,221 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:04:48,226 [INFO] [query:conv-47_q148] done in 22.0s — correct=True score=None
+
+Saved → 
+/home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/tar
+get/amb-out/2026-10-13-v0.7.0/locomo/memory-wire/rag/locomo10.json
+2026-10-14 03:04:53,777 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,782 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,785 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,787 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,789 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,792 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,795 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,798 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,802 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,804 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,806 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,808 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,810 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,813 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,818 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,821 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,824 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,826 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,828 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,831 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,833 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,835 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,837 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,841 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,854 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,860 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,946 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,955 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:53,966 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:54,051 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/retain "HTTP/1.1 200 OK"
+2026-10-14 03:04:54,054 [INFO] [query:conv-48_q0] start — What kind of project was Jolene working on in the beginning of January 2023?
+2026-10-14 03:04:54,055 [INFO] [query:conv-48_q1] start — Which of Deborah`s family and friends have passed away?
+2026-10-14 03:04:54,055 [INFO] [query:conv-48_q2] start — When did Deborah`s mother pass away?
+2026-10-14 03:04:54,056 [INFO] [query:conv-48_q3] start — When did Jolene`s mother pass away?
+2026-10-14 03:04:54,099 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:54,116 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:54,126 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:04:54,134 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:05:12,138 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:12,140 [INFO] [query:conv-48_q1] answer done in 18.1s (retrieve=81ms)
+2026-10-14 03:05:18,367 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:18,370 [INFO] [query:conv-48_q1] done in 24.3s — correct=True score=None
+2026-10-14 03:05:18,382 [INFO] [query:conv-48_q4] start — When did Jolene's mom gift her a pendant?
+2026-10-14 03:05:18,408 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:05:19,054 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:19,055 [INFO] [query:conv-48_q2] answer done in 25.0s (retrieve=91ms)
+2026-10-14 03:05:25,308 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:25,311 [INFO] [query:conv-48_q3] answer done in 31.3s (retrieve=81ms)
+2026-10-14 03:05:30,190 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:30,192 [INFO] [query:conv-48_q2] done in 36.1s — correct=True score=None
+2026-10-14 03:05:30,219 [INFO] [query:conv-48_q5] start — In what country did Jolene's mother buy her the pendant?
+2026-10-14 03:05:30,247 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:05:31,160 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:31,162 [INFO] [query:conv-48_q4] answer done in 12.8s (retrieve=32ms)
+2026-10-14 03:05:33,025 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:33,026 [INFO] [query:conv-48_q3] done in 39.0s — correct=True score=None
+2026-10-14 03:05:33,040 [INFO] [query:conv-48_q6] start — What symbolic gifts do Deborah and Jolene have from their mothers?
+2026-10-14 03:05:33,061 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:05:36,861 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:36,864 [INFO] [query:conv-48_q4] done in 18.5s — correct=True score=None
+2026-10-14 03:05:36,874 [INFO] [query:conv-48_q7] start — Which country were Jolene and her mother visiting in 2010?
+2026-10-14 03:05:36,932 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:05:50,229 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:50,231 [INFO] [query:conv-48_q5] answer done in 20.0s (retrieve=30ms)
+2026-10-14 03:05:56,404 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:56,409 [INFO] [query:conv-48_q7] answer done in 19.5s (retrieve=67ms)
+2026-10-14 03:05:56,832 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:56,835 [INFO] [query:conv-48_q6] answer done in 23.8s (retrieve=24ms)
+2026-10-14 03:05:58,045 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:05:58,049 [INFO] [query:conv-48_q5] done in 27.8s — correct=True score=None
+2026-10-14 03:05:58,072 [INFO] [query:conv-48_q8] start — What helped Deborah find peace when grieving deaths of her loved ones?
+2026-10-14 03:05:58,100 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:08,635 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:08,637 [INFO] [query:conv-48_q6] done in 35.6s — correct=False score=None
+2026-10-14 03:06:08,650 [INFO] [query:conv-48_q9] start — When did Deborah's father pass away?
+2026-10-14 03:06:08,681 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:11,494 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:11,496 [INFO] [query:conv-48_q7] done in 34.6s — correct=True score=None
+2026-10-14 03:06:11,509 [INFO] [query:conv-48_q10] start — When was Deborah's parents' wedding?
+2026-10-14 03:06:11,535 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:21,509 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:21,513 [INFO] [query:conv-48_q10] answer done in 10.0s (retrieve=32ms)
+2026-10-14 03:06:29,515 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:29,516 [INFO] [query:conv-48_q9] answer done in 20.9s (retrieve=42ms)
+2026-10-14 03:06:29,856 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:29,858 [INFO] [query:conv-48_q10] done in 18.3s — correct=True score=None
+2026-10-14 03:06:29,877 [INFO] [query:conv-48_q11] start — Is Deborah married?
+2026-10-14 03:06:29,906 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:36,487 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:36,490 [INFO] [query:conv-48_q9] done in 27.8s — correct=True score=None
+2026-10-14 03:06:36,505 [INFO] [query:conv-48_q12] start — When did Deborah receive an appreciation letter from her community?
+2026-10-14 03:06:36,541 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:37,080 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:37,082 [INFO] [query:conv-48_q8] answer done in 39.0s (retrieve=31ms)
+2026-10-14 03:06:43,859 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:43,861 [INFO] [query:conv-48_q11] answer done in 14.0s (retrieve=33ms)
+2026-10-14 03:06:45,515 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:45,518 [INFO] [query:conv-48_q12] answer done in 9.0s (retrieve=39ms)
+2026-10-14 03:06:46,624 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:46,625 [INFO] [query:conv-48_q8] done in 48.6s — correct=True score=None
+2026-10-14 03:06:46,636 [INFO] [query:conv-48_q13] start — What places give Deborah peace?
+2026-10-14 03:06:46,656 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:50,815 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:50,818 [INFO] [query:conv-48_q12] done in 14.3s — correct=True score=None
+2026-10-14 03:06:50,846 [INFO] [query:conv-48_q14] start — What were Deborah's mother's hobbies?
+2026-10-14 03:06:50,879 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:06:51,060 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:06:51,062 [INFO] [query:conv-48_q11] done in 21.2s — correct=True score=None
+2026-10-14 03:06:51,074 [INFO] [query:conv-48_q15] start — What pets does Jolene have?
+2026-10-14 03:06:51,093 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:10,340 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:10,345 [INFO] [query:conv-48_q15] answer done in 19.3s (retrieve=23ms)
+2026-10-14 03:07:14,419 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:14,422 [INFO] [query:conv-48_q15] done in 23.3s — correct=True score=None
+2026-10-14 03:07:14,434 [INFO] [query:conv-48_q16] start — What are the names of Jolene's snakes?
+2026-10-14 03:07:14,454 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:15,131 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:15,133 [INFO] [query:conv-48_q14] answer done in 24.3s (retrieve=37ms)
+2026-10-14 03:07:16,360 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:16,365 [INFO] [query:conv-48_q0] answer done in 142.3s (retrieve=47ms)
+2026-10-14 03:07:23,463 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:23,465 [INFO] [query:conv-48_q13] answer done in 36.8s (retrieve=24ms)
+2026-10-14 03:07:24,411 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:24,414 [INFO] [query:conv-48_q0] done in 150.4s — correct=False score=None
+2026-10-14 03:07:24,431 [INFO] [query:conv-48_q17] start — When did Jolene buy her pet Seraphim?
+2026-10-14 03:07:24,457 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:30,417 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:30,418 [INFO] [query:conv-48_q13] done in 43.8s — correct=True score=None
+2026-10-14 03:07:30,431 [INFO] [query:conv-48_q18] start — In what country did Jolene buy snake Seraphim?
+2026-10-14 03:07:30,459 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:30,885 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:30,888 [INFO] [query:conv-48_q14] done in 40.0s — correct=False score=None
+2026-10-14 03:07:30,916 [INFO] [query:conv-48_q19] start — How many times has Jolene been to France?
+2026-10-14 03:07:30,941 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:38,650 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:38,653 [INFO] [query:conv-48_q16] answer done in 24.2s (retrieve=23ms)
+2026-10-14 03:07:42,657 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:42,659 [INFO] [query:conv-48_q18] answer done in 12.2s (retrieve=30ms)
+2026-10-14 03:07:43,109 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:43,110 [INFO] [query:conv-48_q16] done in 28.7s — correct=True score=None
+2026-10-14 03:07:43,122 [INFO] [query:conv-48_q20] start — Which games have Jolene and her partner played together?
+2026-10-14 03:07:43,147 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:49,828 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:49,830 [INFO] [query:conv-48_q18] done in 19.4s — correct=True score=None
+2026-10-14 03:07:49,841 [INFO] [query:conv-48_q21] start — When do Jolene and her partner plan to complete the game "Walking Dead"?
+2026-10-14 03:07:49,867 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:07:54,149 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:54,151 [INFO] [query:conv-48_q19] answer done in 23.2s (retrieve=27ms)
+2026-10-14 03:07:55,271 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:55,275 [INFO] [query:conv-48_q17] answer done in 30.8s (retrieve=29ms)
+2026-10-14 03:07:59,560 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:59,562 [INFO] [query:conv-48_q20] answer done in 16.4s (retrieve=30ms)
+2026-10-14 03:07:59,660 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:07:59,666 [INFO] [query:conv-48_q19] done in 28.8s — correct=True score=None
+2026-10-14 03:07:59,677 [INFO] [query:conv-48_q22] start — When did Deborah meet Anna?
+2026-10-14 03:07:59,700 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:03,044 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:03,047 [INFO] [query:conv-48_q17] done in 38.6s — correct=True score=None
+2026-10-14 03:08:03,067 [INFO] [query:conv-48_q23] start — Why did Jolene sometimes put off doing yoga?
+2026-10-14 03:08:03,097 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:05,468 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:05,470 [INFO] [query:conv-48_q20] done in 22.3s — correct=False score=None
+2026-10-14 03:08:05,478 [INFO] [query:conv-48_q24] start — What new yoga poses did Deborah try?
+2026-10-14 03:08:05,498 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:05,664 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:05,666 [INFO] [query:conv-48_q21] answer done in 15.8s (retrieve=29ms)
+2026-10-14 03:08:11,319 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:11,323 [INFO] [query:conv-48_q21] done in 21.5s — correct=True score=None
+2026-10-14 03:08:11,356 [INFO] [query:conv-48_q25] start — What are Jolene's favorite books?
+2026-10-14 03:08:11,377 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:14,040 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:14,042 [INFO] [query:conv-48_q22] answer done in 14.4s (retrieve=26ms)
+2026-10-14 03:08:20,776 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:20,779 [INFO] [query:conv-48_q22] done in 21.1s — correct=True score=None
+2026-10-14 03:08:20,797 [INFO] [query:conv-48_q26] start — Which book did Jolene read in January 2023?
+2026-10-14 03:08:20,818 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:25,440 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:25,441 [INFO] [query:conv-48_q24] answer done in 20.0s (retrieve=22ms)
+2026-10-14 03:08:25,489 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:25,492 [INFO] [query:conv-48_q23] answer done in 22.4s (retrieve=34ms)
+2026-10-14 03:08:34,652 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:34,658 [INFO] [query:conv-48_q26] answer done in 13.9s (retrieve=21ms)
+2026-10-14 03:08:36,721 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:36,727 [INFO] [query:conv-48_q23] done in 33.7s — correct=False score=None
+2026-10-14 03:08:36,765 [INFO] [query:conv-48_q27] start — When was Jolene in Bogota?
+2026-10-14 03:08:36,804 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:39,951 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:39,955 [INFO] [query:conv-48_q26] done in 19.2s — correct=True score=None
+2026-10-14 03:08:39,965 [INFO] [query:conv-48_q28] start — In what country was Jolene during summer 2022?
+2026-10-14 03:08:39,981 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:08:51,844 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:51,847 [INFO] [query:conv-48_q27] answer done in 15.1s (retrieve=42ms)
+2026-10-14 03:08:58,862 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:08:58,864 [INFO] [query:conv-48_q27] done in 22.1s — correct=True score=None
+2026-10-14 03:08:58,882 [INFO] [query:conv-48_q29] start — When did Jolene have a mini-retreat to reflect on her career?
+2026-10-14 03:08:58,915 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:09:13,549 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:09:13,551 [INFO] [query:conv-48_q29] answer done in 14.7s (retrieve=36ms)
+2026-10-14 03:09:19,108 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:09:19,110 [INFO] [query:conv-48_q29] done in 20.2s — correct=True score=None
+2026-10-14 03:09:19,123 [INFO] [query:conv-48_q30] start — When did Jolene have a dinner and drinks with her friends?
+2026-10-14 03:09:19,143 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:09:34,481 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:09:34,483 [INFO] [query:conv-48_q30] answer done in 15.4s (retrieve=22ms)
+2026-10-14 03:09:40,045 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:09:40,047 [INFO] [query:conv-48_q30] done in 20.9s — correct=True score=None
+2026-10-14 03:09:40,068 [INFO] [query:conv-48_q31] start — When was the last photo of Deborah and Karlie taken?
+2026-10-14 03:09:40,091 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:09:48,943 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:09:48,945 [INFO] [query:conv-48_q31] answer done in 8.9s (retrieve=25ms)
+2026-10-14 03:09:56,096 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:09:56,099 [INFO] [query:conv-48_q31] done in 16.0s — correct=True score=None
+2026-10-14 03:09:56,110 [INFO] [query:conv-48_q32] start — When was Deborah in Bali?
+2026-10-14 03:09:56,129 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:10:11,666 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:11,668 [INFO] [query:conv-48_q32] answer done in 15.6s (retrieve=20ms)
+2026-10-14 03:10:16,730 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:16,734 [INFO] [query:conv-48_q32] done in 20.6s — correct=True score=None
+2026-10-14 03:10:16,766 [INFO] [query:conv-48_q33] start — How long have Jolene and her partner been together?
+2026-10-14 03:10:16,790 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:10:32,645 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:32,646 [INFO] [query:conv-48_q25] answer done in 141.3s (retrieve=24ms)
+2026-10-14 03:10:33,374 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:33,376 [INFO] [query:conv-48_q33] answer done in 16.6s (retrieve=44ms)
+2026-10-14 03:10:40,627 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:40,629 [INFO] [query:conv-48_q33] done in 23.9s — correct=True score=None
+2026-10-14 03:10:40,644 [INFO] [query:conv-48_q34] start — Which year did Jolene and her partner start dating?
+2026-10-14 03:10:40,663 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:10:41,461 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:41,465 [INFO] [query:conv-48_q24] done in 156.0s — correct=False score=None
+2026-10-14 03:10:41,471 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:41,480 [INFO] [query:conv-48_q35] start — When did Deborah go for her first morning jog in a nearby park?
+2026-10-14 03:10:41,480 [INFO] [query:conv-48_q25] done in 150.1s — correct=True score=None
+2026-10-14 03:10:41,499 [INFO] [query:conv-48_q36] start — How old is Jolene?
+2026-10-14 03:10:41,508 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:10:41,523 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:10:52,458 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:52,461 [INFO] [query:conv-48_q35] answer done in 11.0s (retrieve=32ms)
+2026-10-14 03:10:56,811 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:56,813 [INFO] [query:conv-48_q36] answer done in 15.3s (retrieve=28ms)
+2026-10-14 03:10:57,521 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:10:57,531 [INFO] [query:conv-48_q34] answer done in 16.9s (retrieve=22ms)
+2026-10-14 03:11:01,384 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:01,386 [INFO] [query:conv-48_q35] done in 19.9s — correct=True score=None
+2026-10-14 03:11:01,396 [INFO] [query:conv-48_q37] start — When did Jolene take Seraphim to the park?
+2026-10-14 03:11:01,531 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:11:02,362 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:02,365 [INFO] [query:conv-48_q34] done in 21.7s — correct=True score=None
+2026-10-14 03:11:02,379 [INFO] [query:conv-48_q38] start — When did Deborah start the yoga class in the neighborhood?
+2026-10-14 03:11:02,401 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:11:03,692 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:03,694 [INFO] [query:conv-48_q36] done in 22.2s — correct=True score=None
+2026-10-14 03:11:03,707 [INFO] [query:conv-48_q39] start — What time management techniques do Deborah and Jolene use?
+2026-10-14 03:11:03,745 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:11:11,258 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:11,259 [INFO] [query:conv-48_q38] answer done in 8.9s (retrieve=24ms)
+2026-10-14 03:11:18,632 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:18,637 [INFO] [query:conv-48_q38] done in 16.3s — correct=False score=None
+2026-10-14 03:11:18,647 [INFO] [query:conv-48_q40] start — Does Deborah live close to the beach or the mountains?
+2026-10-14 03:11:18,666 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:11:25,287 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:25,297 [INFO] [query:conv-48_q37] answer done in 23.9s (retrieve=28ms)
+2026-10-14 03:11:37,530 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:37,531 [INFO] [query:conv-48_q37] done in 36.1s — correct=True score=None
+2026-10-14 03:11:37,549 [INFO] [query:conv-48_q41] start — What ways do Deborah and Jolene use to enhance their yoga practice?
+2026-10-14 03:11:37,568 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:11:50,217 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:50,218 [INFO] [query:conv-48_q39] answer done in 46.5s (retrieve=45ms)
+2026-10-14 03:11:56,335 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:56,337 [INFO] [query:conv-48_q40] answer done in 37.7s (retrieve=22ms)
+2026-10-14 03:11:58,522 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:11:58,525 [INFO] [query:conv-48_q41] answer done in 21.0s (retrieve=27ms)
+2026-10-14 03:12:01,411 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:01,415 [INFO] [query:conv-48_q39] done in 57.7s — correct=True score=None
+2026-10-14 03:12:01,442 [INFO] [query:conv-48_q42] start — What music pieces does Deborah listen to during her yoga practice?
+2026-10-14 03:12:01,507 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:12:01,715 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:01,717 [INFO] [query:conv-48_q40] done in 43.1s — correct=True score=None
+2026-10-14 03:12:01,733 [INFO] [query:conv-48_q43] start — When did Deborah go for a bicycle ride with Anna?
+2026-10-14 03:12:01,757 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:12:03,050 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:03,053 [INFO] [query:conv-48_q41] done in 25.5s — correct=True score=None
+2026-10-14 03:12:03,078 [INFO] [query:conv-48_q44] start — When did Deborah go to an art show with Anna?
+2026-10-14 03:12:03,112 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:12:13,231 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:13,234 [INFO] [query:conv-48_q42] answer done in 11.8s (retrieve=71ms)
+2026-10-14 03:12:16,598 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:16,600 [INFO] [query:conv-48_q43] answer done in 14.9s (retrieve=26ms)
+2026-10-14 03:12:19,357 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:19,360 [INFO] [query:conv-48_q42] done in 17.9s — correct=True score=None
+2026-10-14 03:12:19,376 [INFO] [query:conv-48_q45] start — When did Jolene finish her robotics project?
+2026-10-14 03:12:19,404 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:12:22,964 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:22,975 [INFO] [query:conv-48_q44] answer done in 19.9s (retrieve=35ms)
+2026-10-14 03:12:26,022 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:26,025 [INFO] [query:conv-48_q43] done in 24.3s — correct=False score=None
+2026-10-14 03:12:26,047 [INFO] [query:conv-48_q46] start — How long did Jolene work on the robotics project given to her by her Professor?
+2026-10-14 03:12:26,077 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:12:45,794 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:45,805 [INFO] [query:conv-48_q45] answer done in 26.4s (retrieve=34ms)
+2026-10-14 03:12:47,712 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:47,717 [INFO] [query:conv-48_q46] answer done in 21.7s (retrieve=33ms)
+2026-10-14 03:12:55,587 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:55,589 [INFO] [query:conv-48_q46] done in 29.5s — correct=False score=None
+2026-10-14 03:12:55,610 [INFO] [query:conv-48_q47] start — When did Jolene do yoga at Talkeetna?
+2026-10-14 03:12:55,635 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:12:55,924 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:12:55,926 [INFO] [query:conv-48_q45] done in 36.6s — correct=False score=None
+2026-10-14 03:12:55,939 [INFO] [query:conv-48_q48] start — Which US state did Jolene visit during her internship?
+2026-10-14 03:12:55,970 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:13:02,993 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:02,996 [INFO] [query:conv-48_q48] answer done in 7.1s (retrieve=33ms)
+2026-10-14 03:13:06,186 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:06,189 [INFO] [query:conv-48_q47] answer done in 10.6s (retrieve=27ms)
+2026-10-14 03:13:07,336 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:07,338 [INFO] [query:conv-48_q48] done in 11.4s — correct=True score=None
+2026-10-14 03:13:07,365 [INFO] [query:conv-48_q49] start — How long has Jolene been doing yoga and meditation?
+2026-10-14 03:13:07,393 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:13:15,580 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:15,582 [INFO] [query:conv-48_q47] done in 20.0s — correct=True score=None
+2026-10-14 03:13:15,590 [INFO] [query:conv-48_q50] start — Which year did Jolene start practicing yoga?
+2026-10-14 03:13:15,609 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:13:27,524 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:27,527 [INFO] [query:conv-48_q49] answer done in 20.2s (retrieve=31ms)
+2026-10-14 03:13:35,404 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:35,408 [INFO] [query:conv-48_q49] done in 28.0s — correct=True score=None
+2026-10-14 03:13:35,452 [INFO] [query:conv-48_q51] start — When did Jolene buy a new aquarium for Seraphim?
+2026-10-14 03:13:35,486 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:13:47,493 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:47,495 [INFO] [query:conv-48_q50] answer done in 31.9s (retrieve=21ms)
+2026-10-14 03:13:50,588 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:50,589 [INFO] [query:conv-48_q50] done in 35.0s — correct=True score=None
+2026-10-14 03:13:50,600 [INFO] [query:conv-48_q52] start — When did Jolene lose a lot of progress in her work?
+2026-10-14 03:13:50,622 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:13:56,330 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:13:56,334 [INFO] [query:conv-48_q51] answer done in 20.9s (retrieve=60ms)
+2026-10-14 03:14:02,671 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:14:02,674 [INFO] [query:conv-48_q51] done in 27.2s — correct=True score=None
+2026-10-14 03:14:02,692 [INFO] [query:conv-48_q53] start — When did Jolene adopt her snake Susie?
+2026-10-14 03:14:02,723 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:16:12,953 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:12,955 [INFO] [query:conv-48_q52] answer done in 142.4s (retrieve=25ms)
+2026-10-14 03:16:21,284 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:21,287 [INFO] [query:conv-48_q52] done in 150.7s — correct=True score=None
+2026-10-14 03:16:21,310 [INFO] [query:conv-48_q54] start — Which pet did Jolene adopt first - Susie or Seraphim?
+2026-10-14 03:16:21,337 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:16:26,213 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:26,215 [INFO] [query:conv-48_q53] answer done in 143.5s (retrieve=33ms)
+2026-10-14 03:16:31,624 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:31,626 [INFO] [query:conv-48_q53] done in 148.9s — correct=True score=None
+2026-10-14 03:16:31,652 [INFO] [query:conv-48_q55] start — Which pet did Jolene adopt more recently - Susie or Seraphim?
+2026-10-14 03:16:31,681 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:16:40,084 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 502 Bad Gateway"
+2026-10-14 03:16:40,085 [INFO] Retrying request to /chat/completions in 0.448318 seconds
+2026-10-14 03:16:41,130 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:41,135 [INFO] [query:conv-48_q54] answer done in 19.8s (retrieve=29ms)
+2026-10-14 03:16:48,080 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:48,084 [INFO] [query:conv-48_q55] answer done in 16.4s (retrieve=34ms)
+2026-10-14 03:16:48,513 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:48,515 [INFO] [query:conv-48_q54] done in 27.2s — correct=True score=None
+2026-10-14 03:16:48,529 [INFO] [query:conv-48_q56] start — When did Deborah lead a meditation session during the sunset?
+2026-10-14 03:16:48,558 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:16:54,723 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:16:54,727 [INFO] [query:conv-48_q55] done in 23.1s — correct=True score=None
+2026-10-14 03:16:54,767 [INFO] [query:conv-48_q57] start — When did Jolene gift her partner a new console?
+2026-10-14 03:16:54,790 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:05,893 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:05,896 [INFO] [query:conv-48_q56] answer done in 17.4s (retrieve=31ms)
+2026-10-14 03:17:06,266 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:06,274 [INFO] [query:conv-48_q57] answer done in 11.5s (retrieve=26ms)
+2026-10-14 03:17:07,365 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:07,368 [INFO] [query:conv-48_q28] answer done in 507.4s (retrieve=17ms)
+2026-10-14 03:17:16,504 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:16,506 [INFO] [query:conv-48_q57] done in 21.7s — correct=True score=None
+2026-10-14 03:17:16,519 [INFO] [query:conv-48_q58] start — What games does Jolene recommend for Deborah?
+2026-10-14 03:17:16,546 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:16,871 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:16,873 [INFO] [query:conv-48_q56] done in 28.3s — correct=True score=None
+2026-10-14 03:17:16,891 [INFO] [query:conv-48_q59] start — What do Deborah and her husband do together?
+2026-10-14 03:17:16,915 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:19,490 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:19,491 [INFO] [query:conv-48_q28] done in 519.5s — correct=False score=None
+2026-10-14 03:17:19,504 [INFO] [query:conv-48_q60] start — When did Deborah go to a yoga retreat near her mom's place?
+2026-10-14 03:17:19,525 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:31,107 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:31,109 [INFO] [query:conv-48_q60] answer done in 11.6s (retrieve=34ms)
+2026-10-14 03:17:34,528 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:34,529 [INFO] [query:conv-48_q59] answer done in 17.6s (retrieve=26ms)
+2026-10-14 03:17:35,083 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:35,089 [INFO] [query:conv-48_q58] answer done in 18.6s (retrieve=29ms)
+2026-10-14 03:17:38,439 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:38,441 [INFO] [query:conv-48_q60] done in 18.9s — correct=True score=None
+2026-10-14 03:17:38,452 [INFO] [query:conv-48_q61] start — What projects is Jolene planning for next year?
+2026-10-14 03:17:38,500 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:43,351 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:43,360 [INFO] [query:conv-48_q58] done in 26.8s — correct=False score=None
+2026-10-14 03:17:43,369 [INFO] [query:conv-48_q62] start — Where did Deborah get her cats?
+2026-10-14 03:17:43,387 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:51,682 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:51,684 [INFO] [query:conv-48_q59] done in 34.8s — correct=True score=None
+2026-10-14 03:17:51,701 [INFO] [query:conv-48_q63] start — How old are Deborah's cats?
+2026-10-14 03:17:51,727 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:17:58,624 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:17:58,627 [INFO] [query:conv-48_q62] answer done in 15.3s (retrieve=22ms)
+2026-10-14 03:18:05,687 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:05,690 [INFO] [query:conv-48_q63] answer done in 14.0s (retrieve=27ms)
+2026-10-14 03:18:08,328 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:08,331 [INFO] [query:conv-48_q62] done in 25.0s — correct=True score=None
+2026-10-14 03:18:08,349 [INFO] [query:conv-48_q64] start — Does Deborah like cats?
+2026-10-14 03:18:08,393 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:18:08,735 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:08,736 [INFO] [query:conv-48_q61] answer done in 30.3s (retrieve=54ms)
+2026-10-14 03:18:12,422 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:12,425 [INFO] [query:conv-48_q63] done in 20.7s — correct=True score=None
+2026-10-14 03:18:12,440 [INFO] [query:conv-48_q65] start — Which country was Jolene located in during the last week of August 2023?
+2026-10-14 03:18:12,462 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:18:14,692 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:14,694 [INFO] [query:conv-48_q61] done in 36.2s — correct=True score=None
+2026-10-14 03:18:14,715 [INFO] [query:conv-48_q66] start — When did Jolene and her partner return home from Rio de Janeiro?
+2026-10-14 03:18:14,735 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:18:18,376 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:18,390 [INFO] [query:conv-48_q64] answer done in 10.0s (retrieve=50ms)
+2026-10-14 03:18:25,200 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:25,207 [INFO] [query:conv-48_q66] answer done in 10.5s (retrieve=21ms)
+2026-10-14 03:18:28,062 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:28,065 [INFO] [query:conv-48_q64] done in 19.7s — correct=True score=None
+2026-10-14 03:18:28,081 [INFO] [query:conv-48_q67] start — What was Jolene doing with her partner in Rio de Janeiro?
+2026-10-14 03:18:28,098 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:18:32,549 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:32,555 [INFO] [query:conv-48_q66] done in 17.8s — correct=True score=None
+2026-10-14 03:18:32,582 [INFO] [query:conv-48_q68] start — When did Deborah visit Brazil?
+2026-10-14 03:18:32,620 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:18:36,460 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:36,464 [INFO] [query:conv-48_q65] answer done in 24.0s (retrieve=23ms)
+2026-10-14 03:18:40,653 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:40,656 [INFO] [query:conv-48_q65] done in 28.2s — correct=True score=None
+2026-10-14 03:18:40,672 [INFO] [query:conv-48_q69] start — Have Deborah and Jolene been to Rio de Janeiro?
+2026-10-14 03:18:40,691 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:18:53,022 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:53,023 [INFO] [query:conv-48_q67] answer done in 24.9s (retrieve=19ms)
+2026-10-14 03:18:59,749 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:18:59,751 [INFO] [query:conv-48_q69] answer done in 19.1s (retrieve=21ms)
+2026-10-14 03:19:00,249 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:00,251 [INFO] [query:conv-48_q67] done in 32.2s — correct=True score=None
+2026-10-14 03:19:00,268 [INFO] [query:conv-48_q70] start — Is the friend who wrote Deborah the motivational quote no longer alive?
+2026-10-14 03:19:00,289 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:19:06,508 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:06,510 [INFO] [query:conv-48_q69] done in 25.8s — correct=True score=None
+2026-10-14 03:19:06,523 [INFO] [query:conv-48_q71] start — When did Deborah go to a community meetup?
+2026-10-14 03:19:06,548 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:19:12,535 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:12,537 [INFO] [query:conv-48_q70] answer done in 12.3s (retrieve=24ms)
+2026-10-14 03:19:23,464 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:23,468 [INFO] [query:conv-48_q70] done in 23.2s — correct=True score=None
+2026-10-14 03:19:23,487 [INFO] [query:conv-48_q72] start — When did Jolene's parents give her first console?
+2026-10-14 03:19:23,515 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:19:24,800 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:24,803 [INFO] [query:conv-48_q71] answer done in 18.3s (retrieve=29ms)
+2026-10-14 03:19:35,367 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:35,373 [INFO] [query:conv-48_q71] done in 28.9s — correct=False score=None
+2026-10-14 03:19:35,398 [INFO] [query:conv-48_q73] start — Did Jolene teach herself how to play the console?
+2026-10-14 03:19:35,443 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:19:49,562 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:49,564 [INFO] [query:conv-48_q73] answer done in 14.2s (retrieve=51ms)
+2026-10-14 03:19:58,230 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:19:58,235 [INFO] [query:conv-48_q73] done in 22.8s — correct=True score=None
+2026-10-14 03:19:58,249 [INFO] [query:conv-48_q74] start — What do Deborah and Jolene plan to try when they meet in a new cafe?
+2026-10-14 03:19:58,275 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:20:01,138 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:01,139 [INFO] [query:conv-48_q72] answer done in 37.7s (retrieve=31ms)
+2026-10-14 03:20:08,594 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:08,596 [INFO] [query:conv-48_q72] done in 45.1s — correct=True score=None
+2026-10-14 03:20:08,606 [INFO] [query:conv-48_q75] start — What card game is Deborah talking about?
+2026-10-14 03:20:08,628 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:20:10,536 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:10,541 [INFO] [query:conv-48_q74] answer done in 12.3s (retrieve=56ms)
+2026-10-14 03:20:23,077 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 502 Bad Gateway"
+2026-10-14 03:20:23,078 [INFO] Retrying request to /chat/completions in 0.439418 seconds
+2026-10-14 03:20:29,362 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:29,366 [INFO] [query:conv-48_q75] answer done in 20.8s (retrieve=26ms)
+2026-10-14 03:20:41,448 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:41,450 [INFO] [query:conv-48_q75] done in 32.8s — correct=True score=None
+2026-10-14 03:20:41,470 [INFO] [query:conv-48_q76] start — When did Jolene and her partner try scuba diving lessons?
+2026-10-14 03:20:41,934 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:20:46,774 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:46,776 [INFO] [query:conv-48_q44] done in 523.7s — correct=False score=None
+2026-10-14 03:20:46,793 [INFO] [query:conv-48_q77] start — Where did Jolene and her partner find a cool diving spot?
+2026-10-14 03:20:46,816 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:20:54,166 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:20:54,169 [INFO] [query:conv-48_q76] answer done in 12.7s (retrieve=24ms)
+2026-10-14 03:21:00,572 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:00,575 [INFO] [query:conv-48_q76] done in 19.1s — correct=True score=None
+2026-10-14 03:21:00,591 [INFO] [query:conv-48_q78] start — Where did Jolene and her partner spend most of September 2023?
+2026-10-14 03:21:00,615 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:21:02,261 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:02,264 [INFO] [query:conv-48_q77] answer done in 15.5s (retrieve=24ms)
+2026-10-14 03:21:04,694 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:04,696 [INFO] [query:conv-48_q68] answer done in 152.1s (retrieve=42ms)
+2026-10-14 03:21:12,558 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:12,562 [INFO] [query:conv-48_q77] done in 25.8s — correct=False score=None
+2026-10-14 03:21:12,597 [INFO] [query:conv-48_q79] start — Has Deborah tried surfing?
+2026-10-14 03:21:12,619 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:21:17,288 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:17,290 [INFO] [query:conv-48_q78] answer done in 16.7s (retrieve=20ms)
+2026-10-14 03:21:22,797 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:22,798 [INFO] [query:conv-48_q68] done in 170.2s — correct=False score=None
+2026-10-14 03:21:22,814 [INFO] [query:conv-48_q80] start — Has Jolene tried surfing?
+2026-10-14 03:21:22,838 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:21:23,356 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:23,360 [INFO] [query:conv-48_q78] done in 22.8s — correct=False score=None
+2026-10-14 03:21:23,399 [INFO] [query:conv-48_q81] start — When did the Deboran and Jolene agree to go surfing?
+2026-10-14 03:21:23,431 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:21:31,573 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:31,576 [INFO] [query:conv-48_q79] answer done in 19.0s (retrieve=25ms)
+2026-10-14 03:21:38,420 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:38,426 [INFO] [query:conv-48_q80] answer done in 15.6s (retrieve=28ms)
+2026-10-14 03:21:39,406 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:39,407 [INFO] [query:conv-48_q79] done in 26.8s — correct=True score=None
+2026-10-14 03:21:39,423 [INFO] [query:conv-48_q82] start — Which locations does Deborah practice her yoga at?
+2026-10-14 03:21:39,483 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:21:45,535 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:21:45,538 [INFO] [query:conv-48_q80] done in 22.7s — correct=True score=None
+2026-10-14 03:21:45,571 [INFO] [query:conv-48_q83] start — What kind of professional activities does Jolene participate in to gain more exp
+2026-10-14 03:21:45,609 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:22:00,276 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:22:00,281 [INFO] [query:conv-48_q83] answer done in 14.7s (retrieve=41ms)
+2026-10-14 03:22:19,944 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:22:19,952 [INFO] [query:conv-48_q82] answer done in 40.5s (retrieve=69ms)
+2026-10-14 03:22:27,522 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:22:27,525 [INFO] [query:conv-48_q82] done in 48.1s — correct=True score=None
+2026-10-14 03:22:27,540 [INFO] [query:conv-48_q84] start — What kind of engineering projects has Jolene worked on?
+2026-10-14 03:22:27,567 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:22:54,411 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:22:54,414 [INFO] [query:conv-48_q84] answer done in 26.9s (retrieve=34ms)
+2026-10-14 03:24:18,460 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:18,462 [INFO] [query:conv-48_q84] done in 110.9s — correct=True score=None
+2026-10-14 03:24:18,484 [INFO] [query:conv-48_q85] start — Which community activities have Deborah and Anna participated in?
+2026-10-14 03:24:18,545 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:24:22,085 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:22,086 [INFO] [query:conv-48_q83] done in 156.5s — correct=False score=None
+2026-10-14 03:24:22,096 [INFO] [query:conv-48_q86] start — What gifts has Deborah received?
+2026-10-14 03:24:22,117 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:24:39,242 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:39,245 [INFO] [query:conv-48_q86] answer done in 17.1s (retrieve=22ms)
+2026-10-14 03:24:40,287 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:40,289 [INFO] [query:conv-48_q81] answer done in 196.9s (retrieve=34ms)
+2026-10-14 03:24:43,047 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:43,052 [INFO] [query:conv-48_q74] done in 284.8s — correct=True score=None
+2026-10-14 03:24:43,070 [INFO] [query:conv-48_q87] start — Which countries has Deborah traveled to?
+2026-10-14 03:24:43,107 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:24:44,506 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:44,509 [INFO] [query:conv-48_q85] answer done in 26.0s (retrieve=66ms)
+2026-10-14 03:24:49,144 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:49,146 [INFO] [query:conv-48_q81] done in 205.7s — correct=True score=None
+2026-10-14 03:24:49,164 [INFO] [query:conv-48_q88] start — What activities does Deborah pursue besides practicing and teaching yoga?
+2026-10-14 03:24:49,184 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:24:49,808 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:49,810 [INFO] [query:conv-48_q86] done in 27.7s — correct=False score=None
+2026-10-14 03:24:49,820 [INFO] [query:conv-48_q89] start — What are the names of Jolene's snakes?
+2026-10-14 03:24:49,842 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:24:53,332 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:24:53,339 [INFO] [query:conv-48_q85] done in 34.9s — correct=True score=None
+2026-10-14 03:24:53,367 [INFO] [query:conv-48_q90] start — What are Jolene's favorite books?
+2026-10-14 03:24:53,401 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:25:07,188 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:07,193 [INFO] [query:conv-48_q90] answer done in 13.8s (retrieve=38ms)
+2026-10-14 03:25:07,347 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:07,352 [INFO] [query:conv-48_q89] answer done in 17.5s (retrieve=27ms)
+2026-10-14 03:25:09,300 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:09,309 [INFO] [query:conv-48_q87] answer done in 26.2s (retrieve=39ms)
+2026-10-14 03:25:12,580 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:12,583 [INFO] [query:conv-48_q89] done in 22.8s — correct=True score=None
+2026-10-14 03:25:12,615 [INFO] [query:conv-48_q91] start — What music pieces does Deborah listen to during her yoga practice?
+2026-10-14 03:25:12,680 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:25:12,739 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:12,743 [INFO] [query:conv-48_q90] done in 19.4s — correct=True score=None
+2026-10-14 03:25:12,774 [INFO] [query:conv-48_q92] start — What games does Jolene recommend for Deborah?
+2026-10-14 03:25:12,828 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:25:16,676 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:16,678 [INFO] [query:conv-48_q87] done in 33.6s — correct=False score=None
+2026-10-14 03:25:16,705 [INFO] [query:conv-48_q93] start — What projects is Jolene planning for next year?
+2026-10-14 03:25:16,751 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:25:18,186 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:18,194 [INFO] [query:conv-48_q88] answer done in 29.0s (retrieve=23ms)
+2026-10-14 03:25:25,062 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:25,065 [INFO] [query:conv-48_q91] answer done in 12.5s (retrieve=72ms)
+2026-10-14 03:25:28,315 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:28,319 [INFO] [query:conv-48_q92] answer done in 15.5s (retrieve=58ms)
+2026-10-14 03:25:32,202 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:32,209 [INFO] [query:conv-48_q91] done in 19.6s — correct=True score=None
+2026-10-14 03:25:32,225 [INFO] [query:conv-48_q94] start — Where did Deborah get her cats?
+2026-10-14 03:25:32,257 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:25:42,727 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:42,729 [INFO] [query:conv-48_q94] answer done in 10.5s (retrieve=41ms)
+2026-10-14 03:25:46,477 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:46,480 [INFO] [query:conv-48_q93] answer done in 29.8s (retrieve=52ms)
+2026-10-14 03:25:48,398 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:48,401 [INFO] [query:conv-48_q94] done in 16.2s — correct=True score=None
+2026-10-14 03:25:48,444 [INFO] [query:conv-48_q95] start — How old are Deborah's cats?
+2026-10-14 03:25:48,498 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:25:55,993 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:25:55,994 [INFO] [query:conv-48_q93] done in 39.3s — correct=False score=None
+2026-10-14 03:25:56,004 [INFO] [query:conv-48_q96] start — What was Jolene doing with her partner in Rio de Janeiro?
+2026-10-14 03:25:56,033 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:26:04,518 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:04,522 [INFO] [query:conv-48_q95] answer done in 16.1s (retrieve=68ms)
+2026-10-14 03:26:07,703 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:07,705 [INFO] [query:conv-48_q95] done in 19.3s — correct=True score=None
+2026-10-14 03:26:07,718 [INFO] [query:conv-48_q97] start — Have Deborah and Jolene been to Rio de Janeiro?
+2026-10-14 03:26:07,783 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:26:09,264 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:09,266 [INFO] [query:conv-48_q96] answer done in 13.3s (retrieve=31ms)
+2026-10-14 03:26:15,797 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:15,800 [INFO] [query:conv-48_q96] done in 19.8s — correct=True score=None
+2026-10-14 03:26:15,816 [INFO] [query:conv-48_q98] start — When did Jolene's parents give her first console?
+2026-10-14 03:26:15,857 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:26:23,724 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:23,726 [INFO] [query:conv-48_q97] answer done in 16.0s (retrieve=68ms)
+2026-10-14 03:26:30,297 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:30,300 [INFO] [query:conv-48_q97] done in 22.6s — correct=True score=None
+2026-10-14 03:26:30,311 [INFO] [query:conv-48_q99] start — What do Deborah and Jolene plan to try when they meet in a new cafe?
+2026-10-14 03:26:30,356 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:26:42,854 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:26:42,857 [INFO] [query:conv-48_q99] answer done in 12.5s (retrieve=45ms)
+2026-10-14 03:27:05,258 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:27:05,264 [INFO] [query:conv-48_q98] answer done in 49.4s (retrieve=43ms)
+2026-10-14 03:27:10,401 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:27:10,405 [INFO] [query:conv-48_q98] done in 54.6s — correct=True score=None
+2026-10-14 03:27:10,431 [INFO] [query:conv-48_q100] start — What project did Jolene finish last week before 23 January, 2023?
+2026-10-14 03:27:10,460 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:27:27,411 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:27:27,413 [INFO] [query:conv-48_q100] answer done in 17.0s (retrieve=36ms)
+2026-10-14 03:27:35,976 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:27:35,977 [INFO] [query:conv-48_q100] done in 25.5s — correct=True score=None
+2026-10-14 03:27:35,986 [INFO] [query:conv-48_q101] start — When did Jolene buy her pet snake?
+2026-10-14 03:27:36,008 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:27:47,171 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:27:47,176 [INFO] [query:conv-48_q92] done in 154.4s — correct=False score=None
+2026-10-14 03:27:47,207 [INFO] [query:conv-48_q102] start — What project was Jolene working on as of 1 February, 2023?
+2026-10-14 03:27:47,244 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:28:00,873 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:28:00,875 [INFO] [query:conv-48_q102] answer done in 13.7s (retrieve=41ms)
+2026-10-14 03:28:07,795 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:28:07,797 [INFO] [query:conv-48_q102] done in 20.6s — correct=True score=None
+2026-10-14 03:28:07,810 [INFO] [query:conv-48_q103] start — Where did Deborah meet her new neighbor Anna?
+2026-10-14 03:28:07,830 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:28:17,798 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:28:17,800 [INFO] [query:conv-48_q103] answer done in 10.0s (retrieve=22ms)
+2026-10-14 03:28:24,416 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:28:24,418 [INFO] [query:conv-48_q103] done in 16.6s — correct=True score=None
+2026-10-14 03:28:24,442 [INFO] [query:conv-48_q104] start — What activity did Jolene and her partner plan to do together instead of resuming
+2026-10-14 03:28:24,470 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:28:34,911 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:28:34,913 [INFO] [query:conv-48_q104] answer done in 10.5s (retrieve=30ms)
+2026-10-14 03:28:41,759 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:28:41,761 [INFO] [query:conv-48_q104] done in 17.3s — correct=True score=None
+2026-10-14 03:28:41,776 [INFO] [query:conv-48_q105] start — What milestone did Jolene achieve recently on 4 February, 2023?
+2026-10-14 03:28:41,802 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:31:06,659 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:31:06,665 [INFO] [query:conv-48_q105] answer done in 144.9s (retrieve=29ms)
+2026-10-14 03:31:11,686 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:31:11,688 [INFO] [query:conv-48_q105] done in 149.9s — correct=True score=None
+2026-10-14 03:31:11,713 [INFO] [query:conv-48_q106] start — What is Jolene's favorite book which she mentioned on 4 February, 2023?
+2026-10-14 03:31:11,755 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:31:23,922 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:31:23,925 [INFO] [query:conv-48_q106] answer done in 12.2s (retrieve=48ms)
+2026-10-14 03:31:29,681 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:31:29,689 [INFO] [query:conv-48_q106] done in 18.0s — correct=True score=None
+2026-10-14 03:31:29,736 [INFO] [query:conv-48_q107] start — What does Deborah bring with her whenever she comes to reflect on her mom?
+2026-10-14 03:31:29,822 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:31:43,409 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:31:43,425 [INFO] [query:conv-48_q107] answer done in 13.7s (retrieve=87ms)
+2026-10-14 03:31:47,824 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:31:47,836 [INFO] [query:conv-48_q107] done in 18.1s — correct=True score=None
+2026-10-14 03:31:47,899 [INFO] [query:conv-48_q108] start — What new outlook did Jolene gain after her mini retreat on 9 February, 2023?
+2026-10-14 03:31:47,977 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:00,713 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:00,718 [INFO] [query:conv-48_q108] answer done in 12.8s (retrieve=86ms)
+2026-10-14 03:32:09,555 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:09,560 [INFO] [query:conv-48_q88] done in 440.4s — correct=True score=None
+2026-10-14 03:32:09,620 [INFO] [query:conv-48_q109] start — What cool stuff did Jolene accomplish at the retreat on 9 February, 2023?
+2026-10-14 03:32:09,714 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:10,759 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:10,766 [INFO] [query:conv-48_q108] done in 22.9s — correct=False score=None
+2026-10-14 03:32:10,779 [INFO] [query:conv-48_q110] start — What idea did Jolene have to help underprivileged kids learn about STEM subjects
+2026-10-14 03:32:10,811 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:23,389 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:23,392 [INFO] [query:conv-48_q101] answer done in 287.4s (retrieve=24ms)
+2026-10-14 03:32:27,557 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:27,564 [INFO] [query:conv-48_q110] answer done in 16.8s (retrieve=42ms)
+2026-10-14 03:32:32,577 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:32,582 [INFO] [query:conv-48_q101] done in 296.6s — correct=True score=None
+2026-10-14 03:32:32,607 [INFO] [query:conv-48_q111] start — How does Jolene plan to involve local engineers in her idea of teaching STEM to 
+2026-10-14 03:32:32,651 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:34,611 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:34,614 [INFO] [query:conv-48_q110] done in 23.8s — correct=True score=None
+2026-10-14 03:32:34,635 [INFO] [query:conv-48_q112] start — What gave Deborah peace in the garden she visited?
+2026-10-14 03:32:34,661 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:36,219 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:36,226 [INFO] [query:conv-48_q109] answer done in 26.6s (retrieve=101ms)
+2026-10-14 03:32:42,295 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:42,296 [INFO] [query:conv-48_q109] done in 32.7s — correct=True score=None
+2026-10-14 03:32:42,309 [INFO] [query:conv-48_q113] start — Why did Deborah spend time in the garden?
+2026-10-14 03:32:42,344 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:49,615 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:49,623 [INFO] [query:conv-48_q112] answer done in 15.0s (retrieve=30ms)
+2026-10-14 03:32:50,577 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:50,582 [INFO] [query:conv-48_q111] answer done in 18.0s (retrieve=68ms)
+2026-10-14 03:32:51,539 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:51,541 [INFO] [query:conv-48_q113] answer done in 9.2s (retrieve=38ms)
+2026-10-14 03:32:55,072 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:55,074 [INFO] [query:conv-48_q111] done in 22.5s — correct=True score=None
+2026-10-14 03:32:55,087 [INFO] [query:conv-48_q114] start — How did Jolene and her partner initially meet?
+2026-10-14 03:32:55,121 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:55,344 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:55,346 [INFO] [query:conv-48_q112] done in 20.7s — correct=True score=None
+2026-10-14 03:32:55,389 [INFO] [query:conv-48_q115] start — What activity does Deborah incorporate into her daily routine after going for a 
+2026-10-14 03:32:55,444 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:32:57,449 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:32:57,455 [INFO] [query:conv-48_q113] done in 15.1s — correct=True score=None
+2026-10-14 03:32:57,488 [INFO] [query:conv-48_q116] start — According to Jolene, what does exercise help her to feel?
+2026-10-14 03:32:57,541 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:04,351 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:04,354 [INFO] [query:conv-48_q114] answer done in 9.3s (retrieve=39ms)
+2026-10-14 03:33:10,005 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:10,016 [INFO] [query:conv-48_q116] answer done in 12.5s (retrieve=78ms)
+2026-10-14 03:33:10,285 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:10,289 [INFO] [query:conv-48_q114] done in 15.2s — correct=True score=None
+2026-10-14 03:33:10,314 [INFO] [query:conv-48_q117] start — What did Deb share a photo of, which brought a smile to Jolene's face?
+2026-10-14 03:33:10,349 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:20,266 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:20,268 [INFO] [query:conv-48_q116] done in 22.8s — correct=False score=None
+2026-10-14 03:33:20,304 [INFO] [query:conv-48_q118] start — What is one of Jolene's favorite dishes?
+2026-10-14 03:33:20,339 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:30,093 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:30,095 [INFO] [query:conv-48_q118] answer done in 9.8s (retrieve=42ms)
+2026-10-14 03:33:34,610 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:34,613 [INFO] [query:conv-48_q117] answer done in 24.3s (retrieve=36ms)
+2026-10-14 03:33:36,607 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:36,610 [INFO] [query:conv-48_q99] done in 426.3s — correct=False score=None
+2026-10-14 03:33:36,626 [INFO] [query:conv-48_q119] start — What picture did Jolene share related to feeling overwhelmed?
+2026-10-14 03:33:36,653 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:37,689 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:37,698 [INFO] [query:conv-48_q118] done in 17.4s — correct=True score=None
+2026-10-14 03:33:37,734 [INFO] [query:conv-48_q120] start — What did Jolene and Deb discuss as a helpful strategy for studying and time mana
+2026-10-14 03:33:37,758 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:43,615 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:43,617 [INFO] [query:conv-48_q117] done in 33.3s — correct=True score=None
+2026-10-14 03:33:43,638 [INFO] [query:conv-48_q121] start — What did Jolene ask Deb to help with on 13 March, 2023?
+2026-10-14 03:33:43,664 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:49,113 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:49,115 [INFO] [query:conv-48_q120] answer done in 11.4s (retrieve=36ms)
+2026-10-14 03:33:52,743 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:52,746 [INFO] [query:conv-48_q119] answer done in 16.1s (retrieve=103ms)
+2026-10-14 03:33:56,641 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:56,644 [INFO] [query:conv-48_q120] done in 18.9s — correct=True score=None
+2026-10-14 03:33:56,657 [INFO] [query:conv-48_q122] start — What method does Deb suggest Jolene to try for organizing tasks based on importa
+2026-10-14 03:33:56,686 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:56,862 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:56,864 [INFO] [query:conv-48_q119] done in 20.2s — correct=True score=None
+2026-10-14 03:33:56,871 [INFO] [query:conv-48_q123] start — What did Jolene and Anna discuss while watching the sunset by the sea?
+2026-10-14 03:33:56,895 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:33:59,011 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:33:59,014 [INFO] [query:conv-48_q121] answer done in 15.4s (retrieve=30ms)
+2026-10-14 03:34:07,009 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:07,012 [INFO] [query:conv-48_q121] done in 23.4s — correct=True score=None
+2026-10-14 03:34:07,028 [INFO] [query:conv-48_q124] start — How does Jolene plan to pursue her dream of learning to surf?
+2026-10-14 03:34:07,052 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:34:10,143 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:10,144 [INFO] [query:conv-48_q122] answer done in 13.5s (retrieve=31ms)
+2026-10-14 03:34:11,386 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:11,389 [INFO] [query:conv-48_q123] answer done in 14.5s (retrieve=27ms)
+2026-10-14 03:34:16,231 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:16,234 [INFO] [query:conv-48_q122] done in 19.6s — correct=True score=None
+2026-10-14 03:34:16,249 [INFO] [query:conv-48_q125] start — What did Deborah buy to enhance her yoga practice besides the props?
+2026-10-14 03:34:16,269 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:34:27,278 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:27,282 [INFO] [query:conv-48_q125] answer done in 11.0s (retrieve=22ms)
+2026-10-14 03:34:31,390 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:31,392 [INFO] [query:conv-48_q124] answer done in 24.4s (retrieve=26ms)
+2026-10-14 03:34:32,393 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:32,395 [INFO] [query:conv-48_q125] done in 16.1s — correct=True score=None
+2026-10-14 03:34:32,408 [INFO] [query:conv-48_q126] start — What type of music does Deborah find helpful during her yoga practice?
+2026-10-14 03:34:32,432 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"
+2026-10-14 03:34:32,621 [INFO] HTTP Request: POST http://127.0.0.1:20199/v1/chat/completions "HTTP/1.0 200 OK"
+2026-10-14 03:34:32,625 [INFO] [query:conv-48_q123] done in 35.8s — correct=False score=None
+2026-10-14 03:34:32,636 [INFO] [query:conv-48_q127] start — Who are the musicians mentioned by Jolene that she enjoys listening to during he
+2026-10-14 03:34:32,652 [INFO] HTTP Request: POST http://127.0.0.1:8898/banks/conv-48/recall "HTTP/1.1 200 OK"

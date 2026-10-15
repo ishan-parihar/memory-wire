@@ -45,7 +45,9 @@ pub enum Host {
     ClaudeCode,
     /// Codex (`~/.codex/hooks.json`).
     Codex,
-    /// GitHub Copilot CLI (`~/.copilot/settings.json`).
+    /// GitHub Copilot CLI (`~/.copilot/settings.json` hooks, plus the MCP
+    /// definitions file `~/.copilot/mcp-config.json` — see
+    /// [`crate::connect_copilot`]).
     CopilotCli,
     /// Cursor (`~/.cursor/mcp.json`).
     Cursor,
@@ -486,7 +488,17 @@ fn wired_with(host: Host, home: &Path) -> bool {
     // path is composed from the same two pieces `connect_plugin` builds it from
     // (`.hermes/plugins/<marker>`); that module owns the write, this the read.
     if host.style() == Style::Plugin {
-        return home.join(host.detect_rel()).join("plugins").join(MARKER).is_dir();
+        // The loader binds `memory.provider` to a *directory name* and only
+        // loads one whose files make it a provider (`find_provider_dir`):
+        // a directory stripped to residue — files removed by something other
+        // than this installer, observed live 2026-10-15 (P4.1) — is not
+        // wired even though it exists. `plugin.yaml` is the loader-facing
+        // file every install of ours writes, and carrying our marker is
+        // what makes it ours rather than a foreign plugin under our name.
+        let dir = home.join(host.detect_rel()).join("plugins").join(MARKER);
+        let loadable_and_ours = std::fs::read_to_string(dir.join("plugin.yaml"))
+            .is_ok_and(|yaml| yaml.contains(MARKER));
+        return loadable_and_ours;
     }
     // The extension host is its own file and nothing else.
     if host.style() == Style::Extension {
@@ -512,6 +524,15 @@ fn wired_with(host: Host, home: &Path) -> bool {
                 root.get(key).and_then(Value::as_object).is_some_and(|m| m.contains_key(MARKER))
             }) || crate::connect_ext::installed(host, home)
                 || crate::connect_opencode::installed(host, home)
+        }
+        // Copilot CLI's two surfaces live in two files: hooks here, the MCP
+        // entry in `mcp-config.json` (a later build added the second pass),
+        // so "or" again — an install carrying either is wired.
+        Style::Copilot => {
+            EVENTS
+                .iter()
+                .any(|ev| root.pointer(&format!("/hooks/{}", ev.name)).is_some_and(is_ours))
+                || crate::connect_copilot::installed(home)
         }
         _ => EVENTS
             .iter()
@@ -681,6 +702,196 @@ fn copy_tree(src: &Path, dst_root: &Path, rel: &Path) -> Result<Option<PathBuf>,
     Ok(Some(dir))
 }
 
+/// The token a shell-run command string passes after `--bank`, or `None`.
+///
+/// The command was built by [`hook_cmd`], so the value is either a bare word
+/// or single-quoted exactly as [`shell_quote`] writes it; reading it back with
+/// the same rule is what makes a re-wire able to preserve a pin it never knew
+/// about. `--bank` with nothing after it reads as `None`, the same absence the
+/// writer produces.
+fn bank_token(cmd: &str) -> Option<String> {
+    let rest = cmd.split_once("--bank ")?.1.trim_start();
+    if let Some(quoted) = rest.strip_prefix('\'') {
+        quoted.split('\'').next().map(String::from)
+    } else {
+        rest.split_whitespace().next().map(String::from)
+    }
+}
+
+/// The bank pinned into the hook entries we already own in this config.
+///
+/// Foreign hook entries are skipped by the `is_ours` test, so only our own
+/// command strings can contribute — a foreign command mentioning `--bank`
+/// cannot pull a value in. First match wins: [`hook_cmd`] writes the same bank
+/// into every event, so two of ours disagreeing is not a state this writer can
+/// produce.
+fn bank_in_hooks(root: &Value) -> Option<String> {
+    our_hook_command(root).and_then(|cmd| bank_token(&cmd))
+}
+
+/// The first `command`/`bash` string of ours in a hooks config, at any nesting
+/// depth the two hook shapes use.
+///
+/// Shared by the bank reader (TODO #1) and `doctor`'s hook-liveness check
+/// (G6.9): both are questions about the exact command this installer writes,
+/// and one reader keeps them from disagreeing about what counts as ours.
+pub(crate) fn our_hook_command(root: &Value) -> Option<String> {
+    /// Collect the first command string containing the binary's name, reading
+    /// `command`/`bash` fields only. Claude Code wraps each hook in a matcher
+    /// object (`hooks.Stop[].hooks[].command`); Copilot CLI is flat
+    /// (`hooks.PreCompact[].bash`). Walking only those two key names keeps a
+    /// note or URL that happens to mention the binary from being read as a
+    /// command, and the [`MARKER`] requirement inside the string is the same
+    /// ownership test the editors use.
+    fn walk(v: &Value, out: &mut Option<String>) {
+        if out.is_some() {
+            return;
+        }
+        match v {
+            Value::Array(items) => items.iter().for_each(|i| walk(i, out)),
+            Value::Object(map) => {
+                for (k, val) in map {
+                    if out.is_some() {
+                        break;
+                    }
+                    match (k.as_str(), val) {
+                        ("command", Value::String(s)) | ("bash", Value::String(s))
+                            if s.contains(MARKER) =>
+                        {
+                            *out = Some(s.clone());
+                        }
+                        ("command", _) | ("bash", _) => {}
+                        (_, sub) => walk(sub, out),
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = None;
+    walk(root.get("hooks")?, &mut found);
+    found
+}
+
+/// The executable token of a shell-run hook command — the first token,
+/// quote-aware, exactly as [`shell_quote`] writes it.
+pub(crate) fn exe_token(cmd: &str) -> Option<String> {
+    let t = cmd.trim_start();
+    if let Some(rest) = t.strip_prefix('\'') {
+        let end = rest.find('\'')?;
+        return Some(rest[..end].to_string());
+    }
+    t.split_whitespace().next().map(String::from)
+}
+
+/// The `--bank` in the argv of our MCP entry, or `None`.
+///
+/// [`mcp_args`] spells it `["mcp", "--bank", id]`; `command` is scanned too
+/// because a host that takes the argv as one shell string puts the flag there
+/// instead. Shared with `doctor`, which reads the same baked pin for its
+/// split-brain warning — one reader, not two that can disagree.
+pub(crate) fn bank_in_mcp_entry(entry: &Value) -> Option<String> {
+    for field in ["args", "command"] {
+        let Some(items) = entry.get(field).and_then(Value::as_array) else {
+            continue;
+        };
+        for (i, arg) in items.iter().enumerate() {
+            if arg.as_str() == Some("--bank") {
+                return items.get(i + 1)?.as_str().map(String::from);
+            }
+            // The single-string form: the whole argv in one shell command.
+            if let Some(cmd) = arg.as_str() {
+                if let Some(b) = bank_token(cmd) {
+                    return Some(b);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The `DEFAULT_BANK` value baked into an installed extension/plugin file.
+///
+/// Only our templates write that declaration, so the line is both the marker
+/// and the payload. Escapes are undone with the same left-to-right scan
+/// [`connect_ext::baked`] writes them with; bank ids are slug-like by
+/// construction, so this is correctness for the case that should not exist
+/// rather than a parser that handles hostile input.
+pub(crate) fn bank_from_extension(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.trim_start().starts_with("var DEFAULT_BANK"))?;
+    let quoted = line.split('"').nth(1)?;
+    let mut out = String::new();
+    let mut esc = false;
+    for c in quoted.chars() {
+        if esc {
+            out.push(c);
+            esc = false;
+        } else if c == '\\' {
+            esc = true;
+        } else {
+            out.push(c);
+        }
+    }
+    Some(out)
+}
+
+/// The executable our MCP entry launches. The argv form spells it `command`
+/// (the binary, absolute at install) with `args` holding the `mcp` subcommand
+/// and flags — so `command` is read **first**; `args[0]` is `mcp`, never the
+/// exe, and only a legacy single-string `command` shape reaches the token
+/// reader. Same entry, same readers' rule.
+pub(crate) fn exe_in_mcp_entry(entry: &Value) -> Option<String> {
+    if let Some(cmd) = entry.get("command").and_then(Value::as_str) {
+        return exe_token(cmd);
+    }
+    entry
+        .get("args")
+        .and_then(Value::as_array)
+        .and_then(|args| args.first().and_then(Value::as_str).map(String::from))
+}
+
+/// The executable our wired entries on this host launch: hooks carry it as
+/// the first token of their command; MCP entries as `args[0]` or the
+/// `command` string. Extension and plugin hosts reach the binary through the
+/// harness itself, so there is nothing baked to read and the answer is
+/// `None`. `doctor --all-hosts` uses this for its hook-liveness finding (G6.9).
+pub(crate) fn wired_exe(host: Host, home: &Path) -> Option<String> {
+    let style = host.style();
+    if matches!(style, Style::Plugin | Style::Extension) {
+        return None;
+    }
+    let raw = paths::read_or_empty(&home.join(host.config_rel())).ok()?;
+    let root: Value = serde_json::from_str(&raw).ok()?;
+    match style {
+        Style::Claude | Style::Copilot => {
+            our_hook_command(&root).and_then(|cmd| exe_token(&cmd))
+        }
+        Style::Mcp => host
+            .mcp_spec()
+            .and_then(|(key, _)| root.get(key)?.get(MARKER))
+            .and_then(exe_in_mcp_entry),
+        Style::Plugin | Style::Extension => None,
+    }
+}
+
+/// The bank a previous `connect --bank` pinned into this host's own config,
+/// so a bare re-wire preserves it instead of silently reverting every surface
+/// to runtime resolution (TODO #1).
+///
+/// Hooks hosts keep it inside our hook command strings, MCP hosts inside our
+/// entry's argv. Codex's MCP half is a URL and carries no bank — its hooks
+/// half is the JSON pass above and holds the pin. Extension/plugin hosts are
+/// [`apply`]'s sibling modules and preserve theirs against the installed file.
+fn bank_baked_in(root: &Value, host: Host, style: &Style) -> Option<String> {
+    match style {
+        Style::Claude | Style::Copilot => bank_in_hooks(root),
+        Style::Mcp => host.mcp_spec().and_then(|(key, _)| {
+            root.get(key)?.get(MARKER).and_then(bank_in_mcp_entry)
+        }),
+        Style::Plugin | Style::Extension => None,
+    }
+}
+
 /// Wire or unwire one host against the real environment.
 pub fn run(host: Host, exe: &str, home: &Path, uninstall: bool, bank: Option<&str>) -> Outcome {
     apply(
@@ -740,6 +951,22 @@ pub(crate) fn apply(
 
     let rel = host.config_rel();
     let path = home.join(&rel);
+    // A bare `connect` must not drop the pin a previous `--bank` baked into
+    // this very config: the entry being replaced is the only thing that knows
+    // it, and the installer's own re-run (and `update`'s re-connect step) is
+    // the exact moment it would be lost. The pin is read before any edit, and
+    // only from entries this writer recognises as its own.
+    let baked_pin = bank
+        .is_none()
+        .then(|| {
+            paths::read_or_empty(&path).ok().and_then(|raw| {
+                serde_json::from_str::<Value>(&raw)
+                    .ok()
+                    .and_then(|root| bank_baked_in(&root, host, &style))
+            })
+        })
+        .flatten();
+    let bank = bank.or(baked_pin.as_deref());
     let raw = match paths::read_or_empty(&path) {
         Ok(s) => s,
         Err(e) => return Outcome::Failed(format!("{}: {e}", path.display())),
@@ -844,7 +1071,13 @@ pub(crate) fn apply(
     // the injection, because an MCP tool exists only when the model decides to
     // call it.
     outcome = match host {
+        Host::ClaudeCode => {
+            merge(outcome, crate::connect_claude::apply(home, uninstall, data_root, bank))
+        }
         Host::Codex => merge(outcome, crate::connect_codex::apply(home, uninstall, data_root, bank)),
+        Host::CopilotCli => {
+            merge(outcome, crate::connect_copilot::apply(home, uninstall, data_root, bank))
+        }
         Host::Omp => merge(outcome, crate::connect_ext::apply(host, home, uninstall, data_root, bank)),
         Host::Opencode => merge(outcome, crate::connect_opencode::apply(host, home, uninstall, data_root, bank)),
         _ => outcome,
@@ -975,13 +1208,19 @@ fn edit_hooks(
     Ok(Edit { events, notes, already })
 }
 
-/// Add or remove our MCP server entry under the host's `key`.
+    /// Add or remove our MCP server entry under the host's `key`.
 ///
 /// MCP maps key servers by name, so ours is recognised by its key as well as by
 /// the [`MARKER`] substring — an entry registered under another name still gets
 /// pruned, and a re-install from a moved binary replaces the stale command
 /// instead of stacking a second server. The pass is judged by comparing the slot
 /// before and after, which is what makes it idempotent for free.
+///
+/// A **foreign** server already registered under our name is refused rather
+/// than replaced (P1.3): deleting a hand-written `memory-wire` entry is
+/// displacing somebody else's config under the guise of installing ours, the
+/// same hazard that keeps hermes out of the implicit set. The user resolves
+/// the collision; `--uninstall` never lands here.
 fn edit_mcp(root: &mut Value, key: &str, entry: Option<Value>) -> Result<Edit, Refusal> {
     let before = root.get(key).cloned();
     {
@@ -991,6 +1230,16 @@ fn edit_mcp(root: &mut Value, key: &str, entry: Option<Value>) -> Result<Edit, R
         match obj.get_mut(key) {
             Some(v) if v.is_object() => {
                 let map = v.as_object_mut().expect("object checked above");
+                // Install and uninstall both: we never displace or delete an
+                // entry under our name that we did not write.
+                if let Some(existing) = map.get(MARKER) {
+                    if !is_ours(existing) {
+                        return Err(format!(
+                            "a server named `{MARKER}` is already registered under \
+                             `{key}` and is not ours; left untouched"
+                        ));
+                    }
+                }
                 map.retain(|name, v| name != MARKER && !is_ours(v));
                 if let Some(e) = entry {
                     map.insert(MARKER.to_string(), e);
@@ -1040,6 +1289,284 @@ mod tests {
     /// happens to be installed on the machine running the tests.
     fn no_path(_name: &str) -> bool {
         false
+    }
+
+    /// The golden install shapes (P2.1, `docs/INTEGRATION_PLAN.md`): a
+    /// pristine `HOME` plus one `connect` writes exactly these bytes into the
+    /// files the **host parses**. Every expected literal below was generated by
+    /// the installer, then reviewed against this machine's live configs and
+    /// upstream schemas — so a change that alters what a host receives (a
+    /// renamed event, a moved timeout, a changed entry vocabulary) fails here,
+    /// at the diff, instead of on a user's machine. The `.ts` extension/plugin
+    /// files and the hermes plugin bundle are not goldened here: they are the
+    /// committed templates themselves, and their existence + marker + baked bank
+    /// are asserted by the unit tests of their modules. Comparison is on
+    /// trimmed strings: the trailing newline is not host-visible shape.
+    #[test]
+    fn golden_install_shapes() {
+        let exe = "/opt/golden/memory-wire";
+        let bank = "golden";
+
+        let hooks_claude = r#"{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "/opt/golden/memory-wire hook pre-compact --bank golden",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "/opt/golden/memory-wire hook session-end --bank golden",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "/opt/golden/memory-wire hook session-start --bank golden",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "/opt/golden/memory-wire hook stop --bank golden",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "/opt/golden/memory-wire hook prompt --bank golden",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ]
+  }
+}"#;
+
+        let hooks_copilot = r#"{
+  "hooks": {
+    "PreCompact": [
+      {
+        "bash": "/opt/golden/memory-wire hook pre-compact --bank golden",
+        "timeoutSec": 5,
+        "type": "command"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "bash": "/opt/golden/memory-wire hook session-end --bank golden",
+        "timeoutSec": 5,
+        "type": "command"
+      }
+    ],
+    "SessionStart": [
+      {
+        "bash": "/opt/golden/memory-wire hook session-start --bank golden",
+        "timeoutSec": 5,
+        "type": "command"
+      }
+    ],
+    "Stop": [
+      {
+        "bash": "/opt/golden/memory-wire hook stop --bank golden",
+        "timeoutSec": 5,
+        "type": "command"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "bash": "/opt/golden/memory-wire hook prompt --bank golden",
+        "timeoutSec": 5,
+        "type": "command"
+      }
+    ]
+  }
+}"#;
+
+        // (host, [(relative path, expected bytes)]) — one pristine home per host.
+        let cases: Vec<(Host, Vec<(&str, &str)>)> = vec![
+            (
+                Host::ClaudeCode,
+                vec![(".claude/settings.json", hooks_claude)],
+            ),
+            (
+                Host::Codex,
+                vec![
+                    (".codex/hooks.json", hooks_claude),
+                    (
+                        ".codex/config.toml",
+                        r#"[mcp_servers.memory-wire]
+url = "http://127.0.0.1:8888/mcp/golden""#,
+                    ),
+                ],
+            ),
+            (
+                Host::CopilotCli,
+                vec![
+                    (".copilot/settings.json", hooks_copilot),
+                    (
+                        ".copilot/mcp-config.json",
+                        r#"{
+  "mcpServers": {
+    "memory-wire": {
+      "type": "http",
+      "url": "http://127.0.0.1:8888/mcp/golden"
+    }
+  }
+}"#,
+                    ),
+                ],
+            ),
+            (
+                Host::Cursor,
+                vec![
+                    (
+                        ".cursor/mcp.json",
+                        r#"{
+  "mcpServers": {
+    "memory-wire": {
+      "args": [
+        "mcp",
+        "--bank",
+        "golden"
+      ],
+      "command": "/opt/golden/memory-wire"
+    }
+  }
+}"#,
+                    ),
+                ],
+            ),
+            (
+                Host::Opencode,
+                vec![
+                    (
+                        ".config/opencode/opencode.json",
+                        r#"{
+  "mcp": {
+    "memory-wire": {
+      "command": [
+        "/opt/golden/memory-wire",
+        "mcp",
+        "--bank",
+        "golden"
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}"#,
+                    ),
+                ],
+            ),
+            (
+                Host::Omp,
+                vec![
+                    (
+                        ".omp/agent/mcp.json",
+                        r#"{
+  "mcpServers": {
+    "memory-wire": {
+      "args": [
+        "mcp",
+        "--bank",
+        "golden"
+      ],
+      "command": "/opt/golden/memory-wire",
+      "type": "stdio"
+    }
+  }
+}"#,
+                    ),
+                ],
+            ),
+            (
+                Host::Hermes,
+                vec![
+                    (
+                        ".hermes/config.yaml",
+                        r#"memory:
+  provider: memory-wire"#,
+                    ),
+                ],
+            ),
+        ];
+
+        for (host, files) in &cases {
+            let home = tmp_home(&format!("golden-{}", host.id()));
+            let out = run(*host, exe, &home, false, Some(bank));
+            assert!(
+                matches!(out, Outcome::Wired { .. }),
+                "{host:?}: unexpected outcome {out:?}"
+            );
+            for (rel, expected) in files {
+                let actual = std::fs::read_to_string(home.join(rel))
+                    .unwrap_or_else(|e| panic!("{host:?} {rel}: {e}"));
+                assert_eq!(
+                    actual.trim(),
+                    expected.trim(),
+                    "{host:?} {rel}: the written file drifted from the golden shape"
+                );
+            }
+            std::fs::remove_dir_all(&home).ok();
+        }
+
+        // Claude Code's second surface is deliberately *not* written on a
+        // pristine home: `~/.claude.json` belongs to the CLI and it creates it
+        // itself, so the golden scenario asserts the skip, not just its note.
+        let home = tmp_home("golden-claude-json");
+        let out = run(Host::ClaudeCode, exe, &home, false, Some(bank));
+        assert!(matches!(&out, Outcome::Wired { notes, .. } if notes
+            .iter()
+            .any(|n| n.contains("absent; the CLI creates it"))));
+        assert!(!home.join(".claude.json").exists());
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// Hermes wired=false when the plugin directory is residue — present but
+    /// stripped to files the loader cannot use, the live state P4.1 found
+    /// (`__pycache__` only): `doctor --all-hosts` used to say `wired=yes` for
+    /// a plugin hermes could never load.
+    #[test]
+    fn a_hermes_plugin_dir_stripped_to_residue_is_not_wired() {
+        let home = tmp_home("hermes-husk");
+        let dir = home.join(".hermes/plugins/memory-wire");
+        std::fs::create_dir_all(dir.join("__pycache__")).expect("mkdir");
+        assert!(!wired_with(Host::Hermes, &home), "residue must read as not wired");
+
+        // The same directory with our `plugin.yaml` in it is wired.
+        std::fs::write(dir.join("plugin.yaml"), "name: memory-wire\n").expect("write");
+        assert!(wired_with(Host::Hermes, &home));
+        std::fs::remove_dir_all(&home).ok();
     }
 
     fn tmp_home(tag: &str) -> PathBuf {
@@ -1424,6 +1951,111 @@ mod tests {
             .expect("read")
             .contains("/new/dir/memory-wire"));
         std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// TODO #1: the acceptance case. A machine pinned with `--bank palimpsest`
+    /// holds that pin inside the hook commands this writer produced; a bare
+    /// `connect <host>` (no `--bank`) must re-wire with the same pin rather
+    /// than silently reverting to runtime resolution.
+    #[test]
+    fn a_bare_rewire_preserves_the_bank_baked_into_our_hooks() {
+        let home = tmp_home("bare-pin");
+        let rel = Host::ClaudeCode.config_rel();
+        write_config(
+            &home,
+            &rel,
+            r#"{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/bin/memory-wire hook stop --bank palimpsest","timeout":5}]}]}}"#,
+        );
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        let doc = read_config(&home, &rel);
+        // Asserted through the production reader: the same extraction the next
+        // bare re-wire will perform, so the pin is proven preserved, not just
+        // present in a string somewhere.
+        assert_eq!(bank_in_hooks(&doc), Some("palimpsest".to_string()));
+        let commands = std::fs::read_to_string(home.join(&rel)).expect("read");
+        assert!(
+            commands.contains("--bank palimpsest"),
+            "the rewritten commands must carry the preserved pin"
+        );
+        // And the pin survives the *next* bare pass too, as idempotence rather
+        // than as a second rewrite.
+        let again = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(again, Outcome::Already { .. }), "{again:?}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// The other half of the rule: with no pin anywhere, a bare re-wire stays
+    /// runtime-resolved. Preserving a pin that was never written would be
+    /// pinning every machine to `memory-wire` by accident of the default.
+    #[test]
+    fn a_bare_rewire_without_a_baked_bank_stays_runtime_resolved() {
+        let home = tmp_home("bare-nopin");
+        let rel = Host::ClaudeCode.config_rel();
+        write_config(&home, &rel, FOREIGN);
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        assert!(!std::fs::read_to_string(home.join(&rel)).expect("read").contains("--bank"));
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// The same preservation on the MCP side: the pin sits in the argv our
+    /// entry carries, and a bare re-wire must keep it rather than re-writing
+    /// `mcp` with no bank.
+    #[test]
+    fn a_bare_rewire_on_an_mcp_host_preserves_the_argv_bank() {
+        let home = tmp_home("bare-mcp-pin");
+        let rel = Host::Cursor.config_rel();
+        write_config(
+            &home,
+            &rel,
+            r#"{"mcpServers":{"memory-wire":{"command":"/bin/memory-wire","args":["mcp","--bank","palimpsest"]}}}"#,
+        );
+        // Byte-identical to what a `--bank palimpsest` install produces, so
+        // preserving the pin reports `Already` — the pin was kept, not moved.
+        let out = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Already { .. }), "{out:?}");
+        let doc = read_config(&home, &rel);
+        assert_eq!(
+            doc["mcpServers"]["memory-wire"]["args"]
+                .as_array()
+                .expect("argv")
+                .iter()
+                .map(|a| a.as_str().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            vec!["mcp", "--bank", "palimpsest"]
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// P1.3: a hand-written server under our name is somebody else's config.
+    /// Neither an install (which would displace it) nor an uninstall (which
+    /// would delete it) may touch it; both refuse with the file byte-identical.
+    #[test]
+    fn a_foreign_server_under_our_name_is_refused_in_both_directions() {
+        let foreign = r#"{"mcpServers":{"memory-wire":{"url":"http://elsewhere.example/mcp","type":"http"}}}"#;
+        for uninstall in [false, true] {
+            let home = tmp_home(if uninstall { "foreign-un" } else { "foreign-in" });
+            let rel = Host::Cursor.config_rel();
+            write_config(&home, &rel, foreign);
+            let out = apply(Host::Cursor, "/bin/memory-wire", &home, uninstall, no_path, &home.join("data"), None);
+            assert!(matches!(&out, Outcome::Failed(why) if why.contains("is not ours; left untouched")), "{out:?}");
+            assert_eq!(
+                std::fs::read_to_string(home.join(&rel)).expect("read"),
+                foreign,
+                "the refusal must leave the file byte-identical"
+            );
+            assert!(!home.join("data/backups").exists(), "no backup for a refusal");
+            std::fs::remove_dir_all(&home).ok();
+        }
+    }
+
+    #[test]
+    fn bank_token_should_read_both_quoting_forms() {
+        assert_eq!(bank_token("/bin/memory-wire hook stop --bank palimpsest"), Some("palimpsest".into()));
+        assert_eq!(bank_token("'/bin/my memory-wire' hook stop --bank 'two words'"), Some("two words".into()));
+        assert_eq!(bank_token("--bank"), None);
+        assert_eq!(bank_token("nothing here"), None);
     }
 
     #[test]
@@ -2097,7 +2729,16 @@ mod tests {
                 "SessionEnd".to_string(),
             ]
         );
-        assert_eq!(notes, &["SessionStart (existing value is not a hook list)".to_string()]);
+        assert_eq!(
+            notes,
+            &[
+                "SessionStart (existing value is not a hook list)".to_string(),
+                // The claude-code second pass (`.claude.json` MCP entry): an
+                // absent file is a skip, reported as a note so the hooks pass's
+                // outcome stays visible.
+                ".claude.json: absent; the CLI creates it".to_string(),
+            ]
+        );
         let after_first = std::fs::read_to_string(home.join(&rel)).expect("read");
         let backups = data.join("backups");
         let n_backups = std::fs::read_dir(&backups).expect("readdir").count();
@@ -2106,7 +2747,13 @@ mod tests {
         let Outcome::Already { notes } = &second else {
             panic!("{second:?}");
         };
-        assert_eq!(notes, &["SessionStart (existing value is not a hook list)".to_string()]);
+        assert_eq!(
+            notes,
+            &[
+                "SessionStart (existing value is not a hook list)".to_string(),
+                ".claude.json: absent; the CLI creates it".to_string(),
+            ]
+        );
         assert_eq!(
             std::fs::read_to_string(home.join(&rel)).expect("read"),
             after_first,

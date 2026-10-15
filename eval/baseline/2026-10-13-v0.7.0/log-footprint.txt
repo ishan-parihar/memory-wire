@@ -1,0 +1,12 @@
+wrote /home/ishanp/Documents/github/my-projects/agentic-utility/memory/memory-wire/eval/baseline/2026-10-13-v0.7.0/BENCH_FOOTPRINT.md
+=== footprint ===
+profile release
+binary  10745080 B (10.25 MB)
+harness idle RSS      2.94 MB
+harness RSS @ 10000 rows  7.59 MB (7.52-7.63)
+serve idle RSS        10112 kB (9.88 MB)
+serve RSS +1 retain   11896 kB (11.62 MB)
+serve retain status  200
+storage unflushed     7249784 B (6.91 MB) = main 3026944 + wal 4190072 + shm 32768
+storage settled       3067904 B (2.93 MB) = main 3035136 + wal 0 + shm 32768
+index per 1k rows     306790 B (0.29 MB)
