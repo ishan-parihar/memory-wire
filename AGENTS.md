@@ -112,6 +112,7 @@ the wrong one is how claims drift.
 | **I am continuing the memory-performance R&D — what is the state, the hypotheses, the commands?** | **`docs/handoff/README.md`** first, then its STATE, RND_PLAN, RUNBOOK, CLOSED |
 | can I tune this against the benchmark? | **this file**, §6, then `docs/EVALUATION_HYGIENE.md` |
 | which external benchmarks exist (BEAM, PrecisionMemBench, AMB, OAMB, MemBase, memorybench, agent-memory-bench…), what each costs, how we plug in, what role it may play, and what was measured | **`docs/BENCHMARK_LANDSCAPE.md`** — start here before running or citing anything external |
+| which competitor architectures (MemOS, Honcho, OpenViking…) hold candidate mechanisms, which are vetoed by our own measurements, and how a candidate becomes a pre-registered H-item | **`docs/COMPETITOR_GAPS_PLAN.md`** — the audit plan, the screens and the veto chain; `docs/handoff/RND_PLAN.md` remains where surviving candidates get registered |
 | what the current performance is, everywhere at once, and how to re-measure after a change | **`eval/baseline/README.md`** and `eval/baseline/run_baseline.sh` — one dated directory per run; compare directory to directory |
 | why an LLM-judged run through aroute needs `eval/llm_shim.py`, and what aroute must fix before it can go | `docs/AROUTE_BUGS.md` — a handoff for the aroute repo; memory-wire agents do not edit aroute |
 | what was measured, on what, at what load, and what was rejected | `docs/CONSISTENCY.md` — **append-only, never rewrite** |

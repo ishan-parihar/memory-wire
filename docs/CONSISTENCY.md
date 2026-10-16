@@ -3892,3 +3892,126 @@ and published through the `gh` REST API. Version 0.8.0: `update` command, `docto
 --all-hosts` + stale-serve finding, claude-code + copilot-cli HTTP MCP entries, bank-pin
 preservation, namespace-collision refusal, golden install shapes, `hook --endpoint`,
 DT_NEEDED recording; 589 tests, clippy `-D warnings --all-features` clean, 0 doc warnings.
+
+## 43. 2026-10-15: H8 — summary-first serve mode (`format: "summary"`) — gate PASSED on the relevance battery
+
+Pre-registered in `docs/handoff/RND_PLAN.md` §5 H8 after the six-repo audit confirmed OpenViking's
+compact tiers are **structural** (`COMPETITOR_GAPS_PLAN.md` §6; their `overview_from_content()`
+is first-line/section/AST extraction, no LLM). Gate amended **before the first run** (the
+original "junk@5 down" clause was unmeasurable as written — junk *presence* in the top-5 is
+ranking-determined and the ranking must not move): the win metric is served characters, the
+kill metric is capsule fidelity.
+
+**What shipped** (default build, no new dependencies — the capsule is pure string work in
+`src/api.rs::summary_content`): `recall` with `format: "summary"` serves, per hit, the same
+object shape as `full` with `content` replaced by its capsule — the **first line**, cut at
+the first sentence boundary (`. ` / `! ` / `? `) inside 200 chars, else a hard cut — with
+`…[summary of N chars; full: GET /banks/<bank>/memories/<id>]` appended whenever anything
+was hidden. One-line memories serve unchanged, unmarked. `context` stays its own field and is
+never the capsule (the battery's gold labels are content prefixes). Default, `full`, and
+unknown formats are byte-identical to before. 6 new tests: 5 capsule-rule unit tests
+(incl. chars-not-bytes on both cut paths) + one e2e asserting the id-order identity of
+`summary` vs `full`.
+
+**Gate run** — the relevance battery on the live `omp` bank (copy at a scratch serve of this
+tree's binary; the bank's 0.7.0 serve untouched), 10 cases, auto shape's own settings
+(budget 1200, `exclude_tags` as the surfaces send them). Artifact:
+`eval/relevance/BATTERY-H8-2026-10-15.txt`.
+
+| clause | verdict |
+|---|---|
+| ranking byte-identical (id order, per case) | **IDENTICAL** — all 10 cases |
+| served load | **7,693 chars vs 12,946 — 41% less**, down on every case |
+| capsule fidelity (gold label survives) | **HELD** — gold-in-capsule equals gold@5, 5/6 (the miss is the pre-existing ranking limit of case H, identical in both shapes — not a capsule regression) |
+
+**Honest residue, stated rather than buried:** junk still rides the top-5 — at capsule
+length (e.g. the harness-noise case serves 1,455 chars of `[BACKGROUND BASH STILL RUNNING]`
+capsules instead of 2,000 chars of full junk). H8 shrinks the cost of the over-return
+`docs/OPEN_HOOK_RECALL_RELEVANCE.md` diagnoses; it does not fix it, and was never claimed to.
+
+**PMB confirmation, measure-only, once** (`MEMORY_WIRE_FORMAT=summary` in the AMB adapter,
+the only adapter change — env-gated, default `full`, byte-identical when unset): **19/77,
+precision 0.24, recall 0.95 — identical to the H6 numbers**, exactly as pre-registered:
+PrecisionMemBench asserts on document ids, so id-based scoring is serve-shape-invariant.
+Artifact: `eval/amb/PRECISIONMEMBENCH-2026-10-15-h8-summary-invariant.json.gz`. Test-set
+consultations this section: **0**.
+
+**Consequence.** The mode is opt-in and changes no default: every existing client is
+untouched. Whether the *surfaces* adopt it (hooks/MCP injecting capsules instead of whole
+memories) is a product decision recorded as the follow-on, not taken here — the auto-shape
+battery numbers above are what that decision would cite.
+
+## 44. 2026-10-16: H10 — OmniMemEval HaluMem-Medium, memory-wire's first run on a hallucination-resistance corpus (measure-only)
+
+Pre-registered in `docs/handoff/RND_PLAN.md` §5 H10: run HaluMem **once, measure-only,
+whatever it shows** — the battery's first corpus that tests whether the memory system
+hallucinates beyond what it stored, and the first under OmniMemEval's standardized
+`add()`/`search()` adapter layer. Roles fixed before the run in
+`docs/BENCHMARK_LANDSCAPE.md` §4.6: HaluMem is measure-only, never a selection signal.
+
+**Instrument.** OmniMemEval @ `a5c8b4b` (pinned scratch clone,
+`../_audit_scratch/omnimevaleval/`) with a memory-wire adapter written for this run
+(`scripts/client_factory/memory_wire_client.py`: `add` retains each chat message with
+its role prefixed and the framework-injected ISO timestamp as `created_at`; `search`
+recalls through the same REST route every surface uses, top-k enforced client-side;
+`delete` clears a bank row-by-row — verified end-to-end against a scratch serve before
+ingestion). HaluMem-**Medium** (20 users, ~160K tokens/user, 3,467 QA pairs; data
+**CC BY-NC-ND 4.0 — run, never vendored**), ingestion `--clear 1` into a fresh scratch
+bank; search at the runner's default top-k 20; answers and judging by the free
+aroute `small-stack` through `eval/llm_shim.py` — the same judged-instrument shape as
+every AMB/`answer_quality` run in this repo. Wall clock ~7 h35 m for the full pipeline
+(ingestion 23:05→22:04 previous-day markers; answers 23:05→03:56, 3,467 calls;
+judging 03:56→06:40, 2h16 m). Answer-stage tokens: 8,569,066 (3,467 calls, all
+free-tier). **Test-set consultations this section: 0** — HaluMem is not LongMemEval.
+
+**Results (LLM-as-judge accuracy; n 3,464/3,467 scored — 3 judge errors, 0.087%,
+the framework's strict mode exits non-zero on any, which is why steps 5–6 were re-run
+from the saved judged file; judged data unchanged).**
+
+| | |
+|---|---|
+| **Overall** | **0.6129 ± 0.0000** |
+| Memory Boundary | **0.9372** (n 828) |
+| Memory Conflict | 0.7018 (n 768) |
+| Generalization & Application | 0.5375 (n 746) |
+| Multi-hop Inference | 0.4394 (n 198) |
+| Basic Fact Recall | 0.3804 (n 744) |
+| Dynamic Update | **0.2056** (n 180) |
+
+Lexical (for the record, same instrument): F1 0.1439, ROUGE-1 0.0916, ROUGE-L 0.0796,
+BLEU-1 0.0503, METEOR 0.1918; BERTScore not computed by this run (marked `-`).
+Difficulty: easy 0.6248 (1,967), medium 0.5940 (1,399), hard 0.6429 (98).
+Memory-wire service latency inside the run: add avg **95.8 ms** (p50 91.6, p95 144.1),
+search avg **43.0 ms** (p50 41.8, p95 60.9) — scratch db, one local serve, load ~10–20
+throughout (throughput context only). Context tokens avg 1,966.7 per answer.
+
+**Readings, honestly bounded:**
+
+- **Memory Boundary 93.7% is the number this corpus exists to produce.** Boundary
+  questions ask whether the system asserts something it never stored — and
+  memory-wire stores verbatim prose with no ingest-time extraction or generation to
+  hallucinate *with*. The one mechanism the six-repo audit found that Hindsight runs
+  for their 0.85 PMB precision (an ingest LLM) is exactly the machinery this system
+  refuses — and this is the complementary evidence: verbatim storage
+  near-eliminates the system-side hallucination channel.
+- **Dynamic Update 20.6% is the weakest cell and the mechanism is ours to name:**
+  these questions require the *newest* value of a changed fact to override the older
+  one, and memory-wire deliberately ships recency weight 0.0 (H3 falsified it as a
+  ranking prior; `CONSISTENCY.md` §37) and serves both versions, leaving a small
+  free-tier reader to disambiguate by date. Same shape as temporal-reasoning's 8.3%
+  on the dated `answer_quality` (§39) — a reader/answerer ceiling as much as a
+  retrieval one, and no lever may be chosen from this number (measure-only role).
+- **Comparability: none until a second system runs this exact harness with the same
+  answerer.** The joint system+answerer number is what HaluMem measures here; MemOS's
+  own published HaluMem numbers (their runner, their models) are a different
+  instrument and are not placed beside this one.
+
+**Artifacts** (committed): `eval/omnimevaleval/memory-wire-mw_h10_medium/` —
+`exp_report.md` (the framework's own report), `memory-wire_hm_judged.json` (8.1 MB,
+per-question judgments), `memory-wire_hm_responses.json`, `memory-wire_hm_search_results.json`
+(36 MB), `memory-wire_hm_grades.json`, `memory-wire_hm_results.xlsx`,
+`token_usage_answer.json`, `snapshot_eval.env`, per-stage status files. Config-table
+footnote for honesty: the report's parameter table reflects the step-5 replay
+invocation (`LLM_WORKERS 10` default); the judged data was produced with
+`--llm-workers 4` — `snapshot_eval.env` is the run-time environment and the judged
+file is untouched by the replay.

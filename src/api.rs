@@ -202,6 +202,19 @@ pub fn full_hit_json(hit: &ScoredMemory) -> serde_json::Value {
     })
 }
 
+/// One hit under `format: "summary"` (H8): the citing fields of [`full_hit_json`]
+/// with `content` replaced by its [`summary_content`] capsule — a reader
+/// scanning k hits reads k capsules, and every hidden remainder is one GET
+/// away by the id the same object serves.
+pub fn summary_hit_json(hit: &ScoredMemory, bank: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": hit.memory.id,
+        "score": hit.score,
+        "created_at": hit.memory.created_at,
+        "content": summary_content(&hit.memory, bank)
+    })
+}
+
 /// Normalize a client tag list: trim, lowercase, drop empties, dedupe, cap at
 /// [`MAX_TAGS`].
 ///
@@ -1067,6 +1080,71 @@ fn served_content<'a>(memory: &'a Memory, cap: Option<usize>, bank: &str) -> (Co
     (Cow::Owned(out), true)
 }
 
+/// The longest a `format: "summary"` capsule may run before a sentence
+/// boundary, then a hard cut, applies.
+///
+/// 200 is a structural fact, not a tuned one: it is roughly two lines of the
+/// prose a hook captures and comfortably larger than a session-label `context`
+/// line, so a capsule is scannable at k hits while never exceeding the length
+/// of the smallest real memory. Derived from the form of the data; if a corpus
+/// of one-line memories longer than this ever matters, the rule to change is
+/// the sentence boundary, not this cap.
+const SUMMARY_CAP_CHARS: usize = 200;
+
+/// The capsule one memory serves under `format: "summary"`, with a pointer to
+/// the whole when anything was hidden (H8).
+///
+/// The rule is structural, never an LLM: the **first line** of the content; if
+/// that line runs past the 200-char cap, the first sentence boundary
+/// (`. ` / `! ` / `? `) inside the cap, else a hard cut at the cap. When the
+/// capsule hides anything — more lines, or the rest of the line — the marker
+/// carries the original length and the fetch command, in the same shape
+/// `?truncate` already uses so every consumer of one recognizes the other:
+///
+/// ```text
+/// first line…[summary of 1234 chars; full: GET /banks/b/memories/<id>]
+/// ```
+///
+/// Borrowed when the content is its own capsule, so a corpus of one-line
+/// memories serves through this path with zero copies.
+pub fn summary_content<'a>(memory: &'a Memory, bank: &str) -> Cow<'a, str> {
+    let content = memory.content.as_str();
+    let total = content.chars().count();
+    if total == 0 {
+        return Cow::Borrowed(content);
+    }
+    // The capsule proper: first line, sentence-cut when the line is long.
+    let first_line_end = content.find('\n').unwrap_or(content.len());
+    let mut end = first_line_end;
+    if end > SUMMARY_CAP_CHARS {
+        // A sentence boundary inside the cap, punctuation included. `rfind`
+        // because the nearest boundary reads best, and the cap holds the scan.
+        let head = &content[..content
+            .char_indices()
+            .nth(SUMMARY_CAP_CHARS)
+            .map_or(content.len(), |(i, _)| i)];
+        end = head
+            .char_indices()
+            .rev()
+            .find_map(|(i, c)| match c {
+                '.' | '!' | '?' => Some(i + c.len_utf8()),
+                _ => None,
+            })
+            .unwrap_or(head.len());
+    }
+    // A capsule that reproduced the whole content hides nothing and carries no
+    // marker — indistinguishable from the default shape for that row.
+    if end >= content.len() {
+        return Cow::Borrowed(content);
+    }
+    let mut out = content[..end].to_string();
+    out.push_str(&format!(
+        "…[summary of {total} chars; full: GET /banks/{bank}/memories/{id}]",
+        id = memory.id
+    ));
+    Cow::Owned(out)
+}
+
 /// One memory as the lifecycle routes serve it.
 ///
 /// `created_at` is always present; `context` only when the memory has one, so a
@@ -1773,6 +1851,89 @@ mod tests {
             rows.iter().all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")),
             "a cap the whole page fits under must cut nothing"
         );
+    }
+
+    /// A summary capsule is the first line, sentence-cut at the cap, with the
+    /// original length and fetch command when anything was hidden (H8). Every
+    /// rule below is the pre-registered structural one — no LLM, no config.
+    #[test]
+    fn summary_content_should_serve_the_first_line_and_pointer() {
+        let m = Memory {
+            id: "m1".into(),
+            bank_id: "b".into(),
+            content: "gold marker: the auth stack.\nThe second line hides.\nThird.".into(),
+            context: None,
+            created_at: None,
+        };
+        let served = summary_content(&m, "b");
+        assert!(served.starts_with("gold marker: the auth stack."), "{served}");
+        assert!(
+            served.contains("[summary of ") && served.contains("chars; full: GET /banks/b/memories/m1]"),
+            "the hidden remainder must be one GET away: {served}"
+        );
+    }
+
+    #[test]
+    fn summary_content_should_cut_a_long_line_at_its_first_sentence_boundary() {
+        let long = format!("{} {} {}", "decision made here.".repeat(20), "later tail", "x".repeat(400));
+        let m = Memory {
+            id: "m2".into(),
+            bank_id: "b".into(),
+            content: long,
+            context: None,
+            created_at: None,
+        };
+        let served = summary_content(&m, "b");
+        let capsule_end = served.find("…[summary").expect("marker");
+        // The capsule proper (everything before the marker) ends on a sentence
+        // boundary inside the cap.
+        let capsule = &served[..capsule_end];
+        assert!(capsule.chars().count() <= SUMMARY_CAP_CHARS, "{capsule}");
+        assert!(capsule.ends_with('.') || capsule.ends_with('!') || capsule.ends_with('?'), "{capsule}");
+    }
+
+    #[test]
+    fn summary_content_should_hard_cut_a_boundaryless_line() {
+        let m = Memory {
+            id: "m3".into(),
+            bank_id: "b".into(),
+            content: "n".repeat(500),
+            context: None,
+            created_at: None,
+        };
+        let served = summary_content(&m, "b");
+        let capsule_end = served.find("…[summary").expect("marker");
+        assert_eq!(capsule_end, SUMMARY_CAP_CHARS, "hard cut at the cap");
+    }
+
+    #[test]
+    fn summary_content_should_not_marker_a_memory_that_is_its_own_capsule() {
+        let m = Memory {
+            id: "m4".into(),
+            bank_id: "b".into(),
+            content: "one line, short".into(),
+            context: None,
+            created_at: None,
+        };
+        assert_eq!(summary_content(&m, "b"), "one line, short");
+        // Empty content serves empty, borrowed, no marker.
+        let empty = Memory { content: String::new(), ..m };
+        assert_eq!(summary_content(&empty, "b"), "");
+    }
+
+    #[test]
+    fn summary_content_should_count_characters_and_not_bytes() {
+        // Every character is two bytes: a byte-indexed boundary search would cut
+        // mid-character.
+        let m = Memory {
+            id: "m5".into(),
+            bank_id: "b".into(),
+            content: format!("{}{}", "é".repeat(100), "\nsecond line"),
+            context: None,
+            created_at: None,
+        };
+        let served = summary_content(&m, "b");
+        assert!(served.starts_with(&"é".repeat(100)), "{served}");
     }
 
     #[tokio::test]

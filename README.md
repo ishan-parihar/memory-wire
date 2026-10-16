@@ -308,6 +308,47 @@ suites at 100% and still gains 1.0pp on LongMemEval), is in
 designated decision instrument picks; the alternative is named so the choice is
 revisitable rather than buried.
 
+## The wider field, checked 2026-10-15
+
+The rows above are the only head-to-head retrieval numbers in this space: the
+same 500 questions under the same harness method. Everything below is either
+measured-by-us through a harness whose commit is pinned (and marked), or the
+competitor's self-report (and marked that way instead). The rule is `AGENTS.md`
+§12: a number that cannot be traced to a committed artifact is not a number,
+it is marketing.
+
+| | **memory-wire v0.8.0** | **agentmemory** | **Hindsight** (vectorize-io) | **MemOS** (MemTensor) | **Honcho** (plastic-labs) |
+|---|---|---|---|---|---|
+| install | one static binary; a musl build with `DT_NEEDED=0` and no glibc floor | Node runtime + detached engine + worker | Python image + Postgres/pg0 + optional ONNX reranker | Python 3.11, Docker/Helm multi-service stack | Python/FastAPI server or managed service |
+| idle footprint | **~10.7 MiB RSS · 8.8 MiB binary · 3 libs** | ~6 MB heap @1k → **316 MB @50k** | **0.8–1.0 GB** | container stack (not measured by us) | server process (not measured by us) |
+| LongMemEval-S retrieval, same protocol (measured by us) | R@5 **93.0% clean unfitted** · 97.2% fitted (marked) · ≈94.4% out-of-sample est · R@1 **83.8%** | hybrid 95.2% · BM25-only 86.2% (their harness, tuning undisclosed) | **no comparable number exists** — their published figures are LLM-judged answers | — | — |
+| LoCoMo judged accuracy (AMB `rag`) | **84.1%** (n 1540) — free-tier small reader, 15.2k ctx, **26.5 ms** retrieve | — | 92.0% — Gemini-class answerer, 36k ctx, 964 ms retrieve. **Different answerer ⇒ not comparable** to ours | — | self-reported 89.9% |
+| PrecisionMemBench (LLM-free, AMB retrieval) | **19/77, precision 0.24**, recall 0.95 — no identity machinery | — | **66/77, precision 0.85**, recall 1.00 — *with* scope filters + identity-extraction LLM at ingest | — | — |
+| self-update | `memory-wire update` — sha256-verified, rollback kept, live-verified on a second box | manual | manual | container redeploy | server redeploy |
+| license | MIT | MIT | MIT | Apache-2.0 | **AGPL-3.0** — embedding cost for proprietary stacks |
+| eval evidence discipline | 4 test-set consultations, all measurement-only; every number traceable to a committed artifact | none disclosed | — | — | — |
+
+MemOS and Honcho publish judged numbers (MemOS a "35.24% token savings" claim;
+Honcho [90.4% LongMemEval-S, 89.9% LoCoMo](https://plasticlabs.ai/blog/research/Benchmarking-Honcho))
+that no independent harness has reproduced; treat them as claims until run
+under a common one. The audit plan that would do exactly that — plus the
+mechanism-level screen of all four architectures — is
+[`docs/COMPETITOR_GAPS_PLAN.md`](docs/COMPETITOR_GAPS_PLAN.md); the benchmark
+inventory and every comparability rule lives in
+[`docs/BENCHMARK_LANDSCAPE.md`](docs/BENCHMARK_LANDSCAPE.md).
+
+**Where memory-wire wins, measured:** the only clean head-to-head in the field
+(+6.8pp R@5 over agentmemory's BM25-only arm, 93.0 vs 86.2); footprint 30–100×
+lighter idle than either parent; ~283 µs puts and 26.5 ms end-to-end retrieve
+against Hindsight's 964 ms on the same mode; the only verified self-updating
+fleet story; MIT with no AGPL embedding cost.
+
+**Where memory-wire trails, named:** agentmemory's hybrid by ≈0.8pp honest
+(≈94.4 vs 95.2 — the dense weight, measured to cost −9.9pp R@1 for +1.8pp
+coverage); Hindsight's PrecisionMemBench precision 0.24 vs 0.85, because they
+run an identity-extraction LLM at ingest and we deliberately do not — the
+gap is priced, recorded, and its lever is on the TODO register, not hidden.
+
 ## Quick start
 
 ```bash
@@ -953,7 +994,8 @@ Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 ## Roadmap
 
 Shipped: `GET`/`PUT /banks/:id/config` (merged into the `serve` router) · the
-`connect [HOSTS]...` / `hook` / `doctor` / `seed` CLI subcommands · the MCP stdio
+`connect [HOSTS]...` / `hook` / `doctor` / `seed` / `update` CLI subcommands ·
+`doctor --all-hosts` with per-host wiring and hook-liveness findings · the MCP stdio
 server (`rmcp`, 4 tools, +1.6 MB binary) · tag filtering on retain and recall ·
 the lifecycle routes (`GET .../memories`, `GET`/`DELETE .../memories/:mid`,
 `GET .../stats`) with `created_at` on every served memory · `format: "full"` on
@@ -967,7 +1009,11 @@ cost no longer grows with the bank · per-bank `ttl_days` plus the explicit
 graceful shutdown on SIGINT/SIGTERM, draining in-flight requests · the
 `daemon {start,stop,status}` lifecycle: a detached backgrounded server, the port
 as the duplicate-daemon defence, and a status that can tell a stopped server from
-a silent one.
+a silent one · `memory-wire update`: newest-release check over `gh`, sha256-
+verified download, atomic swap keeping `<exe>.old`, daemon restart, re-connect
+with pins preserved · six agent hosts wired (claude-code, codex, copilot-cli,
+cursor, opencode, hermes), claude-code and copilot-cli with HTTP MCP entries,
+install shapes pinned by golden tests.
 
 Not built yet: a 4-tier consolidation ladder (promote/evict/retention had no
 scheduler and no caller; the code was removed rather than left as a model of
@@ -979,10 +1025,10 @@ request in a default build; the cosine/rank kernel is likewise unused) · a `DEL
 the lifecycle responses (they serve `{content, created_at, id[, context]}`; tag
 filtering stays on `recall`) · `document_id` visible in any response · a `backup`
 subcommand (the `sqlite3 .backup` recipe is the interface) · Postgres/
-pgvector backend · LLM-backed `reflect` synthesis · `connect` for hosts outside the five
-detected (claude-code, codex, copilot-cli, cursor, opencode). Gaps that need live
-LLMs/providers (Hindsight system-evals, agentmemory quality/real-embeddings) are
-tracked in `docs/BENCHMARK.md`.
+pgvector backend · LLM-backed `reflect` synthesis · an OmniMemEval provider for
+the HaluMem/PersonaMem v2 corpora (`docs/COMPETITOR_GAPS_PLAN.md` §3). Gaps that
+need live LLMs/providers (Hindsight system-evals, agentmemory
+quality/real-embeddings) are tracked in `docs/BENCHMARK.md`.
 
 ## Subagents
 

@@ -25,6 +25,7 @@ that governs LongMemEval governs every row here marked *measure-only*.
 | **PersonaMem** | multiple-choice preference questions | **yes** — gold is the whole bank (§5.2) | measure-only | not run |
 | **LifeBench**, **SDEBench** (via AMB) | judged answers / coding-agent episodes | yes | measure-only | not run |
 | **AMB** (vectorize-io) | the harness for the four rows above, plus LoCoMo/LME | per mode | harness | provider written: `eval/amb/` |
+| **OmniMemEval** (MemTensor) | judged answers via standardized `add()`/`search()` adapters: LoCoMo, LongMemEval, BEAM, PersonaMem v2, **HaluMem** | yes (answer + judge) | **mixed** — LoCoMo dev (judged instrument), LME **test consultation**, PersonaMem v2/HaluMem **measure-only** | not run; provider not written (`docs/COMPETITOR_GAPS_PLAN.md` §3) |
 | **agent-memory-bench** (GiulioDER) | coding-task success, execution-graded | yes (agent model) | measure-only | not run; needs a Claude Code arm (§4.2) |
 | **OAMB** (rocke2020) | accuracy, answer-visible tokens, indexing tokens/time, latency on LME-60 | yes + an embedding service | measure-only — and it is LongMemEval, so it **burns the test set** | not run |
 | **MemBase** (zjunlp) | token F1 / BLEU / LLM judge on LME, LoCoMo, RealMem, MobileMem | yes for QA | measure-only | not run |
@@ -204,7 +205,32 @@ a different project with the same name).
   purpose not collapsed.
 - **ConvoMem** is the only corpus here we have nothing on.
 
-### 4.6 The datasets' own repos
+### 4.6 OmniMemEval — MemTensor/OmniMemEval (Apache-2.0, checked 2026-10-15)
+
+- Two tracks. **User Memory**: a standardized `add()`/`search()` adapter layer
+  (`scripts/client_factory/`, backend selected with `--lib`), one pipeline
+  (ingest → retrieve → answer generation → LLM-as-judge → metrics) over LoCoMo,
+  LongMemEval, BEAM, PersonaMem v2, HaluMem; results under
+  `results/<benchmark>/<LIB>-<VERSION>/`. **Agent Memory**: AgentBench task
+  domains through an OpenClaw memory plugin — needs Docker, LiveCodeBench,
+  BrowseComp-Plus, an agent-model budget; same tier as agent-memory-bench
+  (§4.2): parked until the user funds it.
+- **Roles, classified before any run** (§6.1): LoCoMo = dev *judged instrument*
+  (cross-check for the AMB rag number, never a ranking-selection signal);
+  LongMemEval = **test consultation**, counted like any other LME run;
+  PersonaMem v2 and HaluMem = measure-only, and the only two corpora here we
+  have nothing on — HaluMem (hallucination resistance) is the first-run
+  candidate per `docs/COMPETITOR_GAPS_PLAN.md` §3.
+- Cost: answer+eval LLM credentials per run. Whether the free aroute tier can
+  stand in (their client factory accepting an OpenAI-compatible base URL) is a
+  fact to verify at adapter time from their `env_examples/`; do not assume it.
+- Provider shape: a thin HTTP client with the uuid→document mapping §4.0
+  requires — the AMB provider (`eval/amb/memory_wire.py`) is the template.
+- License: Apache-2.0, with dataset licenses retained upstream
+  (`THIRD_PARTY_NOTICES.md` in their repo) — vendoring their data is out; a
+  pinned clone and their preparation scripts are not.
+
+### 4.7 The datasets' own repos
 
 | repo | license | what it adds beyond the copy we use |
 |---|---|---|
@@ -317,3 +343,4 @@ a paid frontier reader is a separate decision.
 | 8 | AMB `rag` on BEAM / PersonaMem / LifeBench | answer+judge tokens | `amb run --dataset beam --split 100k --memory memory-wire` (AMB's README says `--domain`; the CLI at `03c1d0f` takes `--split`) | measure-only |
 | 9 | OAMB LME-60 | LLM + embedding service | §4.3 | **test consultation** |
 | 10 | MemBase RealMem / MobileMem; memorybench ConvoMem | LLM | §4.4, §4.5 | measure-only; new corpora |
+| 11 | OmniMemEval HaluMem / PersonaMem v2 | LLM (answer + judge; free tier only if their client factory takes an OpenAI-compatible base URL — verify) | §4.6, `docs/COMPETITOR_GAPS_PLAN.md` §3 | measure-only; **first run pre-registered: HaluMem, once, whatever it shows**; their LoCoMo = dev-judged cross-check; their LongMemEval = **test consultation** |

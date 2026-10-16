@@ -4,7 +4,7 @@
 
 Methodology: per-question fresh index, session-as-document, question-text query — same as agentmemory `longmemeval-bench.ts` (retrieval-only, no LLM judge).
 
-Run 2026-10-15 from `--release`, seed 42, all 500 questions. Each question indexes
+Run 2026-10-16 from `--release`, seed 42, all 500 questions. Each question indexes
 38–62 haystack sessions (mean 47.7), so the 200-row recall candidate pool never
 binds on this suite — every session is scored on every query, and the suite cannot
 detect a pool-bound or overlap-scorer regression on its own. The >200-row path is
@@ -18,13 +18,13 @@ run, not a property of the build. Do not pin it.
 
 | Slice | R@1 | R@5 | R@10 | R@20 | NDCG@10 | MRR | p50 ms | n |
 |---|---|---|---|---|---|---|---|---|
-| knowledge-update | 94.9% | 100.0% | 100.0% | 100.0% | 96.8% | 97.1% | 8 | 78 |
-| multi-session | 87.2% | 97.0% | 98.5% | 99.2% | 86.0% | 91.4% | 8 | 133 |
-| single-session-assistant | 85.7% | 100.0% | 100.0% | 100.0% | 92.8% | 90.4% | 11 | 56 |
-| single-session-preference | 43.3% | 86.7% | 93.3% | 100.0% | 66.2% | 58.2% | 9 | 30 |
-| single-session-user | 87.1% | 98.6% | 100.0% | 100.0% | 94.3% | 92.3% | 8 | 70 |
-| temporal-reasoning | 80.5% | 96.2% | 97.7% | 99.2% | 85.3% | 87.1% | 9 | 133 |
-| **overall** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** | **9** | **500** |
-| overall, abstention excluded (upstream's retrieval protocol) | 84.0% | 97.2% | 98.5% | 99.6% | 88.5% | 89.3% | 9 | 470 |
+| knowledge-update | 94.9% | 100.0% | 100.0% | 100.0% | 96.8% | 97.1% | 6 | 78 |
+| multi-session | 87.2% | 97.0% | 98.5% | 99.2% | 86.0% | 91.4% | 6 | 133 |
+| single-session-assistant | 85.7% | 100.0% | 100.0% | 100.0% | 92.8% | 90.4% | 8 | 56 |
+| single-session-preference | 43.3% | 86.7% | 93.3% | 100.0% | 66.2% | 58.2% | 6 | 30 |
+| single-session-user | 87.1% | 98.6% | 100.0% | 100.0% | 94.3% | 92.3% | 6 | 70 |
+| temporal-reasoning | 80.5% | 96.2% | 97.7% | 99.2% | 85.3% | 87.1% | 6 | 133 |
+| **overall** | **83.8%** | **97.2%** | **98.6%** | **99.6%** | **88.2%** | **89.2%** | **6** | **500** |
+| overall, abstention excluded (upstream's retrieval protocol) | 84.0% | 97.2% | 98.5% | 99.6% | 88.5% | 89.3% | 6 | 470 |
 
 The last row drops the `_abs` questions, as upstream's retrieval evaluation does; it is the row comparable to the LongMemEval paper. The **overall** row keeps all of them, as agentmemory's harness does in practice (its filter tests `question_type`, which never carries the marker).

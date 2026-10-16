@@ -1,0 +1,9 @@
+{
+  "stage": "answer",
+  "skip_failed_answer": false,
+  "status_counts": {
+    "success": 3467
+  },
+  "failed_keys": [],
+  "skipped_records": []
+}

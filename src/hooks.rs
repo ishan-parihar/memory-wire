@@ -520,7 +520,29 @@ enum WireHit {
 
 /// Recalled memories, or `None` when the server is unreachable or its answer is
 /// not a recall this build can read.
-fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> {
+/// The wire format a hook asks the server for, from `MEMORY_WIRE_FORMAT`.
+///
+/// Only `summary` (H8's capsule serving) is honoured; anything else — unset,
+/// blank, misspelled — reads as `full`, today's behaviour byte-for-byte. A knob
+/// a hook's host can set wrong must degrade, not error: the hook contract is
+/// never-fail, and an unknown value on an old server (which has no `summary`)
+/// would otherwise turn a working integration into a silent no-recall.
+fn wire_format_from(explicit: Option<&str>) -> &'static str {
+    match explicit
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("summary") => "summary",
+        _ => "full",
+    }
+}
+
+/// [`recall_at`] with the wire format named — the env read is the only
+/// difference, kept separate so the format choice is testable without a
+/// process-global environment.
+fn recall_at_fmt(endpoint: &str, bank: &str, query: &str, fmt: &str) -> Option<Vec<ScoredHit>> {
     if query.trim().is_empty() {
         return None;
     }
@@ -530,11 +552,12 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> 
     // `exclude_tags` keeps imported transcripts and session markers out of an
     // auto-injected block (audit GAP-3/7); the field is optional on the server
     // too, so a hook newer than its server degrades to today's behavior
-    // rather than erroring.
+    // rather than erroring. `fmt` is the one field `MEMORY_WIRE_FORMAT`
+    // controls: `summary` serves H8 capsules instead of whole memories.
     let body = json!({
         "query": query,
         "budget": BUDGET,
-        "format": "full",
+        "format": fmt,
         "exclude_tags": EXCLUDED_TAGS
     })
     .to_string();
@@ -570,6 +593,17 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> 
         hits.iter().map(|h| h.score).collect::<Vec<_>>()
     );
     Some(hits)
+}
+
+/// Recalled memories, or `None` when the server is unreachable or its answer is
+/// not a recall this build can read.
+fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> {
+    recall_at_fmt(
+        endpoint,
+        bank,
+        query,
+        wire_format_from(std::env::var("MEMORY_WIRE_FORMAT").ok().as_deref()),
+    )
 }
 
 /// Recalled memories as plain text, in the shape every auto-injection surface
@@ -735,6 +769,53 @@ mod tests {
         assert!(seen[1].starts_with("/banks/demo/recall"), "{seen:?}");
         assert!(seen[1].contains("\"budget\":1200"), "{:?}", seen[1]);
         assert!(seen[1].contains("how does auth work"), "{:?}", seen[1]);
+    }
+
+    /// `MEMORY_WIRE_FORMAT` is the knob between whole-memory injection (the
+    /// default, unchanged since the first hook) and H8 capsule injection. The
+    /// format choice itself is a pure function so the default can be asserted
+    /// without touching a process-global environment.
+    #[test]
+    fn the_format_knob_defaults_to_full_and_degrades_on_unknown_values() {
+        assert_eq!(wire_format_from(None), "full");
+        assert_eq!(wire_format_from(Some("")), "full");
+        assert_eq!(wire_format_from(Some("  summary ")), "summary");
+        // Misspelled or future values degrade to the default rather than
+        // erroring — a knob a host sets wrong must not cost the recall.
+        assert_eq!(wire_format_from(Some("Summary")), "summary", "case-insensitive");
+        assert_eq!(wire_format_from(Some("citations")), "full", "unknown degrades");
+    }
+
+    /// Under the knob a hook asks for capsules and injects what it is served:
+    /// the request body carries `"format":"summary"`, and a summary-shaped
+    /// response (the same object shape as `full`, `content` a capsule) lands
+    /// in the injected block exactly as served.
+    #[test]
+    fn summary_format_should_request_capsules_and_inject_them() {
+        let (ep, rx) = canned(vec![
+            ("/config", "{}"),
+            (
+                "/recall",
+                r#"[{"id":"m1","score":0.5,"created_at":null,"content":"the auth stack uses jose…[summary of 900 chars; full: GET /banks/demo/memories/m1]"}]"#,
+            ),
+        ]);
+        let mut out = preamble(&ep, "demo");
+        if let Some(hits) = recall_at_fmt(&ep, "demo", "how does auth work", "summary") {
+            out.push_str(&recall_section("demo", &hits));
+        }
+        assert!(
+            out.contains("the auth stack uses jose…[summary of 900 chars"),
+            "the capsule must be injected as served: {out}"
+        );
+        let seen: Vec<String> = rx.try_iter().collect();
+        let recall = seen
+            .iter()
+            .find(|s| s.starts_with("/banks/demo/recall"))
+            .unwrap_or_else(|| panic!("no recall request: {seen:?}"));
+        assert!(
+            recall.contains("\"format\":\"summary\""),
+            "the knob must reach the wire: {recall}"
+        );
     }
 
     #[test]

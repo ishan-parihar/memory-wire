@@ -1,0 +1,40 @@
+case           gold@5  junk@5  chars   top-5 (auto shape)
+A-readme            Y       -    800   asked: Was the README was also updated with any relevant information?  | pre-compact session 5d07dfb8-d537-4610-b706-b2062233a86d (auto) B; cor
+B-audit             Y       -    624   asked: I want you to audit the context injection implementation gaps t | asked: , answered: §1518§ The stop is already in flight (my running co
+C-continue          -       -   1691   memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | asked: continue with the aroute development answered: Release rerun st | asked: <system-notice> Continue. MUST resume most recent intent; compl | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (prompt_input | session-end session b942d121-d196-43ca-896f-b67597cfb580 (prompt_input
+D-composed          Y       -   1200   asked: Was the README was also updated with any relevant information?  | asked: Is the readme, and everything else updated? Are all their integ | asked: Complete assignment thoroughly: # Target RUN dir: /home/ishanp/
+E-release           Y       -   1262   asked: Proceed with updating the tag on the github releases and deploy | asked: Proceed with updating the tag and deploying the latest release  | asked: continue with the aroute development. answered: Release is depl | session-end session d7b0110a-9f48-4703-9bd5-509fe00a00fc (other) The B
+F-plugin            Y       -   1769   memory-wire closed the integration gaps from the 2026-10-07 investigat | memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | Fixed opencode infra bugs 2026-10-09: (1) browseros-neo endless-restar | asked: "This is a live retention test of the memory-wire opencode plug | asked: Fix /home/ishanp/.claude-mem/settings.json based on the omnirou
+G-dispatcher        -       -    800   asked: Check both ./parent-projects/zeroclaw and ./parent-projects/her | asked: Proceed with full scale execution of the implementation plan. a
+H-trading           !       -    800   asked: The computer restarted due to power cuts. Investigate the curre | asked: Audit the surface area of /home/ishanp/.hermes/organism/venture
+I-session-ended      -       -   2000   asked: The telegram bot token for @ip_operant_testing_bot is "88897732 | asked: Find the sourcehound license issuer key on this machine. Run th | asked: Complete assignment thoroughly: Fix all findings in FOUR essays | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (logout) Skil | asked: So do we have configuration for choosing separate model for adv
+J-harness-noise      -       -   2000   asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-27cef5 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e
+
+auto shape: gold 5/6 junk-injected 0/9 ~12946 chars total across 10 cases
+
+search shape (what memory_recall sees, no exclusions):
+  A-readme       gold-reachable@5: Y
+  B-audit        gold-reachable@5: Y
+  C-continue     gold-reachable@5: -
+  D-composed     gold-reachable@5: Y
+  E-release      gold-reachable@5: Y
+  F-plugin       gold-reachable@5: Y
+  G-dispatcher   gold-reachable@5: -
+  H-trading      gold-reachable@5: Y
+  I-session-ended gold-reachable@5: -
+  J-harness-noise gold-reachable@5: -
+
+H8 summary shape (same auto settings, format=summary):
+case            ids gold@cap  chars vs auto   top-5 (capsules)
+A-readme          =        Y    421    -379   asked: Was the README was also updated with any relevant information?  | pre-compact session 5d07dfb8-d537-4610-b706-b2062233a86d (auto)…[summa
+B-audit           =        Y    391    -233   asked: I want you to audit the context injection implementation gaps t | asked: ,…[summary of 224 chars; full: GET /banks/omp/memories/d0a93a35
+C-continue        =        -    858    -833   memory-wire integration gap investigation (2026-10-07, opencode 1.18.… | asked: continue with the aroute development…[summary of 148 chars; ful | asked: <system-notice> Continue. MUST resume most recent intent; compl | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (prompt_input | session-end session b942d121-d196-43ca-896f-b67597cfb580 (prompt_input
+D-composed        =        Y    811    -389   asked: Was the README was also updated with any relevant information?  | asked: Is the readme, and everything else updated? Are all their integ | asked: Complete assignment thoroughly: # Target RUN dir: /home/ishanp/
+E-release         =        Y    761    -501   asked: Proceed with updating the tag on the github releases and deploy | asked: Proceed with updating the tag and deploying the latest release  | asked: continue with the aroute development.…[summary of 300 chars; fu | session-end session d7b0110a-9f48-4703-9bd5-509fe00a00fc (other)…[summ
+F-plugin          =        Y   1175    -594   memory-wire closed the integration gaps from the 2026-10-07 investigat | memory-wire integration gap investigation (2026-10-07, opencode 1.18.… | Fixed opencode infra bugs 2026-10-09: (1) browseros-neo endless-restar | asked: "This is a live retention test of the memory-wire opencode plug | asked: Fix /home/ishanp/.claude-mem/settings.json based on the omnirou
+G-dispatcher      =        -    302    -498   asked: Check both ./parent-projects/zeroclaw and .…[summary of 2039 ch | asked: Proceed with full scale execution of the implementation plan.…[
+H-trading         =        !    375    -425   asked: The computer restarted due to power cuts. Investigate the curre | asked: Audit the surface area of /home/ishanp/.…[summary of 439 chars;
+I-session-ended    =        -   1144    -856   asked: The telegram bot token for @ip_operant_testing_bot is "88897732 | asked: Find the sourcehound license issuer key on this machine. Run th | asked: Complete assignment thoroughly: Fix all findings in FOUR essays | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (logout)…[sum | asked: So do we have configuration for choosing separate model for adv
+J-harness-noise    =        -   1455    -545   asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-27cef5 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e
+
+H8 gate: ranking IDENTICAL; chars 7693 vs 12946 auto (+5253, 41% less); fidelity HELD on 6 gold cases

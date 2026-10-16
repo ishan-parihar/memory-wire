@@ -1,0 +1,37 @@
+{
+  "stage": "eval",
+  "skip_failed_judge": false,
+  "status_counts": {
+    "success": 3464
+  },
+  "failed_keys": [
+    {
+      "key": "hm_exp_user_mw_h10_medium_2f1f897e-d67f-dbc5-6a7b-b7634a9e294f__s23__q2",
+      "error": {
+        "stage": "eval",
+        "type": "RuntimeError",
+        "message": "judge failed: could not extract judge label from response: The generated answer does not directly confirm the gold answer's assertion that Martin now appreciates crowded spots, instead focusing on the absence of a timestamped record, which fails to align with",
+        "timestamp": "2026-10-15T23:33:32.436078+00:00"
+      }
+    },
+    {
+      "key": "hm_exp_user_mw_h10_medium_6106afc1-6ad6-c821-3f0f-b491e3e0b833__s1__q0",
+      "error": {
+        "stage": "eval",
+        "type": "RuntimeError",
+        "message": "judge failed: could not extract judge label from response: The generated",
+        "timestamp": "2026-10-16T00:02:38.841807+00:00"
+      }
+    },
+    {
+      "key": "hm_exp_user_mw_h10_medium_2e36c193-a605-8cc7-70ff-80b2336d4980__s16__q0",
+      "error": {
+        "stage": "eval",
+        "type": "RuntimeError",
+        "message": "judge failed: could not extract judge label from response: The generated answer contradicts the gold answer by stating Susan is self-employed instead of retired, which is a factual mismatch. WRONG",
+        "timestamp": "2026-10-16T00:38:42.974622+00:00"
+      }
+    }
+  ],
+  "skipped_records": []
+}

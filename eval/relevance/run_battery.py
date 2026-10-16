@@ -28,8 +28,8 @@ AUTO_BUDGET = 1200
 SEARCH_BUDGET = 2000
 
 
-def recall(endpoint: str, bank: str, query: str, budget: int, exclude: list[str]):
-    body = {"query": query, "budget": budget, "format": "full"}
+def recall(endpoint: str, bank: str, query: str, budget: int, exclude: list[str], fmt: str = "full"):
+    body = {"query": query, "budget": budget, "format": fmt}
     if exclude:
         body["exclude_tags"] = exclude
     req = urllib.request.Request(
@@ -90,6 +90,45 @@ def main() -> int:
         reachable = any(any(g in h["content"] for h in top[:5]) for g in c["gold"]) if c["gold"] else None
         tag = "-" if reachable is None else ("Y" if reachable else "!")
         print(f"  {c['id']:<14} gold-reachable@5: {tag}")
+
+    # H8 gate (`docs/handoff/RND_PLAN.md` §5 H8, amended pre-run): capsule serving
+    # under the auto shape's own settings. Three clauses: ranking identity (the
+    # serve mode must not touch the hit order), served load (chars strictly
+    # down), capsule fidelity (every gold hit's label survives the capsule — a
+    # reader who cannot tell which hit to fetch is not helped by shorter text).
+    print("\nH8 summary shape (same auto settings, format=summary):")
+    print(f"{'case':<14}{'ids':>5}{'gold@cap':>9}{'chars':>7}{'vs auto':>8}   top-5 (capsules)")
+    h8_rank_ok = True
+    h8_fidelity_ok = True
+    h8_chars_auto = h8_chars_sum = 0
+    n_gold_cases = 0
+    for c in cases:
+        auto = recall(args.endpoint, args.bank, c["query"], AUTO_BUDGET, AUTO_EXCLUDE)
+        summ = recall(args.endpoint, args.bank, c["query"], AUTO_BUDGET, AUTO_EXCLUDE, fmt="summary")
+        if [h["id"] for h in auto] != [h["id"] for h in summ]:
+            h8_rank_ok = False
+        texts_auto = [h["content"] for h in auto[:5]]
+        texts_summ = [h["content"] for h in summ[:5]]
+        cost_a = sum(min(len(t), 400) for t in texts_auto)
+        cost_s = sum(min(len(t), 400) for t in texts_summ)
+        h8_chars_auto += cost_a
+        h8_chars_sum += cost_s
+        gold_auto = any(any(t.startswith(g) or g in t for g in c["gold"]) for t in texts_auto) if c["gold"] else None
+        gold_cap = any(any(t.startswith(g) or g in t for g in c["gold"]) for t in texts_summ) if c["gold"] else None
+        if c["gold"]:
+            n_gold_cases += 1
+            if gold_auto != gold_cap:
+                h8_fidelity_ok = False
+        mark = "-" if gold_cap is None else ("Y" if gold_cap else "!")
+        print(
+            f"{c['id']:<14}{'=' if h8_rank_ok else '!':>5}{mark:>9}{cost_s:>7}{cost_s - cost_a:>+8}   {hits(summ)}"
+        )
+    print(
+        f"\nH8 gate: ranking {'IDENTICAL' if h8_rank_ok else 'MOVED (!!)'}; "
+        f"chars {h8_chars_sum} vs {h8_chars_auto} auto "
+        f"({h8_chars_auto - h8_chars_sum:+d}, {100 * (h8_chars_auto - h8_chars_sum) / max(h8_chars_auto, 1):.0f}% less); "
+        f"fidelity {'HELD' if h8_fidelity_ok else 'BROKEN (!!)'} on {n_gold_cases} gold cases"
+    )
     return 0
 
 

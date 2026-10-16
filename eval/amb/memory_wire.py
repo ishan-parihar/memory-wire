@@ -129,7 +129,7 @@ class MemoryWireProvider(MemoryProvider):
             # result cap: memory-wire hard-caps one recall at 100 hits
             # and trims by tokens, so a budget that cannot hold k
             # documents silently returns fewer than k.
-            "format": "full",
+            "format": os.environ.get("MEMORY_WIRE_FORMAT", "full"),
             "budget": int(os.environ.get("MEMORY_WIRE_BUDGET", "200000")),
         }
         if filters is not None:

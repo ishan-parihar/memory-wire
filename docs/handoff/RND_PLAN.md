@@ -328,3 +328,157 @@ run-to-run spread (the harness is deterministic, so any regression is real — r
 | 2026-10-14 | **H7** `bench_concurrency` quiet-box re-run | PASS: 1.85× at 64 clients, load 0.98→4.33; 2026-10-13 failure was load noise; TODO #14 closed | `eval/baseline/2026-10-14-bench-concurrency/` | 40 | 0 |
 | 2026-10-15 | **H1d** dense arm on `recall_all@10` | gate FAILED: +1.8pp best at vec=0.75 bought at −9.9pp R@1; deep-miss rescue 4/99; lever closed | `eval/SELECTION_VECTOR_AXIS_ALL10.md` | 41 | 0 |
 | 2026-10-15 | **v0.8.0 release acceptance** | LongMemEval retrieval: byte-identical to the v0.7.0 record (83.8/97.2/98.6/99.6/88.2/89.2, n 500); release cut (feature `04123f7`, bump `a272196`, tag `v0.8.0`, 3-Linux assets via REST, CI disabled around the push) | `eval/RESULTS.md` | 42 | **1** (consultation #4) |
+| 2026-10-15 | Six-repo architecture audit (TODO #19) | field yields no ranking-core mechanism; H8 source confirmed structural, H10 unblocked (OpenAI-compatible shim), H11 registered (Honcho `times_derived`), session diversification killed (no-op at session granularity) | `docs/COMPETITOR_GAPS_PLAN.md` §6 | — | 0 |
+| 2026-10-15 | **H8** summary-first serve mode | gate PASSED: `format: "summary"` capsule serving — ranking identical, **41% less served text**, fidelity held; PMB invariant (19/77, 0.24/0.95) | `eval/relevance/BATTERY-H8-2026-10-15.txt` | 43 | 0 |
+| 2026-10-15 | **V4** MCP bank browsing | discovered already-shipped (stale plan row): `resources/list` bounded pages + `resources/read` + bank completion have served since the MCP surface landed; hand-verified on the live `omp` bank (100/page, cursor, exact read) | `src/mcp.rs` | — | 0 |
+| 2026-10-15 | **H11** re-observation frequency tiebreak | **closed unmeasurable, no build**: dedup never records re-observation (all counters would read 1), no corpus expresses it — dormant-config shape this repo removes; re-open condition stated in the H-item | `docs/handoff/RND_PLAN.md` §5 H11 | — | 0 |
+| 2026-10-16 | **H10** OmniMemEval HaluMem-Medium, once | **0.6129 ± 0.0000** (n 3,464/3,467): Memory Boundary **0.9372** (hallucination-resistance headline — verbatim storage), Dynamic Update 0.2056 (named, no lever); free small-stack answerer/judge; not comparable to other systems' HaluMem numbers until same-harness | `eval/omnimevaleval/memory-wire-mw_h10_medium/` | 44 | 0 |
+
+## 5. Cycle 2026-10-15→ — the survey-sourced queue
+
+Filled by the reference-project survey (`docs/COMPETITOR_GAPS_PLAN.md`) after the
+in-house queue emptied. Pre-registered below **before any run**; the audit phase
+(TODO #19) is the gate for everything audit-derived, and the veto chain of
+`COMPETITOR_GAPS_PLAN.md` §4 governs how anything else enters this section.
+
+### H8 — summary-first serve mode (from OpenViking V1)
+
+- **Status:** **done 2026-10-15, gate PASSED** (`CONSISTENCY.md` §43). Shipped as
+  `format: "summary"` on recall — structural capsule (first line, sentence-cut at 200
+  chars, `…[summary of N chars; full: GET …]` pointer), default build, no new deps,
+  every other format byte-identical, +6 tests. Battery gate on the live `omp` bank:
+  ranking **IDENTICAL** (id order per case), served text **41% less** (7,693 vs 12,946
+  chars), fidelity **HELD** (gold-in-capsule = gold@5, 5/6 — the miss is the pre-existing
+  ranking limit of case H, same in both shapes). PMB confirmation: **19/77, 0.24, 0.95 —
+  invariant** under capsule serving, as pre-registered (id-based assertions). Residue
+  named: junk rides the top-5 at capsule length — H8 shrinks the over-return's cost, does
+  not fix it. **Follow-on recorded, not taken:** whether the surfaces adopt capsule
+  injection is a product decision; the battery numbers above are what it would cite.
+- **Mechanism:** recall today serves whole memories trimmed by the token budget,
+  and the over-return failure is measured twice — `OPEN_HOOK_RECALL_RELEVANCE.md`
+  on live banks, PrecisionMemBench publicly (precision 0.24, 563 of 567 failures
+  are junk riding along). A summary-first mode serves a compact representation of
+  each hit — the stored `context` field or a lexical/structural capsule, **never
+  an LLM**: a summarizer in the serve path fails the constraint gate (default
+  build, no deps) and is refused — with the fetch command for the whole memory
+  beside it, so a reader scanning k hits reads k capsules, not k sessions. The
+  primitive half-exists (`?truncate=` serves prefix + length + fetch command);
+  what is new is a *semantic* capsule tier and a mode that composes it.
+- **Prior:** moderate. H4 proved a reader does not drown in *gold-covered*
+  context at k=10 (92→94% flat), so this is **not** a ranking lever and will not
+  be judged as one; the diagnosed failure it targets is junk-at-injection, whose
+  dev instrument is the relevance battery.
+- **Pre-registered gate (dev set, relevance battery only):** amended 2026-10-15
+  **before the first run** — the original "junk@5 down" clause was unmeasurable as
+  written (junk *presence* in the top-5 is ranking-determined and the ranking must
+  not change). The gate as it will be judged: (1) **ranking byte-identical** —
+  `format: "summary"` returns the same hit ids in the same order as the default
+  shape (asserted in the e2e test); (2) **served load strictly down** — the
+  battery's `auto_cost` (chars) per case and in total, summary shape vs full;
+  (3) **capsule fidelity** — for every gold hit in the top-5, the gold label
+  appears in the served capsule (gold-in-capsule rate must equal gold@5, else
+  the reader cannot tell which hit to fetch — the mode fails its purpose even
+  though every hit remains fetchable). Kill: any fidelity break, chars not down,
+  or ranking moved. Confirmation: one PMB re-run, measure-only — expected
+  **invariant** (PMB asserts on document ids, not served text), and proving that
+  invariance is the point of running it. **Never judged on LoCoMo or LongMemEval.**
+- **Capsule rule (structural, no LLM):** the first line of content; if that
+  exceeds 200 chars, the first sentence boundary (`. ` / `? ` / `! `) within it,
+  else a hard cut at 200 with an ellipsis. `context` is served as its own field
+  (as `format: full` already does), never as the content capsule — the battery's
+  gold labels are content prefixes, and a context-capsule would erase them.
+- **Kill criterion:** any `gold@5` drop, or a capsule that cannot be produced
+  lexically/structurally — then the mode dies at the constraint gate and the
+  finding is recorded.
+
+### H9 — pool-scale token-overlap re-test (discharges CONSISTENCY §14.2)
+
+- **Status:** pre-registered 2026-10-15, not started; blocked on the BEAM
+  turn-level labelling project (the `BENCHMARK_LANDSCAPE.md` §3 finding — AMB's
+  BEAM `gold_ids` are conversation ids, unusable as-is; labels must be derived
+  from the upstream release).
+- **Mechanism:** `overlap: 0.00` ties `0.25` on LoCoMo (69up/41down churn, a
+  plateau) — but LoCoMo banks hold 19–32 documents against ~48 on LongMemEval
+  and 5,000 in `tests/scale.rs`, and §14.2 explicitly defers deletion of the
+  stream until it is re-tested "at pool scale". The open question is whether a
+  second lexical voter pays only in large pools.
+- **Pre-registered gate:** one labelled pool-scale dev set (BEAM-derived), one
+  run, `overlap: 0.00` vs `0.25`. **Tie ⇒ delete the stream** — simpler shipped
+  config, one less code path, and the §14.2 "may be a dead parameter" discharged
+  as yes. **Pays ⇒ the stream is kept with a measured justification** for the
+  first time. Terminal either way. Synthetic corpora cannot decide this (rule:
+  weak ranking evidence); LongMemEval cannot decide it (test set).
+- **Cost:** the labelling project is the cost; the run is free.
+
+### H10 — OmniMemEval provider + HaluMem, once, measure-only
+
+- **Status:** **done 2026-10-16, run once, recorded unvarnished** (`CONSISTENCY.md` §44,
+  artifacts `eval/omnimevaleval/memory-wire-mw_h10_medium/`). Adapter written and verified
+  (`memory_wire_client.py` in the pinned OmniMemEval clone), HaluMem-Medium end-to-end:
+  **overall 0.6129 ± 0.0000** (n 3,464/3,467; 3 judge errors, 0.087%); **Memory Boundary
+  0.9372** (the hallucination-resistance headline — verbatim storage has no ingest-side
+  channel to hallucinate with), Memory Conflict 0.7018, Generalization 0.5375, Multi-hop
+  0.4394, Basic Fact Recall 0.3804, **Dynamic Update 0.2056** (newest-value override;
+  same reader-bound temporal shape as §39's 8.3% — named, not levered). Free-tier
+  small-stack answerer/judge via the shim; ~7 h35 m wall clock; 8.57M answer tokens;
+  add 95.8 ms / search 43.0 ms inside the run. Comparability: none until a second
+  system runs this exact harness with the same answerer. **The battery now has its
+  first hallucination-resistance corpus**; OmniMemEval's other arms stay classified
+  per `BENCHMARK_LANDSCAPE.md` §4.6 (their LoCoMo = dev-judged cross-check; their
+  LongMemEval = test consultation, only for a release).
+- **Cost resolution (kept from the audit):** their LLM clients are OpenAI-compatible with `ANSWER_BASE_URL` /
+  `EVAL_BASE_URL` overrides, so the aroute free tier (through `eval/llm_shim.py`) satisfies
+  both clients; the free path ran the whole pipeline. Adapter contract confirmed:
+  `add()` / `search()` / `delete()` over `--lib`. HaluMem data is **CC BY-NC-ND 4.0 — run,
+  never vendor**; 3,467 QA pairs, 20 users, reports `llm_judge_score`.
+- **What it is:** a measurement, not a hypothesis — no gate, no selection. Write
+  the `add()`/`search()` provider (the `eval/amb/memory_wire.py` uuid→document
+  pattern), run HaluMem once, commit their own output artifact next to the prose.
+  HaluMem (hallucination resistance) is the only corpus in the landscape that
+  measures what no current battery row does.
+- **Roles, already classified** (`BENCHMARK_LANDSCAPE.md` §4.6): HaluMem and
+  PersonaMem v2 measure-only; their LoCoMo is a dev-judged cross-check of our
+  84.1%; their LongMemEval is test consultation #5 **if ever run** — only when a
+  release wants it.
+
+### H11 — re-observation frequency as a fusion tiebreak (from Honcho's `times_derived`)
+
+- **Status:** **closed 2026-10-15 as unmeasurable — no build.** The registration's
+  own verdict clause ("if the battery shows no signal, the lever is unmeasurable
+  rather than refuted") is confirmed structurally: dedup-on-retain returns the
+  existing id and never re-inserts, so a bank's rows carry no re-observation
+  record, every counter would read 1, and the battery at any weight is
+  byte-identical to weight 0 — no benchmark corpus expresses re-observation
+  either (each memory is retained once). Building the counter plus an inert
+  fusion weight now would be dormant config with no caller and no instrument
+  — the exact shape this repo removes rather than ships (the 4-tier
+  consolidation ladder is the precedent, `README.md` Roadmap). **Re-open
+  condition, stated once:** a bank that has accumulated counted
+  re-observations, or a corpus whose gold is structurally re-stated. Until one
+  exists, H11 stays closed.
+- **Mechanism (kept for the record):** memory-wire already dedups on content hash — a re-retain of known
+  content returns the existing id. Honcho's analogous event increments a counter
+  (`times_derived`, `src/models.py`/`src/crud/document.py`) and their fallback rank is
+  `times_derived DESC`. The candidate: a **`times_retained` counter** (one SQLite column,
+  one UPDATE on the dedup path — no deps, no LLM) used as a *deterministic frequency
+  prior* in fusion — re-observed content carries a higher importance prior, breaking
+  near-ties toward what the environment keeps re-stating.
+- **Prior:** low, and honest about why: LoCoMo and PMB banks retain each memory exactly
+  once, so the counter is a constant there and **no benchmark instrument expresses it**;
+  the *relevance battery on live banks* is the only dev instrument where re-observation
+  exists at all. If the battery shows no signal, the lever is unmeasurable rather than
+  refuted — the verdict will say which.
+- **Pre-registered gate (battery only):** implement the counter (schema migration), add
+  the tiebreak behind a weight, run the battery: **`junk@5` down or flat and `gold@5`
+  up** with the ranking at weight 0 byte-identical (asserted). Kill: any `gold@5` drop,
+  or the migration costs a default-build dependency (it cannot — it is one column).
+- **Cost:** free; ~half a day with the migration and tests.
+
+### The audit phase (TODO #19) — the gate for everything else
+
+Read-only, pinned, free. Scope and per-repo questions: `COMPETITOR_GAPS_PLAN.md`
+§1. Every finding exits as exactly one of: a CLOSED re-confirmation (recorded),
+out-of-scope-as-default (recorded), or a pre-registered H-item appended to this
+section. The two named candidates that already cleared the paper screen — H8
+above, and V4 (MCP bank listing, product polish with no benchmark claim) — ship
+independently of the audit's outcome if their source mechanisms check out.

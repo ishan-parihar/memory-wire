@@ -34,6 +34,7 @@ use tracing_subscriber::EnvFilter;
 
 use memory_wire::api::{
     bank_config_routes, blocking, full_hit_json, http_error, memories_routes, parse_created_at,
+    summary_hit_json,
     parse_update_mode, ApiError, MemoryService,
 };
 use memory_wire::memory::Bank;
@@ -546,8 +547,11 @@ struct RecallReq {
     /// no exclusion — byte-identical to before the field existed.
     #[serde(default)]
     exclude_tags: Option<Vec<String>>,
-    /// `full` returns `{id, score, created_at, content}` objects; anything else
-    /// (the default) keeps the bare array of content strings.
+    /// `full` returns `{id, score, created_at, content}` objects; `summary`
+    /// returns the same objects with `content` as a structural capsule — first
+    /// line, sentence-cut at 200 chars — plus the original length and the fetch
+    /// command for the whole (H8). Anything else (the default) keeps the bare
+    /// array of content strings.
     format: Option<String>,
 }
 
@@ -746,7 +750,10 @@ async fn recall(
 ) -> Result<Json<Value>, HttpErr> {
     // `budget` stays an Option all the way down: `recall_filtered` resolves it
     // against the bank's `recallMaxTokens` before the 2000 default, and
-    // unwrapping here would silently ignore that config.
+    // unwrapping here would silently ignore that config. `bank` moves into the
+    // blocking closure, so the serve step gets its own copy — the capsule's
+    // fetch pointer names the bank and must be built from the same spelling.
+    let bank_for_serve = bank.clone();
     let hits = blocking(move || {
         svc.recall_filtered(
             &bank,
@@ -759,11 +766,17 @@ async fn recall(
     .await
     .map_err(to_http)?;
     // The default shape is a bare array of strings and stays that way; `full` is
-    // for a caller that has to cite what it got back.
-    Ok(Json(if req.format.as_deref() == Some("full") {
-        Value::Array(hits.iter().map(full_hit_json).collect())
-    } else {
-        Value::Array(hits.into_iter().map(|h| Value::String(h.memory.content)).collect())
+    // for a caller that has to cite what it got back; `summary` (H8) is the same
+    // object shape with the content capped to a structural capsule — the hit
+    // order is the ranking and is served untouched by every format.
+    Ok(Json(match req.format.as_deref() {
+        Some("full") => Value::Array(hits.iter().map(full_hit_json).collect()),
+        Some("summary") => Value::Array(
+            hits.iter()
+                .map(|h| summary_hit_json(h, &bank_for_serve))
+                .collect(),
+        ),
+        _ => Value::Array(hits.into_iter().map(|h| Value::String(h.memory.content)).collect()),
     }))
 }
 
@@ -1204,6 +1217,82 @@ mod tests {
         )
         .expect("array of strings");
         assert_eq!(other, plain, "an unrecognised format must not change the shape");
+    }
+
+    // `format: "summary"` serves capsules: same object shape as `full`, the
+    // content replaced by its first line (sentence-cut at 200) with the length
+    // and fetch command for the whole — and the hit order, which is the
+    // ranking, identical to every other format (H8's gate at the HTTP level).
+    #[test]
+    fn recall_summary_should_serve_capsules_with_identical_ranking() {
+        let (base, _db) = serve_scratch("format-summary");
+        let multi = r#"gold marker: the auth stack uses jose middleware.
+The jose library handles signing and verification; keys rotate quarterly.
+A third line exists so the remainder is definitely hidden."#;
+        let id_multi: Value = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/f2/retain",
+                &format!(r#"{{"content":{}}}"#, serde_json::to_string(multi).expect("ser")),
+            )
+            .body,
+        )
+        .expect("json");
+        let id_short: Value = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/f2/retain",
+                r#"{"content":"short line about jose jwks"}"#,
+            )
+            .body,
+        )
+        .expect("json");
+
+        let summary: Vec<Value> = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/f2/recall",
+                r#"{"query":"jose","format":"summary"}"#,
+            )
+            .body,
+        )
+        .expect("array of objects");
+        let full: Vec<Value> = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/f2/recall",
+                r#"{"query":"jose","format":"full"}"#,
+            )
+            .body,
+        )
+        .expect("array of objects");
+
+        // The ranking gate: identical ids, identical order, both formats.
+        let summary_ids: Vec<&str> = summary.iter().filter_map(|h| h["id"].as_str()).collect();
+        let full_ids: Vec<&str> = full.iter().filter_map(|h| h["id"].as_str()).collect();
+        assert_eq!(summary_ids, full_ids, "the serve mode must not touch ranking");
+        assert!(summary_ids.contains(&id_multi["id"].as_str().expect("id")));
+
+        // The multi-line hit: first line + the pointer, nothing of line two.
+        let multi_hit = summary
+            .iter()
+            .find(|h| h["id"] == id_multi["id"])
+            .expect("multi hit");
+        let served = multi_hit["content"].as_str().expect("content");
+        assert!(served.starts_with("gold marker: the auth stack uses jose middleware."), "{served}");
+        assert!(
+            served.contains("[summary of ") && served.contains("chars; full: GET /banks/f2/memories/"),
+            "pointer to the whole: {served}"
+        );
+        assert!(!served.contains("keys rotate quarterly"), "{served}");
+        assert!(served.chars().count() < multi.lines().next().expect("line").chars().count() + 100);
+
+        // The one-line hit is its own capsule: no marker, content unchanged.
+        let short_hit = summary
+            .iter()
+            .find(|h| h["id"] == id_short["id"])
+            .expect("short hit");
+        assert_eq!(short_hit["content"].as_str(), Some("short line about jose jwks"));
     }
 
     // An occurrence time round-trips: retain dates the memory, `full` recall

@@ -3,26 +3,49 @@
 Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `a272196` — **v0.8.0,
 released** (feature commit `04123f7`, bump `a272196`, tag `v0.8.0`, three-Linux assets
 published via the REST path; CI was disabled around the tag push and re-enabled after).
-The R&D cycle and the product batch are **in the release**. Post-release doc edits
-(§42 records, size re-pins) are the current uncommitted residue, by the house rhythm.
+The R&D cycle and the product batch are **in the release**. Post-release work — §42
+records, size re-pins, the comparative README section, and the reference-project
+investigation plan — is the current uncommitted residue, by the house rhythm.
 
 ## 1. What is in the working tree (post-release residue)
 
- Modified: `AGENTS.md INSTALL_FOR_AGENTS.md README.md TODO.md docs/CONSISTENCY.md
-  docs/INTEGRATION_GAPS.md docs/INTEGRATION_PLAN.md eval/LOCOMO.md eval/README.md
-  eval/RESULTS.md eval/download.sh eval/locomo_dev.rs eval/results_locomo.json
+ Modified: `AGENTS.md README.md TODO.md docs/BENCHMARK_LANDSCAPE.md docs/CONSISTENCY.md
+ docs/handoff/STATE.md docs/handoff/RND_PLAN.md`.
+ Untracked: `docs/COMPETITOR_GAPS_PLAN.md` (the reference-project investigation plan —
+   OpenViking screens, OmniMemEval battery integration, MemOS/Honcho audit scopes;
+   TODO rows 18–19 are its register entries; §6 holds the completed audit findings),
+   `eval/relevance/BATTERY-H8-2026-10-15.txt` (H8 gate artifact),
+   `eval/amb/PRECISIONMEMBENCH-2026-10-15-h8-summary-invariant.json.gz`,
+   `eval/omnimevaleval/memory-wire-mw_h10_medium/` (H10 HaluMem-Medium run: report,
+   judged, responses, search results, grades; `CONSISTENCY.md` §44).
+ Modified additionally since v0.8.0: `src/api.rs src/main.rs` (the H8 `format: "summary"`
+   capsule mode), `eval/amb/memory_wire.py` (env-gated `MEMORY_WIRE_FORMAT`, default
+   unchanged), `eval/relevance/run_battery.py` (the H8 gate block).
+
+ Cycle state: H8 done (gate PASSED, §43), V4 closed already-shipped, H11 closed
+ unmeasurable (no build), **H10 done 2026-10-16 (HaluMem-Medium 0.6129; Memory Boundary
+ 0.9372; §44)** — the survey-sourced queue is empty again. Blocked: H9 (BEAM labelling),
+ Track 2/agent-memory-bench (agent-model budget).
+
+That release batch (feature `04123f7`, bump `a272196`) carried everything the old
+list below named — the full R&D record set, the product code, and every new
+harness and artifact — into the v0.8.0 tag. The pre-release residue list is
+retired here rather than kept current:
+
+  Modified (all now **in `v0.8.0`**): `AGENTS.md INSTALL_FOR_AGENTS.md README.md TODO.md
+  docs/CONSISTENCY.md docs/INTEGRATION_GAPS.md docs/INTEGRATION_PLAN.md eval/LOCOMO.md
+  eval/README.md eval/RESULTS.md eval/download.sh eval/locomo_dev.rs eval/results_locomo.json
   examples/answer_quality.rs examples/bench_footprint.rs examples/locomo.rs
   examples/longmemeval.rs plugin/skills/memory-wire/SKILL.md src/api.rs src/connect.rs
   src/connect_ext.rs src/connect_opencode.rs src/doctor.rs src/hooks.rs src/main.rs
   src/mcp.rs src/paths.rs src/store.rs src/sweep.rs`.
-Untracked: `docs/AROUTE_BUGS.md docs/BENCHMARK_LANDSCAPE.md docs/handoff/ eval/amb/
-  eval/baseline/ eval/llm_shim.py eval/LOCOMO_TURNS.md eval/results_locomo_turns.json
-  examples/locomo_ranks.rs eval/LOCOMO_RANKS.md eval/results_locomo_ranks.json
-  examples/locomo_levers.rs eval/LOCOMO_LEVERS.md eval/results_locomo_levers.json
-  eval/LOCOMO_WINDOWS.md eval/results_locomo_windows.json eval/h4_subset.json
-  eval/amb/h4_build_subset.py src/connect_claude.rs src/connect_copilot.rs
-  eval/SELECTION_VECTOR_AXIS_ALL10.md eval/results_selection_vector_all10.json
-  src/update.rs`.
+ Untracked (all now **in `v0.8.0`**): `docs/AROUTE_BUGS.md docs/BENCHMARK_LANDSCAPE.md
+  docs/handoff/ eval/amb/ eval/baseline/ eval/llm_shim.py eval/LOCOMO_TURNS.md
+  eval/results_locomo_turns.json examples/locomo_ranks.rs eval/LOCOMO_RANKS.md
+  eval/results_locomo_ranks.json examples/locomo_levers.rs eval/LOCOMO_LEVERS.md
+  eval/results_locomo_levers.json eval/LOCOMO_WINDOWS.md eval/results_locomo_windows.json
+  eval/h4_subset.json eval/amb/h4_build_subset.py src/connect_claude.rs src/connect_copilot.rs
+  eval/SELECTION_VECTOR_AXIS_ALL10.md eval/results_selection_vector_all10.json src/update.rs`.
 
 `eval/amb/` now also carries the run artifacts `PRECISIONMEMBENCH-2026-10-14-h6-filters.json.gz`
 and `h4_locomo_rag_topk{3,5,10}.json.gz`; `eval/baseline/` carries
