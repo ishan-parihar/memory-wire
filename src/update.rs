@@ -116,8 +116,16 @@ pub fn newest(tags: &[String], current: &str) -> Option<String> {
 }
 
 /// `v1.2.3` → `[1, 2, 3]`. `None` for anything else.
+///
+/// The `v` prefix is optional because the two inputs arrive in different
+/// shapes: `gh release list` names tags (`v1.2.3`) and the running binary's
+/// version is bare semver (`1.2.3`, `CARGO_PKG_VERSION`). Requiring the
+/// prefix made `newest("…", "0.8.0")` return `None` — structurally unable
+/// to find any newer release — which is exactly how v0.8.1 shipped with a
+/// `memory-wire update` that always printed "up to date". The regression
+/// test pins the bare form, the production shape.
 fn parse_tag(tag: &str) -> Option<Vec<u64>> {
-    let rest = tag.strip_prefix('v')?;
+    let rest = tag.strip_prefix('v').unwrap_or(tag);
     let parts = rest
         .split('.')
         .map(|p| p.parse::<u64>().ok())
@@ -397,6 +405,23 @@ mod tests {
 
     /// Numeric component compare: 0.10.0 beats 0.9.9, equal is not newer, and
     /// junk tags are skipped rather than fatal.
+    /// The production shapes: tags from `gh release list` carry the `v`
+    /// prefix, the running binary's version does not. Requiring the prefix on
+    /// both (v0.8.1's bug) makes `update` permanently claim "up to date".
+    #[test]
+    fn newest_must_accept_the_bare_semver_current_binary_reports() {
+        let tags: Vec<String> = ["v0.8.0", "v0.8.1"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(newest(&tags, "0.8.0").as_deref(), Some("v0.8.1"));
+        // Equal versions are not newer — the None that means "up to date".
+        assert_eq!(newest(&tags, "0.8.1"), None);
+        // Both shapes parse to the same triple, so a `v`-prefixed current
+        // (as the orchestrate fake passes it) keeps working too.
+        assert_eq!(newest(&tags, "v0.8.0").as_deref(), Some("v0.8.1"));
+    }
+
     #[test]
     fn newest_should_pick_the_strictly_newest_parsable_tag() {
         let tags: Vec<String> = ["v0.9.9", "v0.10.0", "v0.7.0", "nightly", "v0.7.0-rc.1"]
@@ -412,7 +437,9 @@ mod tests {
     #[test]
     fn parse_tag_should_reject_non_numeric_shapes() {
         assert_eq!(parse_tag("v0.7.0"), Some(vec![0, 7, 0]));
-        assert_eq!(parse_tag("0.7.0"), None);
+        // Bare semver parses: it is the running binary's own version shape
+        // (`CARGO_PKG_VERSION`), and rejecting it was v0.8.1's dead-hop bug.
+        assert_eq!(parse_tag("0.7.0"), Some(vec![0, 7, 0]));
         assert_eq!(parse_tag("v0.7"), None);
         assert_eq!(parse_tag("v0.7.x"), None);
         assert_eq!(parse_tag(""), None);

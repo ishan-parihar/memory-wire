@@ -393,6 +393,17 @@ in-house queue emptied. Pre-registered below **before any run**; the audit phase
 
 ### H9 — pool-scale token-overlap re-test (discharges CONSISTENCY §14.2)
 
+- **Status (updated 2026-10-16):** blocked on labelling — **upstream shape-checked and
+  the answer is: not mechanical.** Upstream BEAM (ICLR 2026, `mohammadtavakoli78/BEAM`,
+  HF `Mohammadta/BEAM`, CC BY-SA 4.0; surveyed via OmniMemEval's pinned `data/beam/`)
+  carries a `time_anchor` on every chat turn and every question, but **no evidence
+  pointers** — nothing names which turns hold a question's answer. Session-level gold
+  therefore cannot be derived mechanically; the labelling project is genuine authoring
+  (content-match per question, then hand-verify), with the authoring-weakness caveat the
+  three-set discipline attaches to self-labelled gold. AMB's copy stays unusable directly
+  (gold = conversation id vs chunk documents, `BENCHMARK_LANDSCAPE.md` §5.2). Unchanged
+  unblock: the authoring work, ~days; the re-test itself remains one free run after it.
+
 - **Status:** pre-registered 2026-10-15, not started; blocked on the BEAM
   turn-level labelling project (the `BENCHMARK_LANDSCAPE.md` §3 finding — AMB's
   BEAM `gold_ids` are conversation ids, unusable as-is; labels must be derived
