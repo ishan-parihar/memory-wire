@@ -1,5 +1,11 @@
 # Performance plan
 
+> **Kept as the measured record of the 2026-10-01 iteration — not the current
+> register.** Status 2026-10-16: its rejected-lever rows and its P-phases are
+> historical; the complete current closure list is `docs/handoff/CLOSED.md`, the
+> cycle verdicts are `docs/handoff/RND_PLAN.md` §4, and the survey-cycle closures
+> are `docs/CONSISTENCY.md` §37/§41.
+
 Follows `docs/PERFORMANCE_AUDIT.md` (measured at `59eeb85`). Every phase below
 exists because that audit found a specific, named gap. Phases with no gap behind
 them are not in here.

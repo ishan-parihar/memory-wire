@@ -123,11 +123,11 @@ the wrong one is how claims drift.
 | what we install into each agent harness, and what is quietly broken | `docs/INTEGRATION_AUDIT.md` — findings ranked F1–F7, each verified or explicitly marked unverified |
 | how to make the harness integration correct rather than merely present | `docs/INTEGRATION_PLAN.md` — two open decisions block Phase 1 |
 | why a hook injected something irrelevant, and why adding a score threshold is the wrong fix | `docs/OPEN_HOOK_RECALL_RELEVANCE.md` — diagnosed, deliberately unfixed |
-| which retrieval lever was tried and killed, and by what measurement | `docs/RERANKING_PLAN.md` §3, `docs/PERFORMANCE_PLAN.md` |
+| which retrieval lever was tried and killed, and by what measurement | **`docs/handoff/CLOSED.md`** (the complete current list), then `docs/handoff/RND_PLAN.md` §4 (the results log, one row per verdict); `docs/RERANKING_PLAN.md` §3 and `docs/PERFORMANCE_PLAN.md` hold the older closure *records* |
 | where the numbers came from, honestly | `eval/README.md`, and the artifact it names |
 | dependency versions and why they are pinned | `docs/VERSIONS.md` |
 | how a bank id is derived, what can collide, and why a hook recalls nothing | `docs/BANK_IDENTITY.md`; `memory-wire doctor` names the bank that holds the memories when the resolved one holds none |
-| the next iteration's plan and its gates | `docs/NEXT_ITERATION.md`, `docs/EXCEED_PLAN.md` |
+| the next iteration's plan and its gates | **`docs/handoff/RND_PLAN.md`** (the live register) and `docs/handoff/README.md` (fresh-agent entry point); `docs/NEXT_ITERATION.md` and `docs/EXCEED_PLAN.md` are the earlier dated records |
 | the original audit this all came from | `docs/AUDIT.md` |
 
 **The MCP surface.** Four tools — `memory_retain`, `memory_recall`,

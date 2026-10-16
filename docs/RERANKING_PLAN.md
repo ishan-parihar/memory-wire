@@ -1,5 +1,13 @@
 # Learned re-ranking: audit and plan
 
+> **Superseded as the rejected-lever register — kept as history.** Status 2026-10-16:
+> this plan's §3 list is the *2026-09-28* closure record. The complete, current
+> rejected-lever list lives in `docs/handoff/CLOSED.md`, and the 2026-10 survey
+> cycle's closures (H1a prefix matching, H1b per-segment overlap, H2 granularity,
+> H3 recency, H1d dense fusion, session diversification, H11 re-observation) are
+> recorded in `docs/CONSISTENCY.md` §37/§41 and `docs/handoff/RND_PLAN.md` §4.
+> Do not re-propose anything on either list without new evidence (AGENTS §8).
+
 Status: proposal, nothing implemented. Supersedes nothing.
 Author: audit of 2026-09-28, from `eval/ORACLE_RERANK.md` and the registry.
 Constraint: the single ~8.4 MiB binary, offline, no model download stays. **It is

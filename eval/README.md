@@ -187,6 +187,28 @@ hold one median LongMemEval session (2,626 tokens), so the answerer was starved 
 context that retrieval had already found. The budget finding is the product bug
 here; the accuracy figure is the symptom.
 
+## The 2026-10 survey cycle — one harness per verdict, one artifact each
+
+The R&D cycle's levers are measured by purpose-built harnesses that share the same
+LoCoMo ingestion (`eval/locomo_dev.rs`), so every artifact below describes the same
+corpus under one name. Each row's `CONSISTENCY.md` § is the authoritative record of
+the verdict — read it before re-running anything.
+
+| harness | artifact | what it measured | verdict (§) |
+|---|---|---|---|
+| `examples/locomo_ranks.rs` | `eval/LOCOMO_RANKS.md` | H1.0: where the missed gold sessions sit (worst-gold histogram) | descriptive — the map that gated the levers (§36) |
+| `examples/locomo_levers.rs` | `eval/LOCOMO_LEVERS.md` | H1a/H1b/H1c/H3 single-value A/B vs the shipped control | all four gates FAILED / falsified (§37) |
+| `examples/locomo.rs --windows 2` | `eval/LOCOMO_WINDOWS.md` | H2 intermediate granularity | rejected; R@pool ceiling breached (§37) |
+| `examples/select_fusion.rs --axes vector` (embed build, 7 metrics) | `eval/SELECTION_VECTOR_AXIS_ALL10.md` | H1d: the dense arm on `recall_all@10` | gate FAILED; lever closed (§41) |
+| `examples/locomo_h4_subset.rs` + `eval/amb/h4_build_subset.py` | `eval/h4_subset.json`, `eval/amb/h4_locomo_rag_topk{3,5,10}.json.gz` | H4: reader drowning at fixed gold coverage, k=3/5/10 | flat — not reproduced; TODO #17 closed (§38) |
+| `eval/relevance/run_battery.py` (+ `--bank omp`) | `eval/relevance/BATTERY-H8-2026-10-15.txt` | H8 gate: capsule serving on a live bank | PASSED — ranking identical, −41% served text (§43) |
+| `eval/amb/memory_wire.py` (the AMB provider) | `eval/amb/PRECISIONMEMBENCH-*.json.gz` | PMB scope-tag filters (H6), capsule invariance (H8) | 14→19/77 capability change; id-based scoring invariant (§37, §43) |
+| OmniMemEval provider (`../_audit_scratch/omnimevaleval/.../memory_wire_client.py`) | `eval/omnimevaleval/memory-wire-mw_h10_medium/` | H10: HaluMem-Medium, once, measure-only | 0.6129; Memory Boundary 0.9372 (§44) |
+
+Dated baseline directories (`eval/baseline/<date>-*/`) are produced by
+`eval/baseline/run_baseline.sh` — one dated directory per run, compared directory
+to directory; the current full-scale record is `2026-10-13-v0.7.0/`.
+
 ## The benchmark harnesses
 
 `bench_footprint`, `bench_write`, `bench_recall_curve`, `bench_concurrency`,

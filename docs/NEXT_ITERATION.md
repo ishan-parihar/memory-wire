@@ -1,5 +1,9 @@
 # Next iteration — 2026-09-28
 
+> **Status 2026-10-16: superseded as a plan; kept as the record it says it is.**
+> The live R&D register is `docs/handoff/RND_PLAN.md` (results log §4, current
+> cycle §5); the entry point for a fresh agent is `docs/handoff/README.md`.
+
 **Status 2026-10-08:** this is the measured record of the 2026-09-28 parity
 iteration. Its E-wave outcomes are recorded in `docs/RERANKING_PLAN.md` §3,
 `docs/PERFORMANCE_PLAN.md` and `docs/CONSISTENCY.md`; the retrieval-efficacy
