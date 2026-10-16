@@ -1,30 +1,26 @@
-# State at handoff — 2026-10-15
+# State at handoff — 2026-10-16
 
-Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `a272196` — **v0.8.0,
-released** (feature commit `04123f7`, bump `a272196`, tag `v0.8.0`, three-Linux assets
-published via the REST path; CI was disabled around the tag push and re-enabled after).
-The R&D cycle and the product batch are **in the release**. Post-release work — §42
-records, size re-pins, the comparative README section, and the reference-project
-investigation plan — is the current uncommitted residue, by the house rhythm.
+Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `95e54c1` — **v0.8.2,
+released**. The day cut two patches: **v0.8.1** (`fbe0a91`+`52e27a7`: the H8 capsule
+mode, the `MEMORY_WIRE_FORMAT` hook knob, the OmniMemEval HaluMem battery entry,
+acceptance #5 byte-identical) and **v0.8.2** (`62fb072`+`95e54c1`: the `update`
+`parse_tag` fix found dead on the first real hop — §45 tells it plainly, including the
+correction of the v0.8.0-era "live-verified update" claim). racknerd sits on 0.8.2
+(installer hop; wiring preserved; `update` now reads 12 known releases). The H9 BEAM
+shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
- Modified: `AGENTS.md README.md TODO.md docs/BENCHMARK_LANDSCAPE.md docs/CONSISTENCY.md
- docs/handoff/STATE.md docs/handoff/RND_PLAN.md`.
- Untracked: `docs/COMPETITOR_GAPS_PLAN.md` (the reference-project investigation plan —
-   OpenViking screens, OmniMemEval battery integration, MemOS/Honcho audit scopes;
-   TODO rows 18–19 are its register entries; §6 holds the completed audit findings),
-   `eval/relevance/BATTERY-H8-2026-10-15.txt` (H8 gate artifact),
-   `eval/amb/PRECISIONMEMBENCH-2026-10-15-h8-summary-invariant.json.gz`,
-   `eval/omnimevaleval/memory-wire-mw_h10_medium/` (H10 HaluMem-Medium run: report,
-   judged, responses, search results, grades; `CONSISTENCY.md` §44).
- Modified additionally since v0.8.0: `src/api.rs src/main.rs` (the H8 `format: "summary"`
-   capsule mode), `eval/amb/memory_wire.py` (env-gated `MEMORY_WIRE_FORMAT`, default
-   unchanged), `eval/relevance/run_battery.py` (the H8 gate block).
+ Modified: `plugin/skills/memory-wire/SKILL.md README.md docs/CONSISTENCY.md
+ docs/handoff/STATE.md docs/handoff/RND_PLAN.md` (this records pass: §45, results-log
+ rows, v0.8.2 size re-pins — 9,261,472 B / DT_NEEDED 3 / 4,084,301 B gzipped).
+ Untracked: none new; `eval/omnimevaleval/memory-wire-mw_h10_medium/` and the earlier
+ survey-cycle artifacts shipped **in v0.8.1**.
 
- Cycle state: H8 done (gate PASSED, §43), V4 closed already-shipped, H11 closed
- unmeasurable (no build), **H10 done 2026-10-16 (HaluMem-Medium 0.6129; Memory Boundary
- 0.9372; §44)** — the survey-sourced queue is empty again. Blocked: H9 (BEAM labelling),
+ Cycle state: the survey-sourced queue is fully terminal — H8 shipped (gate PASSED, §43),
+ V4 closed already-shipped, H11 closed unmeasurable (no build), H10 measured
+ (HaluMem-Medium 0.6129, Memory Boundary 0.9372, §44), H9 shape-checked (upstream BEAM has
+ no evidence pointers; labelling stays the unblock). Blocked: H9 (BEAM labelling),
  Track 2/agent-memory-bench (agent-model budget).
 
 That release batch (feature `04123f7`, bump `a272196`) carried everything the old

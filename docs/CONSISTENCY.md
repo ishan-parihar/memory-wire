@@ -4015,3 +4015,53 @@ footnote for honesty: the report's parameter table reflects the step-5 replay
 invocation (`LLM_WORKERS 10` default); the judged data was produced with
 `--llm-workers 4` — `snapshot_eval.env` is the run-time environment and the judged
 file is untouched by the replay.
+
+## 45. 2026-10-16: v0.8.1 and v0.8.2 — capsule release, acceptance #5, and an `update` hop that was dead on arrival (fixed same day)
+
+Two patch releases in one day; the second exists because the first shipped a bug that
+only its own acceptance path could find.
+
+**v0.8.1** (feature `fbe0a91`, bump `52e27a7`): the H8 capsule mode (`format: "summary"`),
+the `MEMORY_WIRE_FORMAT` hook knob (default off, degrades on unknown values), the
+OmniMemEval HaluMem battery entry (§44), and the survey-cycle records. Acceptance —
+**LongMemEval consultation #5**: retrieval byte-identical to the committed record
+(83.8/97.2/98.6/99.6/88.2/89.2, n 500; the only diff lines are the run date and the
+load-dependent p50 column the artifact itself says not to pin). Gates green on the tagged
+tree (597 tests). Assets built and published via the REST path; CI disabled around the tag
+push, zero Actions minutes.
+
+**The bug the hop found.** racknerd's 0.8.0 → 0.8.1 hop — `update`'s first real
+strictly-newer target — printed `up to date: 0.8.0 is the newest release (11 known)` and
+did nothing. Root cause: `parse_tag` required the `v` prefix, the release *tags* carry it
+but the running binary reports its own version bare (`0.8.0`, `CARGO_PKG_VERSION`), so
+`newest(tags, "0.8.0")` returned `None` unconditionally — `update` could never find any
+newer release, on any box, ever. **Correction of an earlier claim:** the v0.8.0-era
+"live-verified on a second box" update check exercised only this None path — its
+"up to date" output was correct-by-coincidence, and should not have been reported as
+verification of the comparison path. The unit tests passed because they passed a
+`v`-prefixed current, the fake-based orchestrate tests never see `gh`'s real output, and
+the live smoke's None-path output is indistinguishable from success — three gaps, each
+now closed by the bare-semver regression test (production shape: `newest(["v0.8.0",
+"v0.8.1"], "0.8.0") == Some("v0.8.1")`).
+
+**v0.8.2** (fix `62fb072`, bump `95e54c1`): one-line fix — the prefix is now optional, so
+both shapes parse to the same triple — plus the regression test and the old contract test
+updated (it had pinned the rejection that was the bug). Gates green (598 tests). Assets
+published; CI cycled around the push.
+
+**racknerd end state (the acceptance that matters):** installer hop 0.8.0 → 0.8.2 with
+`--no-connect` (the 0.8.x `update` is the broken binary — it cannot hop anywhere, so the
+pre-`update` installer path is the documented bridge); wiring preserved (opencode +
+hermes wired), doctor healthy, the box's pre-existing split-bank finding unchanged.
+`memory-wire update` from 0.8.2 reads `up to date: 0.8.2 is the newest release (12
+known)` — now a genuine comparison (all 12 release tags parsed against the bare current).
+**Honest scope of the live proof:** the strictly-newer case is pinned by the regression
+test, not yet by a live hop — a 0.8.2 → v0.8.3 hop is where it gets its live proof, and
+the record here is the baseline it will be compared against.
+
+Size re-pin from the published v0.8.2 asset (measured, not estimated): binary
+**9,261,472 B (8.83 MiB)**, DT_NEEDED 3, gzipped **4,084,301 B**, sha256
+`7e42535b…d2648aa` — SKILL.md and README re-pinned from these numbers.
+
+Test-set consultations to date: **5** (§34: 2; §39: 1; §42: 1; §45: 1). All
+measurement-only; no retrieval parameter has ever been selected on LongMemEval.

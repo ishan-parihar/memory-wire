@@ -5,7 +5,7 @@ description: Persist and retrieve agent memory across sessions with memory-wire 
 
 # memory-wire
 
-Agent memory over HTTP or MCP. One 8.8 MiB binary (9,256,736 B), three shared libraries, no language
+Agent memory over HTTP or MCP. One 8.8 MiB binary (9,261,472 B), three shared libraries, no language
 runtime, no database server, and no background process until you ask for one with
 `memory-wire daemon start`. **retain** stores a
 fact/decision (redacted before it touches disk), **recall** is ranked bank-isolated retrieval under a
@@ -190,11 +190,13 @@ JWT, `Bearer`, Slack, Google API keys, emails, phones, `<private>` blocks), not 
 
 ---
 
-*Size provenance: 9,256,736 B (8.83 MiB) is `stat -c %s` of the binary inside the
-**published** `memory-wire-linux-x86_64.tar.gz` (4,081,871 B) for `v0.8.0`, downloaded
-from the release and measured 2026-10-15 (DT_NEEDED 3, verified with `readelf -d`).
-This supersedes the 9,152,864 B figure this block previously carried — that was the
-`v0.7.0` asset; earlier: `v0.5.0` 9,023,808 B, `v0.4.0` 8,872,000 B. The development
-tree has moved past the `v0.8.0` tag, so the next release's figure must be
-re-pinned the same way at cut time. Default features only (`default = []`, so no `embed`
-weights); the gzipped download is a separate figure, see `README.md`.*
+*Size provenance: 9,261,472 B (8.83 MiB) is `stat -c %s` of the binary inside the
+**published** `memory-wire-linux-x86_64.tar.gz` (4,084,301 B, sha256
+`7e42535b3ca58e2b2d8f3d45e7e273af4b0d0d5bcc68529eb5b7168f0d2648aa`) for `v0.8.2`,
+downloaded from the release and measured 2026-10-16 (DT_NEEDED 3, verified with
+`readelf -d`). This supersedes the 9,256,736 B figure this block previously carried —
+that was the `v0.8.0` asset; earlier: `v0.7.0` 9,152,864 B, `v0.5.0` 9,023,808 B,
+`v0.4.0` 8,872,000 B. The development tree has moved past the `v0.8.2` tag, so the
+next release's figure must be re-pinned the same way at cut time. Default features
+only (`default = []`, so no `embed` weights); the gzipped download is a separate
+figure, see `README.md`.*

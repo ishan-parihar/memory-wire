@@ -351,7 +351,9 @@ The CLI and the HTTP surface are read by other agents, so:
 State as of 2026-10-14; the authoritative, kept-current record is
 `docs/handoff/` (index: `docs/handoff/README.md`).
 
-- **v0.8.0 released 2026-10-15** (user-ratified release chain). The R&D cycle's records and
+- **v0.8.2 released 2026-10-16** (user-ratified chain; v0.8.1 the same day — §45 records the
+  `update` hop bug found between them, fixed in v0.8.2 with the earlier live-verify claim
+  corrected). The R&D cycle's records and
   the product batch — baseline artifacts, occurrence-time capability, date-aware
   `answer_quality`, `recall_all@10`, `update`, doctor work, the new host entries, all harnesses —
   are **committed and shipped** (feature `04123f7`, bump `a272196`, tag `v0.8.0`, three-Linux
