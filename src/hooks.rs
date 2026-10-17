@@ -496,6 +496,11 @@ fn server_preamble_at(endpoint: &str, bank: &str) -> Option<String> {
 struct ScoredHit {
     /// The memory's content, exactly as the ranking returned it.
     content: String,
+    /// The memory's stored time (`created_at`), when the wire carried it — the
+    /// occurrence time H12 proved a reader cannot do without. `None` on the
+    /// bare default shape an old server still serves.
+    #[serde(default)]
+    created_at: Option<String>,
     /// Fused RRF score, or `None` when the server answered with the default bare
     /// shape. Both are the same ranking; only the reporting differs.
     score: Option<f64>,
@@ -512,8 +517,13 @@ struct ScoredHit {
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 enum WireHit {
-    /// `format: "full"`: `{id, score, content}`.
-    Scored { content: String, score: Option<f64> },
+    /// `format: "full"`/`"summary"`: `{id, score, created_at, content}`.
+    Scored {
+        content: String,
+        #[serde(default)]
+        created_at: Option<String>,
+        score: Option<f64>,
+    },
     /// The default: a bare content string, unscored.
     Bare(String),
 }
@@ -536,6 +546,34 @@ fn wire_format_from(explicit: Option<&str>) -> &'static str {
     {
         Some("summary") => "summary",
         _ => "full",
+    }
+}
+
+/// The bank's `injectionFormat` config key, when it names a format this hook
+/// can ask for. This is the per-bank capsule adoption knob (DECISIONS 2026-10-17
+/// #1): a bank that says `"summary"` gets H8 capsules in its auto-injections
+/// without touching any other bank, and without the host's env. Config wins
+/// over `MEMORY_WIRE_FORMAT` because the bank is the more specific scope; the
+/// env remains the fallback for banks that say nothing. A config fetch that
+/// fails is not an error — the hook contract is never-fail, and the env path
+/// still holds.
+fn bank_injection_format_at(endpoint: &str, bank: &str) -> Option<&'static str> {
+    let resp = http::get(&format!("{endpoint}/banks/{bank}/config"), paths::IO_TIMEOUT).ok()?;
+    if !resp.ok() {
+        return None;
+    }
+    let doc: Value = serde_json::from_str(&resp.body).ok()?;
+    match doc
+        .get("injectionFormat")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("summary") => Some("summary"),
+        Some("full") => Some("full"),
+        _ => None,
     }
 }
 
@@ -577,8 +615,20 @@ fn recall_at_fmt(endpoint: &str, bank: &str, query: &str, fmt: &str) -> Option<V
         .ok()?
         .into_iter()
         .map(|hit| match hit {
-            WireHit::Scored { content, score } => ScoredHit { content, score },
-            WireHit::Bare(content) => ScoredHit { content, score: None },
+            WireHit::Scored {
+                content,
+                created_at,
+                score,
+            } => ScoredHit {
+                content,
+                created_at,
+                score,
+            },
+            WireHit::Bare(content) => ScoredHit {
+                content,
+                created_at: None,
+                score: None,
+            },
         })
         .collect();
     // The scores, on stderr, at a level that is off by default. Nothing branches
@@ -597,13 +647,28 @@ fn recall_at_fmt(endpoint: &str, bank: &str, query: &str, fmt: &str) -> Option<V
 
 /// Recalled memories, or `None` when the server is unreachable or its answer is
 /// not a recall this build can read.
+///
+/// Format precedence as a pure function, so the rule is testable without the
+/// process-global environment: the bank's `injectionFormat` config (the
+/// per-bank adoption knob) wins, then `MEMORY_WIRE_FORMAT`, then `full` — the
+/// bank is the more specific scope; the env is the host-wide fallback it has
+/// always been.
+fn resolve_injection_format(bank_fmt: Option<&'static str>, env_fmt: Option<&str>) -> &'static str {
+    bank_fmt.unwrap_or_else(|| wire_format_from(env_fmt))
+}
+
 fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> {
-    recall_at_fmt(
-        endpoint,
-        bank,
-        query,
-        wire_format_from(std::env::var("MEMORY_WIRE_FORMAT").ok().as_deref()),
-    )
+    // An empty query never reaches the wire — the same check [`recall_at_fmt`]
+    // makes, hoisted here so it also gates the injection-format probe: a
+    // no-prompt session-start must cost exactly one config GET, not two.
+    if query.trim().is_empty() {
+        return None;
+    }
+    let fmt = resolve_injection_format(
+        bank_injection_format_at(endpoint, bank),
+        std::env::var("MEMORY_WIRE_FORMAT").ok().as_deref(),
+    );
+    recall_at_fmt(endpoint, bank, query, fmt)
 }
 
 /// Recalled memories as plain text, in the shape every auto-injection surface
@@ -618,7 +683,18 @@ fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
     );
     let mut left = SECTION_CAP_CHARS;
     for hit in hits.iter().take(MAX_LINES) {
-        let entry = format!("- {}\n", clamp(&hit.content, ENTRY_CAP_CHARS));
+        // The date prefix is the serving-shape change H12 measured: a reader
+        // resolving "what did we decide last week" is blind without it, and the
+        // wire carried the occurrence time all along. The prefix renders only
+        // when the wire did — an old server's bare strings degrade to the exact
+        // pre-2026-10-17 rendering, byte for byte.
+        let date_prefix = hit
+            .created_at
+            .as_deref()
+            .filter(|t| t.len() >= 10)
+            .map(|t| format!("[{}] ", &t[..10]))
+            .unwrap_or_default();
+        let entry = format!("- {date_prefix}{}\n", clamp(&hit.content, ENTRY_CAP_CHARS));
         if entry.chars().count() > left {
             break;
         }
@@ -764,11 +840,15 @@ mod tests {
         assert!(out.contains("- rate limit is token bucket"));
 
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "{seen:?}");
+        assert_eq!(seen.len(), 3, "preamble config, injection-format probe, recall: {seen:?}");
         assert!(seen[0].starts_with("/banks/demo/config"), "{seen:?}");
-        assert!(seen[1].starts_with("/banks/demo/recall"), "{seen:?}");
-        assert!(seen[1].contains("\"budget\":1200"), "{:?}", seen[1]);
-        assert!(seen[1].contains("how does auth work"), "{:?}", seen[1]);
+        assert!(
+            seen[1].starts_with("/banks/demo/config"),
+            "the injection-format probe (the per-bank capsule knob): {seen:?}"
+        );
+        assert!(seen[2].starts_with("/banks/demo/recall"), "{seen:?}");
+        assert!(seen[2].contains("\"budget\":1200"), "{:?}", seen[2]);
+        assert!(seen[2].contains("how does auth work"), "{:?}", seen[2]);
     }
 
     /// `MEMORY_WIRE_FORMAT` is the knob between whole-memory injection (the
@@ -1085,18 +1165,25 @@ mod tests {
         );
         assert_eq!(got.code, Some(0), "a hook always exits 0: {}", got.stderr);
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "config probe then recall: {seen:?}");
+        // Three calls now: the preamble's config probe, the injection-format
+        // probe (the per-bank capsule knob), and the recall.
+        assert_eq!(seen.len(), 3, "config, injection-format, recall: {seen:?}");
         let bank = bank_of(&seen[0]);
         assert_eq!(
             seen[0].split(' ').next().unwrap_or_default(),
             format!("/banks/{bank}/config"),
             "{seen:?}"
         );
-        assert!(
-            seen[1].starts_with(&format!("/banks/{bank}/recall ")),
-            "both calls target the same bank: {seen:?}"
+        assert_eq!(
+            seen[1].split(' ').next().unwrap_or_default(),
+            format!("/banks/{bank}/config"),
+            "the injection-format probe targets the same bank: {seen:?}"
         );
-        assert!(seen[1].contains("how does auth work"), "{:?}", seen[1]);
+        let recall = seen
+            .iter()
+            .find(|s| s.starts_with(&format!("/banks/{bank}/recall ")))
+            .unwrap_or_else(|| panic!("no recall request: {seen:?}"));
+        assert!(recall.contains("how does auth work"), "{:?}", recall);
         assert!(
             got.stdout.starts_with(&format!("## memory-wire — bank `{bank}`\n")),
             "the preamble leads: {:?}",
@@ -1156,7 +1243,7 @@ mod tests {
         let missed = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), "http://127.0.0.1:1", "off");
         assert_eq!(missed.code, Some(0), "{}", missed.stderr);
         assert_eq!(missed.stdout, "", "an unreachable server says nothing");
-        assert_eq!(rx.try_iter().count(), 1, "only the override run reached this server");
+        assert_eq!(rx.try_iter().count(), 2, "the override run's probe and recall both reached this server");
     }
 
     // H4.2, the claim itself. A host that never writes its stdin plus a server
@@ -1243,7 +1330,7 @@ mod tests {
     #[test]
     fn recall_section_should_cap_lines() {
         let hits: Vec<ScoredHit> = (0..MAX_LINES + 3)
-            .map(|i| ScoredHit { content: format!("hit {i}"), score: Some(0.0) })
+            .map(|i| ScoredHit { content: format!("hit {i}"), created_at: None, score: Some(0.0) })
             .collect();
         let out = recall_section("b", &hits);
         assert!(out.contains(&format!("- hit {}", MAX_LINES - 1)));
@@ -1262,10 +1349,10 @@ mod tests {
         let out = prompt_at(&ep, "demo", &json!({ "prompt": wrapped }));
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 1, "{seen:?}");
-        assert!(seen[0].contains("How does auth work"), "the user's words query: {seen:?}");
-        assert!(!seen[0].contains("system-notice"), "envelope text leaked: {seen:?}");
-        assert!(!seen[0].contains("Session idle"), "envelope text leaked: {seen:?}");
+        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert!(seen[1].contains("How does auth work"), "the user's words query: {seen:?}");
+        assert!(!seen[1].contains("system-notice"), "envelope text leaked: {seen:?}");
+        assert!(!seen[1].contains("Session idle"), "envelope text leaked: {seen:?}");
 
         let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
         let wrapped =
@@ -1273,8 +1360,9 @@ mod tests {
         let out = prompt_at(&ep, "demo", &json!({ "prompt": wrapped }));
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert!(!seen[0].contains("system-reminder"), "envelope text leaked: {seen:?}");
-        assert!(!seen[0].contains("Reminder 1"), "envelope text leaked: {seen:?}");
+        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert!(!seen[1].contains("system-reminder"), "envelope text leaked: {seen:?}");
+        assert!(!seen[1].contains("Reminder 1"), "envelope text leaked: {seen:?}");
     }
 
     // A prompt that is only an envelope is, as far as this hook can tell, not a
@@ -1303,9 +1391,9 @@ mod tests {
         );
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 1, "{seen:?}");
-        assert!(seen[0].contains("auth uses jose"), "the borrowed answer: {seen:?}");
-        assert!(seen[0].contains("Continue"), "the prompt still steers: {seen:?}");
+        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert!(seen[1].contains("auth uses jose"), "the borrowed answer: {seen:?}");
+        assert!(seen[1].contains("Continue"), "the prompt still steers: {seen:?}");
         std::fs::remove_file(&path).ok();
     }
 
@@ -1321,8 +1409,12 @@ mod tests {
         );
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert!(seen[0].contains("Continue"), "{seen:?}");
-        assert!(!seen[0].contains("mw-no-such-file"), "{seen:?}");
+        let recall = seen
+            .iter()
+            .find(|s| s.contains("query"))
+            .expect("a recall request");
+        assert!(recall.contains("Continue"), "{seen:?}");
+        assert!(!recall.contains("mw-no-such-file"), "{seen:?}");
     }
 
     // A prompt long enough to rank on its own must not pay a transcript read:
@@ -1334,8 +1426,8 @@ mod tests {
         let path = transcript("long-prompt");
         let _ = prompt_at(&ep, "demo", &json!({ "prompt": long, "transcript_path": path }));
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 1, "{seen:?}");
-        assert!(!seen[0].contains("auth uses jose"), "not borrowed: {seen:?}");
+        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert!(!seen[1].contains("auth uses jose"), "not borrowed: {seen:?}");
         std::fs::remove_file(&path).ok();
     }
 
@@ -1345,7 +1437,7 @@ mod tests {
     fn one_entry_cannot_take_the_whole_section() {
         let out = recall_section(
             "b",
-            &[ScoredHit { content: "x".repeat(5000), score: Some(0.0) }],
+            &[ScoredHit { content: "x".repeat(5000), created_at: None, score: Some(0.0) }],
         );
         assert!(out.chars().count() < 500, "{} chars", out.chars().count());
         assert!(out.trim_end().ends_with('…'), "a cut entry is marked: {out}");
@@ -1355,7 +1447,7 @@ mod tests {
     #[test]
     fn the_section_has_a_hard_ceiling() {
         let hits: Vec<ScoredHit> = (0..MAX_LINES)
-            .map(|_| ScoredHit { content: "y".repeat(ENTRY_CAP_CHARS * 2), score: None })
+            .map(|_| ScoredHit { content: "y".repeat(ENTRY_CAP_CHARS * 2), created_at: None, score: None })
             .collect();
         let out = recall_section("b", &hits);
         assert!(
@@ -1384,9 +1476,9 @@ mod tests {
         let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
         let _ = prompt_at(&ep, "demo", &json!({ "prompt": "auth" }));
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 1, "{seen:?}");
-        assert!(seen[0].contains("exclude_tags"), "{seen:?}");
-        assert!(seen[0].contains("transcript") && seen[0].contains("marker"), "{seen:?}");
+        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert!(seen[1].contains("exclude_tags"), "{seen:?}");
+        assert!(seen[1].contains("transcript") && seen[1].contains("marker"), "{seen:?}");
     }
 
     // The test with teeth, and the core of the fix. The defect this closes is an
@@ -1423,11 +1515,12 @@ mod tests {
         // load-bearing rather than decorative: drop it and the server answers
         // with bare strings and there is nothing left to carry.
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        let recall = &seen[1];
         assert!(
-            seen[0].contains(r#""format":"full""#),
+            recall.contains("\"format\":\"full\""),
             "the hook must ask for the scored shape: {:?}",
-            seen[0]
+            recall
         );
     }
 
@@ -1441,8 +1534,8 @@ mod tests {
         let scored = recall_section(
             "demo",
             &[
-                ScoredHit { content: "one".into(), score: Some(0.016) },
-                ScoredHit { content: "two".into(), score: Some(0.014) },
+                ScoredHit { content: "one".into(), created_at: None, score: Some(0.016) },
+                ScoredHit { content: "two".into(), created_at: None, score: Some(0.014) },
             ],
         );
         assert_eq!(bare, scored);
@@ -1453,7 +1546,64 @@ mod tests {
     }
 
     fn plain(content: &str) -> ScoredHit {
-        ScoredHit { content: content.to_string(), score: None }
+        ScoredHit { content: content.to_string(), created_at: None, score: None }
+    }
+
+    /// The H12 serving shape, at the product surface: a hit that carried its
+    /// occurrence time on the wire renders `[YYYY-MM-DD] ` in-band; a bare hit
+    /// (an old server, or the default shape) renders exactly as before, byte
+    /// for byte.
+    #[test]
+    fn recall_section_should_render_occurrence_dates_in_band() {
+        let dated = ScoredHit {
+            content: "moved the deadline to the 15th".into(),
+            created_at: Some("2026-09-20T09:30:00.000Z".into()),
+            score: Some(0.02),
+        };
+        let out = recall_section("b", &[dated]);
+        assert!(
+            out.contains("- [2026-09-20] moved the deadline to the 15th"),
+            "{out}"
+        );
+
+        // The degrade paths: no wire time, and a wire time too short to hold a
+        // date, both render the pre-2026-10-17 shape.
+        for hit in [
+            ScoredHit { content: "bare".into(), created_at: None, score: None },
+            ScoredHit { content: "short stamp".into(), created_at: Some("2026".into()), score: None },
+        ] {
+            let out = recall_section("b", std::slice::from_ref(&hit));
+            assert!(out.contains(&format!("- {}\n", hit.content)), "{out}");
+            assert!(!out.contains("[2026"), "no date may render from a stamp that has none: {out}");
+        }
+    }
+
+    /// The per-bank adoption knob: a bank whose config says `injectionFormat:
+    /// "summary"` wins over the host env; a bank that says nothing (or names
+    /// an unknown format, or is unreachable) reads as unset and the env path
+    /// holds — the same never-fail degrade every other knob here has.
+    #[test]
+    fn the_bank_injection_format_knob_should_override_the_env_and_degrade() {
+        // Resolution, pure — no environment touched (tests run in parallel
+        // threads and the env is process-global).
+        assert_eq!(resolve_injection_format(Some("summary"), None), "summary");
+        assert_eq!(resolve_injection_format(Some("summary"), Some("full")), "summary",
+            "the bank is the more specific scope; its ratification wins");
+        assert_eq!(resolve_injection_format(None, Some("summary")), "summary");
+        assert_eq!(resolve_injection_format(None, None), "full");
+        assert_eq!(resolve_injection_format(None, Some("citations")), "full",
+            "an env nobody recognizes degrades, as it always has");
+
+        // The config fetch: a real canned server, both answers and absence.
+        let (ep, _rx) = canned(vec![("/config", r#"{"injectionFormat":"summary"}"#)]);
+        assert_eq!(bank_injection_format_at(&ep, "b"), Some("summary"));
+        let (ep, _rx) = canned(vec![("/config", r#"{}"#)]);
+        assert_eq!(bank_injection_format_at(&ep, "b"), None, "unset is unset");
+        let (ep, _rx) = canned(vec![("/config", r#"{"injectionFormat":"citations"}"#)]);
+        assert_eq!(bank_injection_format_at(&ep, "b"), None,
+            "a value this build cannot ask for reads as unset, never as an error");
+        assert_eq!(bank_injection_format_at("http://127.0.0.1:1", "b"), None,
+            "an unreachable server is the env path, never an error");
     }
 
     // Version skew is the whole reason `WireHit::Bare` exists: `format: "full"`
