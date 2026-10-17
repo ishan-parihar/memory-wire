@@ -1,0 +1,9 @@
+{
+  "stage": "search",
+  "allow_empty_search": true,
+  "skip_failed_search": false,
+  "status_counts": {
+    "success": 3467
+  },
+  "failed_users": []
+}

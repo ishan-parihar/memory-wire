@@ -14,9 +14,20 @@ fixed in v0.8.2). The tree is clean and pushed. **The pre-registered R&D queue i
 empty**: every H-item to date is terminal — measured and shipped (H0, H8), measured and
 rejected (H1a–d, H2, H3), falsified (H3), flat (H4), unmeasurable-no-build (H11), or
 already-shipped (V4) — see `RND_PLAN.md` §4's results log, one row per verdict.
-What remains is either **blocked** (H9 BEAM labelling; Track 2 agent-budget) or
-**decision-gated on the user** (capsule adoption by the surfaces, a second-system
-HaluMem head-to-head, answerer-side product work, the next release).
+**The §6 cycle is complete** (2026-10-17) — every workstream terminal, records
+current, 0 test-set consultations added all cycle: W1's pool-scale overlap
+re-test answered (the token-overlap stream is **not deleteable** — 0.00 pays
+a coverage price, R@pool 100→95.5% — but the unfitted `1.00` leads the fitted
+`0.25` on the same corpus, §47, the weight question now user-gated), W2 froze
+and grew the relevance battery (§48 — a reproducible 21-case instrument over
+a sha256-pinned bank; precision levers registrable, none registered), and W3's
+H12 dated-HaluMem re-measure landed (§46 — Dynamic Update 0.2056→0.4056;
+overall 0.6129→0.7433: the H10 headline measured a reader blind to time).
+What remains is either **blocked** (Track 2 agent-budget) or **decision-gated
+on the user** (the `overlap` weight after §47's two-corpus split, capsule
+adoption by the surfaces, a second-system HaluMem head-to-head on the dated
+harness, answerer-side product work, the next release) — the full table is
+`RND_PLAN.md` §6.4.
 
 ## What the job is
 
@@ -32,7 +43,7 @@ whole R&D process exists to enforce.
 |---|---|---|
 | 1 | `AGENTS.md` §1, §2, §6, §7, §8, §11, §12, §13 | the rules. §6 (three-set discipline) is non-negotiable |
 | 2 | `docs/handoff/STATE.md` | the current state: releases, every headline number and where it lives |
-| 3 | `docs/handoff/RND_PLAN.md` | the register: §4 results log (every verdict to date), §5 the survey-sourced cycle (all terminal), each H-item with mechanism, test, gate |
+| 3 | `docs/handoff/RND_PLAN.md` | the register: §4 results log (every verdict to date), §5 the survey-sourced cycle (all terminal), **§6 the upcoming cycle's outline (start there for what to do next)**, each H-item with mechanism, test, gate |
 | 4 | `docs/handoff/RUNBOOK.md` | exact commands, environment traps, how to run the baseline and the LLM instrument |
 | 5 | `docs/handoff/CLOSED.md` | levers already measured and rejected — **the complete list**; do not re-propose without new evidence |
 | 6 | `TODO.md` | the implementation register (open rows are numbered there; treat it as authoritative, not this file) |

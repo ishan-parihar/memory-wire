@@ -336,6 +336,8 @@ run-to-run spread (the harness is deterministic, so any regression is real — r
 | 2026-10-16 | **v0.8.1** release (H8 capsule + hook knob + battery) | acceptance #5: LME retrieval byte-identical (83.8/97.2/98.6/99.6/88.2/89.2, n 500); `update` hop found dead on arrival — bare-semver current unparsable (fix + correction of the earlier "live-verified" claim in §45) | `eval/RESULTS.md` | 45 | **1** (consultation #5) |
 | 2026-10-16 | **v0.8.2** release (the fix) | `parse_tag` accepts bare semver + regression test (gates 598); racknerd installer-hop 0.8.0→0.8.2, wiring preserved, `update` from 0.8.2 reads 12 known releases — genuine comparison; sizes re-pinned (9,261,472 B / DT_NEEDED 3) | §45 | 45 | 0 |
 | 2026-10-16 | **H9** BEAM upstream shape-check | verdict: **not mechanical** — upstream carries `time_anchor` per turn and per question but no evidence pointers; session-level gold requires genuine authoring (content-match + hand-verify); labelling project stays the unblock | `docs/handoff/RND_PLAN.md` §5 H9 | — | 0 |
+| 2026-10-16 | **H9/W1** pool-scale overlap re-test (BEAM-100k, pair-unit labels) | **stream NOT deleteable**: 0.25 > 0.00 on every ordering metric (R@1 +3.5pp) and 0.00 pays a coverage price (R@pool 100→95.5% — BM25 truncates at 50, the overlap stream carries what sits below); **but the unfitted 1.00 leads 0.25** (R@5 +3.5pp; LoCoMo gave the fitted value +1.4pp) — weight stays user-gated, two dev corpora in tension | `eval/BEAM.md` | 47 | 0 |
+| 2026-10-17 | **H12** dated HaluMem re-measure (instrument fix, measure-only) | **the instrument was the defect**: with dates served, Dynamic Update 0.2056→0.4056 (+20.0pp), Memory Conflict +19.7pp, Basic Fact Recall +22.8pp — overall 0.6129→0.7433 — while the Memory Boundary control held (−2.5pp) and context grew only +12%; reported as a different instrument version, nothing selected | `eval/omnimevaleval/memory-wire-mw_h12_dated_medium/` | 46 | 0 |
 
 ## 5. Cycle 2026-10-15→ — the survey-sourced queue
 
@@ -496,3 +498,217 @@ out-of-scope-as-default (recorded), or a pre-registered H-item appended to this
 section. The two named candidates that already cleared the paper screen — H8
 above, and V4 (MCP bank listing, product polish with no benchmark claim) — ship
 independently of the audit's outcome if their source mechanisms check out.
+
+
+## 6. Cycle 2026-10-16→ — the upcoming cycle, outlined
+
+Written 2026-10-16, the day the survey cycle closed out (H10 measured, H9
+shape-checked, H11 and V4 closed, v0.8.1/v0.8.2 shipped). **No ranking lever is
+open**: the six-repo audit found no incoming mechanism (`COMPETITOR_GAPS_PLAN.md`
+§6), every in-house lever is terminal (§4, `CLOSED.md`), and the shipped
+configuration survived every challenger. The upcoming cycle is therefore
+**instrument/workstream-shaped** — it builds the instruments that can gate future
+levers, runs the one registered re-test, and holds everything else for user
+decisions. Nothing here selects on LongMemEval; nothing re-litigates `CLOSED.md`.
+
+### 6.0 Order of work
+
+```
+W1  H9 labelling project (free, ~days of authoring) → one free pool-scale
+    overlap re-test — terminal either way (kept / deleted)
+W2  frozen relevance battery (free, ~days) → D-case re-measure; precision
+    levers become registrable only once the instrument exists
+W3  H12 dated HaluMem re-measure (adapter serve-shape fix + one ~7.5 h
+    free-tier run; measure-only) — pre-registered in §6.3, the one new H-item
+—   second order, named not scheduled: PersonaMem v2 first run; OmniMemEval
+    LoCoMo judged cross-check (both measure-only, free tier)
+—   decision-gated: §6.4 — nothing there moves without the user
+```
+
+W1–W3 are independent and interleavable: W1 is authoring-shaped, W2 is repo
+work, W3 is one short patch plus a long unattended chain (launch per the
+long-chain discipline: `setsid nohup` from a `/var/tmp` script; re-arm watchers
+on expiry).
+
+### 6.1 W1 — the BEAM labelling project (H9's unblock)
+
+H9 stays as registered in §5; this names the project, not a new hypothesis.
+
+- **What:** author session-level gold for BEAM. Upstream carries `time_anchor`
+  per turn and per question but **no evidence pointers** (shape-check verdict,
+  2026-10-16), so the labels are genuine authoring: content-match each question
+  against the upstream source turns, then hand-verify. Report resolve rate and
+  gold/bank share per `BENCHMARK_LANDSCAPE.md` §3, and state the
+  authoring-weakness caveat (self-labelled gold) beside every number that uses it.
+- **Then:** the pre-registered re-test, unchanged — one free run, `overlap 0.25`
+  vs `0.00` at pool scale. Tie ⇒ delete the stream (simpler shipped config,
+  §14.2 discharged as a dead parameter); pays ⇒ kept with a measured
+  justification for the first time. Terminal either way.
+- **Why first:** it discharges the last open shipped-config question, adds the
+  second dev set (LoCoMo banks of 19–32 under-measure pool size), and is the
+  generalization check for the fitted `overlap 0.25` — the one provisional
+  value still carrying its marker. Feeds TODO #9 and #6.
+
+**Done 2026-10-16 (CONSISTENCY §47, artifact `eval/BEAM.md`).** The corpus
+falsified the pre-registered session shape before labelling — 3–5 sessions of
+~100K chars give 3–5-doc banks, smaller than LoCoMo's — so the document unit
+became the **QA turn pair** (2,866 pairs, 94–196 per bank), chosen by mechanism
+(pool scale is §14.2's question; the pair is also what the hooks actually
+write) and recorded here before the run. Labels: `eval/beam_label.py`
+(committed) + `eval/beam_labels_100k.json` digest, 313/400 resolved, 13/15
+review agreement, both arms scored on byte-identical labels. **Outcome: the
+stream is not deleteable** — 0.25 beats 0.00 on every ordering metric and 0.00
+additionally loses R@pool 100→95.5% (BM25 truncates at 50; the overlap stream
+carries the gold pairs below its cut — the stream is coverage at pool scale).
+**But the unfitted 1.00 leads 0.25 on the same corpus** (R@5 +3.5pp; LoCoMo
+gave the fitted value +1.4pp) — two dev corpora point opposite ways on the
+weight, which stays the user's call. H9 terminal: kept, with its first
+measured justification; TODO #9 closed.
+
+### 6.2 W2 — freeze the relevance battery, then precision levers (TODO #6)
+
+**Done 2026-10-16 (CONSISTENCY §48, artifact `eval/relevance/BATTERY-2026-10-16-frozen.txt`).**
+The battery is frozen: `eval/relevance/freeze_battery.py` pins the bank
+(1,429-row snapshot, sha256 `c780939b…`, gitignored — never committed; seed
+replays it through the product's own retain route into a deterministic
+1,413-row / 69-tag bank) and the labelled set grew 10 → 21 (11 turn-row
+harvests, gold prefixes verified; provenance in each case's label; K11's gold
+shortened to fit the capsule window — a label artifact, not a capsule
+regression). Frozen marks: gold 16/17 auto (11/11 harvested), junk 0/9,
+search-reachable 17/17; the D-case re-measured — Y under the shipped config;
+the H8 gate re-confirmed (IDENTICAL ranking, 43% less text). **Precision
+levers are registrable from here** — one at a time, mechanism first,
+`junk@5` down / `gold@5` flat; never a threshold (§32). None registered
+in this cycle.
+
+- **Why the instrument comes first:** the battery is the only dev instrument
+  that exhibits the precision failure (junk-at-injection — diagnosed in
+  `docs/OPEN_HOOK_RECALL_RELEVANCE.md`, publicly PMB precision 0.24, 563 of 567
+  failures junk riding along), and it cannot gate today: 10 labelled cases is
+  too few, and it reads the live `omp` bank, which drifts (junk-injected moved
+  1/9→0/9 with the code unchanged). H8's residue is the same hole — junk still
+  rides the top-5 at capsule length; H8 shrank its cost, did not fix it.
+- **What:** snapshot a frozen bank for the battery (committed fixtures or a
+  seeded scratch server — never the live bank), grow the labelled set well past
+  10, and re-measure the D-case judgment (cross-project turn rows ranking in a
+  single-user bank) as the first before/after.
+- **Only then** are precision levers registrable — one at a time, each with a
+  mechanism paragraph and a battery gate (`junk@5` down, `gold@5` flat). The
+  sanctioned lever list is composition, caps, labels, tags (`CONSISTENCY.md`
+  §32); **never a score threshold** (measured, twice). Mechanism-named
+  candidates: near-duplicate exclusion at serve, composition caps, tag-based
+  exclusion. **No lever is registered in this cycle** — the instrument comes first.
+- **Cost:** free; days of authoring.
+
+### 6.3 W3 — H12: date-aware HaluMem re-measure (new, pre-registered, measure-only)
+
+- **Status:** pre-registered 2026-10-16, not started. The defect is verified
+  end-to-end at the pinned clone (`../_audit_scratch/omnimevaleval` @ `a5c8b4b`):
+  the adapter stores `created_at` on retain and recalls `format: "full"`, which
+  returns the date per hit — but `search()` discards it and returns bare content
+  (`memory_wire_client.py:103`); `search_helpers.py:76` templates those strings
+  verbatim; `hm_responses.py:57` serves the result as the reader's entire
+  context. Their LME arm puts a `question_date` in the prompt
+  (`lme_responses.py:59`); the HaluMem arm has no date anywhere. **The one
+  condition:** a ~7.5 h free-tier chain (H10's wall clock), run alone on an idle
+  tier per the RUNBOOK rule.
+- **Mechanism:** HaluMem's Dynamic Update type asks the reader to resolve
+  newest-value overrides. memory-wire deliberately retains both statements
+  (content-hash dedup keeps distinct values; consolidation is closed), so the
+  reader's whole job is *which statement is later* — and it received both with
+  no occurrence time. That is unanswerable-by-construction: the same instrument
+  defect TODO #16 fixed for LongMemEval (undated 17.0% → dated 18.6%, harness
+  change only, H5). Dynamic Update 0.2056 therefore measures the instrument as
+  served, not the store. The fix is a two-line client-side change in the adapter
+  (post-recall, so ranking is untouched by construction): prefix each hit with
+  its `[<date>]`, the exact shape `examples/answer_quality.rs` already serves.
+- **Test:** in `memory_wire_client.py`, `search()` returns
+  `f"[{date}] {content}"` from the `created_at` the full recall already carries —
+  behind an env flag (`MEMORY_WIRE_SERVE_DATES=1`) so every other corpus keeps
+  the bare shape. Re-run HaluMem-Medium once end-to-end through the shim under a
+  new tag (`mw_h12_dated_medium`); commit their own output artifact unedited as
+  `eval/omnimevaleval/memory-wire-mw_h12_dated_medium/`.
+- **Gate:** none for selection — measure-only, like H5. Report the whole table
+  beside the undated 0.6129 as a **different instrument version**, never as
+  better/worse. Pre-registered control: **Memory Boundary ≈ invariant** (0.9372
+  undated; its questions do not turn on occurrence dates) — a large move there
+  means the prefix itself perturbed the reader, and the run is read with that
+  caveat. Any movement is expected to concentrate in Dynamic Update, secondarily
+  Memory Conflict. Whatever it shows is recorded; nothing is selected on it.
+- **Record:** `docs/CONSISTENCY.md` §46 (next free), a §4 results-log row, the
+  artifacts above. Test consultations: **0** — HaluMem is measure-only; no
+  LongMemEval contact.
+- **Cost:** ~1 h of work plus the run; free in dollars.
+- **Prior:** high that the dated instrument reads differently on Dynamic Update.
+  This buys an honest headline and a dated harness for any §6.4 head-to-head —
+  not a lever.
+
+**Done 2026-10-17 (CONSISTENCY §46, artifacts
+`eval/omnimevaleval/memory-wire-mw_h12_dated_medium/`).** The pre-registration's
+prediction held where it pointed and was broader than it guessed: Dynamic
+Update 0.2056→**0.4056** (+20.0pp) and Memory Conflict +19.7pp as the mechanism
+predicted; the surprise was Basic Fact Recall moving most of all (+22.8pp) —
+dates are load-bearing across the corpus's temporal types. The Memory Boundary
+control held approximately (0.9372→0.9118, −2.5pp — the prefixes are mild noise
+for boundary questions); context grew only +12%, so the +13.0pp overall
+(0.6129→**0.7433**) is not a token artefact. **Measure-only, 0 test
+consultations; the pair is two instrument versions, nothing selected.** H10's
+0.6129 stands as the undated instrument; the dated number is the honest
+headline for any future head-to-head (§6.4). H12 terminal.
+
+### 6.4 Decision-gated — waiting on the user (nothing moves until picked)
+
+**Recommendations for every row below are filed in `docs/handoff/DECISIONS.md`
+(2026-10-17), ranked by what the cycle's measurements say buys memory
+performance** — the short version: adopt the serving-shape wins first (dates
+in the surfaces, capsules per-bank), run the dated head-to-head, keep
+`overlap 0.25`, fund Track 2, commit the cycle, release only when a ratified
+decision ships.
+
+| option | cost | what it buys |
+|---|---|---|
+| **Capsule adoption by the surfaces** (auto-injection → `format: "summary"` behind a per-bank flag) | small patch, battery + e2e | the one change that moves what agents see, not what benchmarks see; the numbers it cites are committed (`eval/relevance/BATTERY-H8-2026-10-15.txt`: 41% less served text, fidelity held, ranking identical) |
+| **Second-system HaluMem head-to-head** (same harness, same answerer) | one more ~7 h run + their setup | the only thing that turns 0.6129 into a competitive claim (§44: comparability none until a second system runs this exact harness) — best run on the dated adapter, i.e. after H12 |
+| **Track 2 agent-memory-bench** (TODO #10) | agent-model budget | the only external benchmark grading the product's actual job — hooks+MCP wired, task success, harm suite |
+| **Answerer-side product work** (the 73% ceiling) | product iterations, battery-gated | the evidence-backed frontier: on LME 73.0% of served-and-gold contexts are answered wrong; H5 and H10 both name the answerer, not the ranking |
+| **A paid/frontier reader or judge** | money | re-opens `answer_quality` as a meaningful instrument (17.0/18.6% are small-reader floors, not memory quality) |
+| **Dense-arm promotion** (`--features embed` by default) | ~3× artifact size + model download | declined; H1d evidence says no (+1.8pp best at −9.9pp R@1, deep-miss rescue 4/99). The call is the user's and is now informed |
+| **Next release** | the protocolized §45 chain | nothing in tree; v0.8.2 is current |
+| **aroute fixed** | run the `docs/AROUTE_BUGS.md` recipe | deletes `eval/llm_shim.py`; condition-gated on the other repo, which is the user's |
+
+### 6.5 Second order — named, not scheduled (measure-only, free tier, hours)
+
+- **PersonaMem v2 first run** (MIT; 5,000 queries / 200 personas): the other
+  new corpus H10's adapter unlocks — preference memory, complements PMB.
+  Answerer wall clock is the only reason it is not scheduled.
+- **OmniMemEval LoCoMo judged cross-check**: their LoCoMo arm is a dev-judged
+  instrument — a second harness triangulating the 84.1% AMB number. State the
+  adapter shape used; never a selection signal.
+
+### 6.6 Guardrails for the cycle
+
+1. **No new ranking lever is registered.** The audit found no incoming
+   mechanism and `CLOSED.md` is the complete list; a new lever needs new
+   evidence stated *before* anything is spent (AGENTS §8). Do not invent levers
+   to fill a queue.
+2. **Three-set discipline unchanged** (AGENTS §6): selection on LoCoMo and the
+   battery only; every LongMemEval-touching run is a counted consultation —
+   the next would be **#6**, release acceptance only.
+3. **Decide by mechanism, measure once**; a null result is a result. The next
+   free `CONSISTENCY.md` section is **§46**; append, never rewrite.
+4. HaluMem data is **CC BY-NC-ND 4.0 — run, never vendor**; pinned clones
+   only; never a real API key in a harness (`env -u GOOGLE_API_KEY`); never
+   edit or restart aroute.
+5. Long LLM chains: `setsid nohup bash /var/tmp/<script>.sh`; each ~30 min
+   watcher expiry means re-arm, not investigate.
+6. §6.4 belongs to the user — ask in a final report, not mid-run.
+7. Delegate only with `space-bunny`; run the gate yourself before reporting
+   anything as verified (AGENTS §12).
+
+### 6.7 Re-open conditions already on file
+
+H11 — a bank with counted re-observations, or corpus gold that is structurally
+re-stated · session diversification — only if write granularity ever changes ·
+TODO #17 — a dev set that exhibits reader drowning · the 99 deep semantic
+misses — out of reach of every measured lever; new evidence, not a re-run, is
+the re-open.

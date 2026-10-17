@@ -9,11 +9,21 @@ and nothing measured here is a claim about it.
 
 ## What is in here
 
-- `cases.jsonl` — the seed cases: the audit's 10 graded recall cases,
-  verbatim queries, with the labels a gating decision needs: `gold`
-  (content prefixes that must rank) and `junk` (content prefixes that
-  must not be auto-injected). Labels are hand-reviewed against the bank
-  as of 2026-10-08.
+- `cases.jsonl` — the labelled cases. The seed 10 (A–J, hand-reviewed against
+  the bank as of 2026-10-08): verbatim queries with `gold` (content prefixes
+  that must rank) and `junk` (content prefixes that must not be
+  auto-injected). Plus 11 harvested cases (K01–K11, 2026-10-16) taken from
+  the frozen snapshot's turn rows by the harvest recipe below — the question
+  is the query, the row is the gold — with the provenance in each case's
+  `label` field (agent-authored, human review pending).
+- `freeze_battery.py` — freezes the corpus the battery measures. `dump`
+  snapshots the live bank read-only (sqlite `mode=ro`; the HTTP list route
+  omits `tags`) into `../data/battery/omp-snapshot.jsonl` (gitignored: live
+  session content, never committed; the sha256 in the battery artifact is the
+  committed record). `seed` replays a snapshot through the product's own
+  HTTP retain route into any scratch serve; byte-identical rows collapse by
+  content-hash dedup, the write path's own semantics, so a pinned file always
+  yields the same bank.
 - `run_battery.py` — runs every case through the same REST route the
   surfaces use, in both shapes that matter:
   - `auto` — the auto-injection shape (`exclude_tags: ["transcript",
@@ -22,14 +32,30 @@ and nothing measured here is a claim about it.
   what a model calling `memory_recall` sees.
 
   It reports per case: gold@5, junk@5, and the injected-character cost,
-  plus totals.
+  plus totals, plus the H8 capsule gate (ranking identity, served load,
+  fidelity).
 
 ## How to use it
 
+Against the live bank (drifts — fine for a quick look, never for a gating
+number):
+
 ```bash
 python3 eval/relevance/run_battery.py --bank omp
-python3 eval/relevance/run_battery.py --bank omp --case B   # one case
 ```
+
+The **frozen battery** — the reproducible instrument a gating decision cites
+(`CONSISTENCY.md` §48 has its first committed run):
+
+```bash
+python3 eval/relevance/freeze_battery.py dump    # once per corpus pin
+./target/release/memory-wire serve --db /var/tmp/battery.db --addr 127.0.0.1:8897 &
+python3 eval/relevance/freeze_battery.py seed --endpoint http://127.0.0.1:8897
+python3 eval/relevance/run_battery.py --bank omp --endpoint http://127.0.0.1:8897
+```
+
+Same snapshot file ⇒ same bank ⇒ same marks, on any machine, at any later
+date. A gating comparison names the snapshot sha256 it used.
 
 The battery re-runs after every retrieval-affecting change and the numbers
 go in `docs/CONSISTENCY.md`. The 2026-10-08 baseline (pre-fix) is recorded

@@ -1,7 +1,8 @@
 # State at handoff — 2026-10-16
 
-Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `95e54c1` — **v0.8.2,
-released**. The day cut two patches: **v0.8.1** (`fbe0a91`+`52e27a7`: the H8 capsule
+Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `c919f13` — **v0.8.2,
+released** (the tag names `95e54c1`; `3ac422c` and `c919f13` are the records and
+navigation passes on top). The day cut two patches: **v0.8.1** (`fbe0a91`+`52e27a7`: the H8 capsule
 mode, the `MEMORY_WIRE_FORMAT` hook knob, the OmniMemEval HaluMem battery entry,
 acceptance #5 byte-identical) and **v0.8.2** (`62fb072`+`95e54c1`: the `update`
 `parse_tag` fix found dead on the first real hop — §45 tells it plainly, including the
@@ -11,17 +12,37 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
- Modified: `plugin/skills/memory-wire/SKILL.md README.md docs/CONSISTENCY.md
- docs/handoff/STATE.md docs/handoff/RND_PLAN.md` (this records pass: §45, results-log
- rows, v0.8.2 size re-pins — 9,261,472 B / DT_NEEDED 3 / 4,084,301 B gzipped).
- Untracked: none new; `eval/omnimevaleval/memory-wire-mw_h10_medium/` and the earlier
- survey-cycle artifacts shipped **in v0.8.1**.
+  The §45 records pass and the navigation pass are **committed** (`3ac422c`,
+  `c919f13`); the tree was clean at `c919f13`. It now holds the **§6 cycle
+  pass, uncommitted by instruction**: the outline (`RND_PLAN.md` §6, H12
+  pre-registered) plus its execution — W1 (BEAM pair-unit labels + harness:
+  `eval/beam_label.py`, `eval/beam_labels_100k.json`, `examples/beam.rs`,
+  artifacts `eval/BEAM.md` + `eval/results_beam.json`), W2 (frozen battery:
+  `eval/relevance/freeze_battery.py`, grown `cases.jsonl`, artifact
+  `BATTERY-2026-10-16-frozen.txt`), `docs/CONSISTENCY.md` §47–§48,
+  `docs/handoff/README.md`, `docs/handoff/STATE.md`, `TODO.md` (rows 6, 9, 20).
+  Untracked data under `eval/data/` is gitignored by design. W3's adapter fix
+  lives in the pinned clone, not here.
 
- Cycle state: the survey-sourced queue is fully terminal — H8 shipped (gate PASSED, §43),
- V4 closed already-shipped, H11 closed unmeasurable (no build), H10 measured
- (HaluMem-Medium 0.6129, Memory Boundary 0.9372, §44), H9 shape-checked (upstream BEAM has
- no evidence pointers; labelling stays the unblock). Blocked: H9 (BEAM labelling),
- Track 2/agent-memory-bench (agent-model budget).
+  Cycle state (§6, **closed 2026-10-17**): **W1 done** — the BEAM pool-scale
+  overlap re-test answered (`eval/BEAM.md`, §47): the stream is **not
+  deleteable** (0.25 > 0.00 on every ordering metric; 0.00 additionally loses
+  R@pool 100→95.5% — the overlap stream carries coverage below BM25's 50-row
+  cut at 94–196-doc banks), **but the unfitted 1.00 leads 0.25 on the same
+  corpus** (R@5 67.1 vs 63.6, opposite sign to LoCoMo's +1.4pp) — the weight
+  stays user-gated. **W2 done** — the battery is frozen (sha256-pinned
+  snapshot → deterministic 1,413-row bank) and grown 10→21 (gold 16/17,
+  junk 0/9, D-case passes, H8 re-confirmed); precision levers registrable
+  from here — none registered. **W3 done — H12** (`eval/omnimevaleval/
+  memory-wire-mw_h12_dated_medium/`, §46): the dated instrument reads
+  Dynamic Update 0.2056→**0.4056** (+20.0pp), overall 0.6129→**0.7433**,
+  Memory Boundary control holding at −2.5pp and context only +12% — the
+  H10 headline measured a reader blind to time; both numbers stand as two
+  instrument versions. **The §6 cycle is complete**: every workstream
+  terminal, records current, 0 test consultations added all cycle. Blocked:
+  Track 2/agent-memory-bench (agent-model budget). No ranking lever is open;
+  the fitted `overlap 0.25` is now *replicated on LoCoMo, inverted on BEAM* —
+  an honest split, the user's call.
 
 That release batch (feature `04123f7`, bump `a272196`) carried everything the old
 list below named — the full R&D record set, the product code, and every new
@@ -98,6 +119,8 @@ load-independent, **every latency/throughput/RSS figure is range-quality.**
 | LoCoMo (**dev**), `overlap 0.25` shipped | 60.4% | 86.0% | 94.2% | 73.6% | 1,531 | `LOCOMO.md`, repo `eval/LOCOMO.md` |
 | LoCoMo `recall_all@10` (new), shipped | — | — | **83.0%** | — | 1,531 | `eval/LOCOMO.md` |
 | LoCoMo `recall_any@10` for contrast | | | 94.2% | | 1,531 | same |
+| BEAM-100k (**dev**, pool-scale re-test §47): 1.00 / 0.25 / 0.00 | 42.5 / 39.9 / 36.4 | 67.1 / 63.6 / 62.3 | 77.6 / 76.4 / 74.8 | 42.3 / 41.2 / 39.3 | 313 | `eval/BEAM.md` |
+| Frozen relevance battery (§48): auto gold 16/17, junk-injected 0/9, search-reachable 17/17; H8 gate green (43% less text) | | | | | 21 | `eval/relevance/BATTERY-2026-10-16-frozen.txt` |
 | PrecisionMemBench (measure-only) | total 14/77, active 3/43, precision 0.17, recall 0.95 | | | | 77 | `precisionmembench.json.gz` |
 
 Honesty note: `overlap 0.25` was chosen on LongMemEval (46 configurations) and is
@@ -174,7 +197,7 @@ re-measure on a quiet box (`TODO.md` #14).
 | AMB checkout | `../_audit/amb` @ `03c1d0f`, venv `../_audit/amb/.venv/bin/amb`; provider installed from `eval/amb/memory_wire.py` |
 | datasets | `eval/data/` is gitignored; fetch with `./eval/download.sh` (LoCoMo, LongMemEval-S are already present on this machine) |
 | disk | `/home` ~126 GB free at handoff |
-| background jobs | none running at handoff (the AMB run exited 0) |
+| background jobs | none running at handoff (the H12 chain and its metric resume both completed; `eval/omnimevaleval/memory-wire-mw_h12_dated_medium/` holds the artifacts) |
 
 ## 5. What the LoCoMo judged run says about where the headroom is
 
