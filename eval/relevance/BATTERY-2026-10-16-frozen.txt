@@ -1,0 +1,73 @@
+case           gold@5  junk@5  chars   top-5 (auto shape)
+A-readme            Y       -    800   asked: Was the README was also updated with any relevant information?  | pre-compact session 5d07dfb8-d537-4610-b706-b2062233a86d (auto) B; cor
+B-audit             Y       -    400   asked: I want you to audit the context injection implementation gaps t
+C-continue          -       -   1691   memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | asked: <system-notice> Continue. MUST resume most recent intent; compl | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (prompt_input | asked: continue with the aroute development answered: Release rerun st | session-end session b942d121-d196-43ca-896f-b67597cfb580 (prompt_input
+D-composed          Y       -    800   asked: Was the README was also updated with any relevant information?  | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (other) check
+E-release           Y       -   1272   asked: Proceed with updating the tag on the github releases and deploy | asked: Proceed with updating the tag and deploying the latest release  | asked: continue with the aroute development. answered: Release is depl | asked: <!-- OMO_INTERNAL_INITIATOR --> <!-- OMO_INTERNAL_NOREPLY --> a
+F-plugin            Y       -   1424   memory-wire closed the integration gaps from the 2026-10-07 investigat | memory-wire integration gap investigation (2026-10-07, opencode 1.18.3 | asked: [SYSTEM DIRECTIVE: OH-MY-OPENCODE - TODO CONTINUATION] Incomple | asked: , answered: §1518§ The stop is already in flight (my running co
+G-dispatcher        -       -    800   asked: Check both ./parent-projects/zeroclaw and ./parent-projects/her | asked: Proceed with full scale execution of the implementation plan. a
+H-trading           !       -   1501   session-end session 93e975f9-3389-426f-a973-197ecc122c1f (resume) er i | asked: Proceed with the execution of the remaining phases fully and ef | asked: Audit the surface area of /home/ishanp/.hermes/organism/venture | asked: Proceed with ingesting @skills/quantitative-strategy-rd/SKILL.m
+I-session-ended      -       -   1200   pre-compact session cb16b72b-a252-4ad1-a130-6261606d49e2 (manual) * me | session-end session 5d07dfb8-d537-4610-b706-b2062233a86d (other) (dev/ | asked: I am currently experiencing a lot of streaming interruption bug
+J-harness-noise      -       -   2000   asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-27cef5 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8
+K01                 Y       -   1200   asked: Is the readme, and everything else updated? Are all their integ | asked: Was the README was also updated with any relevant information?  | asked: Proceed with investigating potential bugs in the free-stack sma
+K02                 Y       -   1862   asked: Proceed with articulating what else is left for the full scale  | asked: Is this proxy mcp required for the [paperclip + zeroclaw] integ | asked: I want to deploy paperclip + [https://github.com/codewhale-hq/C | asked: Only focus on the organism agenticOS, not the operant, as it is | asked: Check @docs/audit/2026-10-16-operant-audit/00-INDEX.md and all 
+K03                 Y       -   1581   asked: Both dashboard and aroute must have an integrated DB. Who TF ga | asked: Both dashboard and aroute must have an integrated DB. Who TF ga | asked: Both dashboard and aroute must have an integrated DB. Who TF ga | asked: Complete assignment thoroughly: Execute this task (do NOT read  | asked: Proceed with the full scale execution of the remaining implemen
+K04                 Y       -   1600   asked: Is the latest site deployed at wrangler? Can I test it? answere | asked: Proceed with integrating these drafts within the library and de | asked: Is the latest site deployed at wrangler answered: Confirmed. Pr | asked: I enabled the threaded mode. I am unable to find the api key se
+K05                 Y       -   1409   asked: Does operant/docs/plan-2026-10-09-remaining-gaps-outline-v5.md  | operant (2026-10-09, session at tip 4c699106): executed the v5 gaps-ou | asked: Proceed with the full scale execution of the remaining implemen | asked: Check @docs/audit/2026-10-16-operant-audit/00-INDEX.md and all 
+K06                 Y       -   1583   asked: Do we have flags for turning the dashboard on/off for saving th | asked: So do we have configuration for choosing separate model for adv | asked: Proceed with the full scale execution of the implementation pla | asked: The key question is, why aren't the existing combos showing up 
+K07                 Y       -    800   asked: Compare it with https://github.com/agentgateway/agentgateway an | asked: Is this proxy mcp required for the [paperclip + zeroclaw] integ
+K08                 Y       -   1234   asked: Why are you creating separate webui for codewhale, where the pa | asked: The unattended posture would be based on the governance configu | asked: I would be removing everything else on the VPS when I would be  | asked: , answered: §1518§ The stop is already in flight (my running co
+K09                 Y       -    800   asked: So do we have configuration for choosing separate model for adv | asked: Audit if the configuration for features like advisors, and seve
+K10                 Y       -   1141   asked: What is the performance gains that we have seen since we began  | asked: You have implemented the regular rates ranges. I want a brand b | asked: We still suffered a setback as the entire system had to restart | asked: <!-- OMO_INTERNAL_INITIATOR --> <!-- OMO_INTERNAL_NOREPLY --> a
+K11                 Y       -    800   asked: There is no typing indicator is each thread, and each new messa | asked: 8731978306:AAFoMhqv45ROZf4Nz5GgFDDGnRB7BXZj8p4 take this token,
+
+auto shape: gold 16/17 junk-injected 0/9 ~25898 chars total across 21 cases
+
+search shape (what memory_recall sees, no exclusions):
+  A-readme       gold-reachable@5: Y
+  B-audit        gold-reachable@5: Y
+  C-continue     gold-reachable@5: -
+  D-composed     gold-reachable@5: Y
+  E-release      gold-reachable@5: Y
+  F-plugin       gold-reachable@5: Y
+  G-dispatcher   gold-reachable@5: -
+  H-trading      gold-reachable@5: Y
+  I-session-ended gold-reachable@5: -
+  J-harness-noise gold-reachable@5: -
+  K01            gold-reachable@5: Y
+  K02            gold-reachable@5: Y
+  K03            gold-reachable@5: Y
+  K04            gold-reachable@5: Y
+  K05            gold-reachable@5: Y
+  K06            gold-reachable@5: Y
+  K07            gold-reachable@5: Y
+  K08            gold-reachable@5: Y
+  K09            gold-reachable@5: Y
+  K10            gold-reachable@5: Y
+  K11            gold-reachable@5: Y
+
+H8 summary shape (same auto settings, format=summary):
+case            ids gold@cap  chars vs auto   top-5 (capsules)
+A-readme          =        Y    421    -379   asked: Was the README was also updated with any relevant information?  | pre-compact session 5d07dfb8-d537-4610-b706-b2062233a86d (auto)…[summa
+B-audit           =        Y    292    -108   asked: I want you to audit the context injection implementation gaps t
+C-continue        =        -    858    -833   memory-wire integration gap investigation (2026-10-07, opencode 1.18.… | asked: <system-notice> Continue. MUST resume most recent intent; compl | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (prompt_input | asked: continue with the aroute development…[summary of 148 chars; ful | session-end session b942d121-d196-43ca-896f-b67597cfb580 (prompt_input
+D-composed        =        Y    422    -378   asked: Was the README was also updated with any relevant information?  | session-end session 47b01cd5-861b-4156-913a-055df2bf1b2e (other)…[summ
+E-release         =        Y    765    -507   asked: Proceed with updating the tag on the github releases and deploy | asked: Proceed with updating the tag and deploying the latest release  | asked: continue with the aroute development.…[summary of 300 chars; fu | asked: <!-- OMO_INTERNAL_INITIATOR --> <!-- OMO_INTERNAL_NOREPLY -->…[
+F-plugin          =        Y    758    -666   memory-wire closed the integration gaps from the 2026-10-07 investigat | memory-wire integration gap investigation (2026-10-07, opencode 1.18.… | asked: [SYSTEM DIRECTIVE: OH-MY-OPENCODE - TODO CONTINUATION] Incomple | asked: ,…[summary of 224 chars; full: GET /banks/omp/memories/ca081999
+G-dispatcher      =        -    302    -498   asked: Check both ./parent-projects/zeroclaw and .…[summary of 2039 ch | asked: Proceed with full scale execution of the implementation plan.…[
+H-trading         =        !    717    -784   session-end session 93e975f9-3389-426f-a973-197ecc122c1f (resume)…[sum | asked: Proceed with the execution of the remaining phases fully and ef | asked: Audit the surface area of /home/ishanp/.…[summary of 439 chars; | asked: Proceed with ingesting @skills/quantitative-strategy-rd/SKILL.m
+I-session-ended    =        -    604    -596   pre-compact session cb16b72b-a252-4ad1-a130-6261606d49e2 (manual)…[sum | session-end session 5d07dfb8-d537-4610-b706-b2062233a86d (other)…[summ | asked: I am currently experiencing a lot of streaming interruption bug
+J-harness-noise    =        -   1455    -545   asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-2c738e | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-27cef5 | asked: <system-reminder> [BACKGROUND BASH STILL RUNNING] - bash-6529b8
+K01               =        Y    737    -463   asked: Is the readme, and everything else updated? Are all their integ | asked: Was the README was also updated with any relevant information?  | asked: Proceed with investigating potential bugs in the free-stack sma
+K02               =        Y    960    -902   asked: Proceed with articulating what else is left for the full scale  | asked: Is this proxy mcp required for the [paperclip + zeroclaw] integ | asked: I want to deploy paperclip + [https://github.com/codewhale-hq/C | asked: Only focus on the organism agenticOS, not the operant, as it is | asked: Check @docs/audit/2026-10-16-operant-audit/00-INDEX.…[summary o
+K03               =        Y   1220    -361   asked: Both dashboard and aroute must have an integrated DB. Who TF ga | asked: Both dashboard and aroute must have an integrated DB. Who TF ga | asked: Both dashboard and aroute must have an integrated DB. Who TF ga | asked: Complete assignment thoroughly: Execute this task (do NOT read  | asked: Proceed with the full scale execution of the remaining implemen
+K04               =        Y    799    -801   asked: Is the latest site deployed at wrangler? Can I test it?…[summar | asked: Proceed with integrating these drafts within the library and de | asked: Is the latest site deployed at wrangler…[summary of 459 chars;  | asked: I enabled the threaded mode. I am unable to find the api key se
+K05               =        Y    840    -569   asked: Does operant/docs/plan-2026-10-09-remaining-gaps-outline-v5.md  | operant (2026-10-09, session at tip 4c699106): executed the v5 gaps-ou | asked: Proceed with the full scale execution of the remaining implemen | asked: Check @docs/audit/2026-10-16-operant-audit/00-INDEX.…[summary o
+K06               =        Y    764    -819   asked: Do we have flags for turning the dashboard on/off for saving th | asked: So do we have configuration for choosing separate model for adv | asked: Proceed with the full scale execution of the implementation pla | asked: The key question is, why aren't the existing combos showing up 
+K07               =        Y    459    -341   asked: Compare it with https://github.com/agentgateway/agentgateway an | asked: Is this proxy mcp required for the [paperclip + zeroclaw] integ
+K08               =        Y    807    -427   asked: Why are you creating separate webui for codewhale, where the pa | asked: The unattended posture would be based on the governance configu | asked: I would be removing everything else on the VPS when I would be  | asked: ,…[summary of 224 chars; full: GET /banks/omp/memories/ca081999
+K09               =        Y    471    -329   asked: So do we have configuration for choosing separate model for adv | asked: Audit if the configuration for features like advisors, and seve
+K10               =        Y    686    -455   asked: What is the performance gains that we have seen since we began  | asked: You have implemented the regular rates ranges.…[summary of 1461 | asked: We still suffered a setback as the entire system had to restart | asked: <!-- OMO_INTERNAL_INITIATOR --> <!-- OMO_INTERNAL_NOREPLY -->…[
+K11               =        Y    470    -330   asked: There is no typing indicator is each thread, and each new messa | asked: 8731978306:AAFoMhqv45ROZf4Nz5GgFDDGnRB7BXZj8p4 take this token,
+
+H8 gate: ranking IDENTICAL; chars 14807 vs 25898 auto (+11091, 43% less); fidelity HELD on 17 gold cases

@@ -4065,3 +4065,207 @@ Size re-pin from the published v0.8.2 asset (measured, not estimated): binary
 
 Test-set consultations to date: **5** (§34: 2; §39: 1; §42: 1; §45: 1). All
 measurement-only; no retrieval parameter has ever been selected on LongMemEval.
+
+
+## §47 — H9: the pool-scale overlap re-test answers (BEAM-100k, 2026-10-16)
+
+Tree `c919f13` (this cycle's W-pass uncommitted at run time). **Dev-set only —
+0 test-set consultations; the count below is unchanged.** `loadavg` ~96–102 on
+24 cores; a retrieval-only run with no latency claim in any number, load
+recorded per §7.
+
+### The corpus, and the unit correction recorded before the run
+
+BEAM 100K (20 conversations, 400 probing questions, 10 dimensions) via the
+pinned OmniMemEval `prepare_beam.py`; upstream content gitignored, never
+vendored (CC BY-SA 4.0). The pre-registered shape assumed session-level
+documents; measuring the corpus falsified that before labelling: 3–5
+"sessions" of ~100K characters per conversation — session-docs would give
+**3–5-document banks, smaller than LoCoMo's 19–32**, the opposite of §14.2's
+question. The corpus's native QA structure supplied the unit: **2,866 QA turn
+pairs, 94–196 per bank** — the pool regime §14.2 named, and the granularity
+the product's hooks actually write (the live `omp` bank is turn rows). The
+choice and its mechanism argument are recorded in `RND_PLAN.md` §6.1.
+
+Labels are agent-authored by content-match (`eval/beam_label.py`, committed;
+digest `eval/beam_labels_100k.json` carries ids, scores and the input sha256 —
+no upstream text). Two matcher fixes, both driven by label review and never by
+a retrieval number: numeric tokens became terms (a quota figure is more
+distinctive than any word), and `contradiction_resolution` ideals are matched
+clause-wise ("You said X, but you also said Y") so both sides of every
+contradiction become gold by construction. 313/400 evaluated; 80 have no
+localizable gold by design (`abstention` 40, `summarization` 40); 7 resolved
+to nothing — dropped and counted, never scored. Review agreement: 13/15
+sampled questions carried the answer-bearing pair in gold, 2 partial
+(diffuse aggregate answers). **Both arms score byte-identical labels**, so
+label noise damps the delta both ways and cannot manufacture one.
+
+### The answer — three findings, n=313
+
+| overlap | R@1 | R@5 | R@10 | NDCG@10 | MRR | R@pool |
+|---|---|---|---|---|---|---|
+| 1.00 (unfitted control) | 42.5% | 67.1% | 77.6% | 42.3% | 54.1% | 100.0% |
+| 0.25 (shipped, fitted) | 39.9% | 63.6% | 76.4% | 41.2% | 51.9% | 100.0% |
+| 0.00 (stream dropped) | 36.4% | 62.3% | 74.8% | 39.3% | 48.7% | 95.5% |
+
+1. **The pre-registered deletion question answers 'keep'.** `0.25` over
+   `0.00` on every ordering metric — R@1 +3.5pp, R@5 +1.3pp (per-query 11
+   wins / 7 losses), R@10 +1.6pp, NDCG@10 +1.9pp, MRR +3.2pp — no tie at the
+   ±1pp bar fixed before the run. §14.2's reservation was right, and the
+   mechanism is now measured rather than supposed: at 94–196-document banks
+   BM25 truncates at 50 in SQL, and dropping the overlap stream takes
+   R@pool from 100.0% to **95.5%** — 14 questions lose their gold pair from
+   the ranking at every K, because the pair only the overlap stream surfaces
+   sits below BM25's cut. At pool scale the second lexical voter is
+   **coverage, not just tie-breaking.** The token-overlap stream is not
+   deleteable.
+2. **The fitted value did not win the corpus — the unfitted control did.**
+   `1.00` over `0.25`: R@1 +2.6pp, R@5 +3.5pp (per-query 19/8), NDCG@10
+   +1.1pp, MRR +2.2pp. LoCoMo gave the fitted value +1.4pp R@5 over equal
+   weight; BEAM takes 3.5pp back. Two dev corpora, two directions, neither
+   dominant beyond its own noise.
+3. **Consequence.** Nothing is patched — `FusionWeights::SHIPPED` is the
+   user's to change (`docs/handoff/README.md`). The fitted `0.25`'s
+   out-of-sample standing is now *replicated on one dev corpus, inverted on
+   another* — the honest summary. Selecting a value off either table would
+   be a dev-set selection, to be counted here if ever made.
+
+Test-set consultations to date: **5** (§34: 2; §39: 1; §42: 1; §45: 1) — this
+section adds 0. No retrieval parameter was selected on LongMemEval.
+
+
+## §48 — The relevance battery freezes: 21 labelled cases on a pinned bank (2026-10-16)
+
+Dev-set only — **0 test-set consultations** (the count below is unchanged).
+No latency or RSS claim anywhere in this section, so the box's load is not a
+factor; every mark is a deterministic retrieval judgment.
+
+The battery was the last dev instrument reading a moving target:
+`run_battery.py` against the live `omp` bank drifts as sessions retain new rows
+(§32 recorded junk-injected moving 1/9→0/9 with the code unchanged). A gating
+decision must be reproducible by a later agent without the live bank having
+stood still. It now is:
+
+- **Corpus, pinned.** `eval/relevance/freeze_battery.py dump` snapshots the
+  live bank read-only — the HTTP list route omits `tags`, which the auto
+  shape's `exclude_tags` depends on, so the dump reads sqlite `mode=ro` —
+  producing 1,429 rows, sha256
+  `c780939b2920daed6fe62944404144e7dd7c799443342471763f0dda5816415b`. The
+  snapshot lives gitignored under `eval/data/battery/`: it is the user's live
+  session content and is never committed; the digest is the committed record.
+  `seed` replays it through the product's own HTTP retain route (content,
+  context, created_at, tags); 16 byte-identical rows collapse by content-hash
+  dedup — the write path's own semantics — leaving a deterministic
+  **1,413-row, 69-tag bank** from a pinned file.
+- **Seed fidelity, cross-checked.** Frozen vs live marks identical on the
+  seed 10 (gold 5/6, junk-injected 0/9; the char totals differ only by the
+  rows the live bank gained in between). The one seed miss, H-trading, is a
+  pre-existing bank state — `!` in the committed 2026-10-15 battery too — and
+  its gold is reachable in the search shape (Y), which is what its label
+  targets.
+- **Grown: 10 → 21 cases.** 17 candidates harvested from the snapshot's turn
+  rows by the README recipe (the question is the query, the row is the gold);
+  6 dropped as gold-ambiguous near-duplicates (four "how much longer"
+  variants, two performance-question twins), 11 appended (K01–K11), each gold
+  prefix verified to resolve in the snapshot. Labels are agent-authored,
+  human review pending; every harvested case's `label` field states its
+  provenance. One label fixed in this same commit, per the battery's own
+  rule: K11's gold prefix (230 chars) exceeded the H8 capsule's 200-char
+  first-line window and read as a fidelity break that was in fact a label
+  artifact — ranking was IDENTICAL in every case; shortened to 115 chars.
+- **The measurement, frozen bank, 21 cases** (`eval/relevance/
+  BATTERY-2026-10-16-frozen.txt`): auto shape **gold 16/17** (11/11 harvested,
+  5/6 seed), **junk-injected 0/9**; search shape gold-reachable **17/17** of
+  the gold-labelled cases. **D-case re-measured** (the first thing §32 said
+  to re-measure): D-composed — gold@5 Y, junk@5 clean, search-reachable Y;
+  the borrowed-answer composition still ranks its gold under the shipped
+  config on a pinned bank. **H8 gate re-confirmed on the frozen corpus**:
+  ranking IDENTICAL, served text 14,807 vs 25,898 chars (**43% less**),
+  fidelity HELD on all 17 gold cases.
+
+**Consequence.** The instrument exists: a reproducible 21-case labelled set
+over a sha256-pinned bank, with its own freeze/seed tooling. Precision levers
+are now registrable against it — one at a time, mechanism paragraph first,
+`junk@5` down / `gold@5` flat as the gate, and **no score threshold**, ever
+(the §32 decision, measured twice). None is registered today.
+
+Test-set consultations to date: **5** (§34: 2; §39: 1; §42: 1; §45: 1) — this
+section adds 0.
+
+
+## §46 — H12: the dated HaluMem instrument (Dynamic Update answers differently, 2026-10-17)
+
+**Measure-only. Test-set consultations: 0** — HaluMem-Medium only, no
+LongMemEval contact; the count below is unchanged. The dated↔undated pair is
+reported as **two versions of the instrument**, never as better/worse memory:
+the only code difference is the OmniMemEval adapter's `search()` prefixing
+each served hit with its `created_at` date behind
+`MEMORY_WIRE_SERVE_DATES=1` (`memory_wire_client.py`, pinned `a5c8b4b`),
+post-recall, ranking asserted byte-identical at smoke.
+
+### The defect (pre-registered in `RND_PLAN.md` §6.3, 2026-10-16)
+
+H10's HaluMem run served the reader bare content strings: the adapter stored
+`created_at` on retain but `search()` discarded it. HaluMem's Dynamic Update
+type asks the reader to resolve newest-value overrides — unanswerable when
+both statements arrive with no occurrence time. The same instrument defect
+TODO #16 fixed for LongMemEval (undated 17.0% → dated 18.6%, H5).
+
+### The pair (both runs: HaluMem-Medium, answer+judge `small-stack` through
+`eval/llm_shim.py` → `poolside/laguna-s-2.1:free`, top-20, budget-identical,
+db-identical; undated = H10 §44, dated = this section)
+
+| question type | undated acc. | dated acc. | Δ | n (undated→dated) |
+|---|---|---|---|---|
+| Basic Fact Recall | 0.3804 | 0.6086 | **+22.8pp** | 744→746 |
+| Memory Boundary (**control**) | 0.9372 | 0.9118 | **−2.5pp** | 828→828 |
+| Memory Conflict | 0.7018 | 0.8986 | **+19.7pp** | 768→769 |
+| Generalization & Application | 0.5375 | 0.6568 | **+11.9pp** | 746→746 |
+| Multi-hop Inference | 0.4394 | 0.5758 | **+13.6pp** | 198→198 |
+| Dynamic Update | 0.2056 | 0.4056 | **+20.0pp** | 180→180 |
+| **overall** | **0.6129** | **0.7433** | **+13.0pp** | 3,464→3,467 |
+
+Answer-stage context tokens averaged 1,966.7 (undated) vs 2,202.1 (dated) —
+the date prefixes cost +12% context; the control type **fell** under the same
++12% while the temporal types rose 12–23pp, so the gain is not a token-count
+artefact.
+
+### Reading, against the pre-registration
+
+- **The control held approximately, not perfectly.** Memory Boundary
+  ("did we ever discuss X" — questions that do not turn on occurrence dates)
+  moved −2.5pp: the date prefixes are mild noise for that type. The
+  pre-registration said a *large* move there would mean the prefix itself
+  perturbed the reader; −2.5pp is small, and the concentration of gains
+  elsewhere confirms the prefix helped rather than generally perturbed.
+- **The predicted concentration was real but partial.** Dynamic Update
+  +20.0pp (near-doubled, 0.2056→0.4056) and Memory Conflict +19.7pp moved as
+  the mechanism predicted. The honest surprise: Basic Fact Recall moved most
+  of all (+22.8pp) — occurrence dates are load-bearing across the corpus's
+  temporal types, not only for newest-value resolution.
+- **What H10's 0.6129 measured:** the instrument as it was served — a reader
+  blind to time on a corpus whose questions need it. Both numbers stand; the
+  dated one is the shape the product actually serves (`answer_quality` has
+  served dates since H5), so it is the honest headline for any future
+  head-to-head.
+
+### Run record
+
+First chain 2026-10-16 18:20 → killed ~02:14 by an AFT daemon restart
+(3,265/3,467 answers checkpointed); resume #1 02:18 → killed by a second
+restart ~02:30–02:50 (3,344 saved); resume #2 03:00 → 05:28 completed answers
++ judge 3,466/3,467 (rc=1: one free-tier judge response unparseable — prose,
+no label; `skip_failed_judge: false` aborted before the metric step);
+metric resume 05:33 → 05:43 **rc=0**, retrying exactly that one judgment
+(call count 6,945→6,946). Total 6,946 LLM calls, wall clock ~11.5 h across
+the chain and its resumes. `loadavg` during the runs: 5.6–30 (the 100+ load
+of the evening had cleared; the last two stages ran at 5.6–14). Artifacts —
+their own output, unedited: `eval/omnimevaleval/memory-wire-mw_h12_dated_medium/`
+(`exp_report.md`, `memory-wire_hm_grades.json`, `memory-wire_hm_results.xlsx`,
+responses/judged/search checkpoints, env snapshot). HaluMem data is
+**CC BY-NC-ND 4.0 — run, never vendored**; the adapter change lives in the
+pinned clone, not this repo.
+
+Test-set consultations to date: **5** (§34: 2; §39: 1; §42: 1; §45: 1) — this
+section adds 0. No retrieval parameter was touched; nothing is selected on
+any of these numbers. Next free CONSISTENCY section: **§49**.
