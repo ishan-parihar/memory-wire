@@ -24,7 +24,7 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   Untracked data under `eval/data/` is gitignored by design. W3's adapter fix
   lives in the pinned clone, not here.
 
-  Cycle state (§6, **closed 2026-10-17**): **W1 done** — the BEAM pool-scale
+  Cycle state (§6, **closed 2026-10-17 — closing record `docs/handoff/CLOSING-2026-10-17.md`**): **W1 done** — the BEAM pool-scale
   overlap re-test answered (`eval/BEAM.md`, §47): the stream is **not
   deleteable** (0.25 > 0.00 on every ordering metric; 0.00 additionally loses
   R@pool 100→95.5% — the overlap stream carries coverage below BM25's 50-row
@@ -197,7 +197,7 @@ re-measure on a quiet box (`TODO.md` #14).
 | AMB checkout | `../_audit/amb` @ `03c1d0f`, venv `../_audit/amb/.venv/bin/amb`; provider installed from `eval/amb/memory_wire.py` |
 | datasets | `eval/data/` is gitignored; fetch with `./eval/download.sh` (LoCoMo, LongMemEval-S are already present on this machine) |
 | disk | `/home` ~126 GB free at handoff |
-| background jobs | none running at handoff (the H12 chain and its metric resume both completed; `eval/omnimevaleval/memory-wire-mw_h12_dated_medium/` holds the artifacts) |
+| background jobs | the PMV2 triangulation chain is running (resume #2 from `--from-step 3`, `/var/tmp/pmv2_resume_chain.sh`); marker `PMV2 chain done` in `/var/tmp/pmv2/resume-launcher.log`; lands §49 + `eval/omnimevaleval/memory-wire-mw_pmv2_dated/`; on a daemon-restart wake, FIRST check :8899 health + the responses checkpoint, then relaunch (idempotent) |
 
 ## 5. What the LoCoMo judged run says about where the headroom is
 
