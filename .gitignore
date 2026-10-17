@@ -12,5 +12,12 @@ eval/data/*
 !eval/data/queries.json
 eval/results.json
 
+# Live-bank run output. The pmv2 run wrote memory rows verbatim, and one of
+# them held a pasted bot token. Add a directory here before its first run.
+eval/omnimevaleval/memory-wire-mw_pmv2_dated/
+
 # release assets built by scripts/build-release.sh
 /dist
+
+# Python bytecode from importing eval harnesses
+__pycache__/

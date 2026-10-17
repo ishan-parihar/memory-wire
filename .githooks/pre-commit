@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Tracked so every clone gets the gate. Enable once per clone:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+"$root/scripts/secret-scan.sh" --selftest
+"$root/scripts/secret-scan.sh" --staged
+
+# core.hooksPath replaces .git/hooks, which install-docs-gate writes to. Keep
+# running that gate so enabling this hook does not silently disable it.
+managed="$(git rev-parse --git-common-dir)/hooks/pre-commit"
+if [ -x "$managed" ]; then
+  exec "$managed"
+fi

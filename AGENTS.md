@@ -53,7 +53,13 @@ cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo doc --no-deps --all-features --locked             # must be 0 warnings
 ```
 
-All four are the gate. The default port is `8888` and there is exactly one
+All four are the gate.
+
+First clone, once: `git config core.hooksPath .githooks` — turns on the secret
+gate (`scripts/secret-scan.sh`) for every commit. `scripts/secret-scan.sh --all`
+audits the tracked tree.
+
+The default port is `8888` and there is exactly one
 literal for it (`paths::DEFAULT_ADDR`); every clap default reads from that
 constant.
 
@@ -369,7 +375,27 @@ State as of 2026-10-14; the authoritative, kept-current record is
 - **Every LongMemEval run is counted** in `docs/CONSISTENCY.md` (§34: 2 consultations for
   the v0.7.0 baseline; §35: 0). The dated `answer_quality` re-measure (H5) will be the
   next, and is measurement only.
-- **Append to `docs/CONSISTENCY.md`, never rewrite.** Next free section: §36.
+- **Append to `docs/CONSISTENCY.md`, never rewrite.** The next free section is the one its last paragraph names (§50 as of 2026-10-18; this line used to say §36 and was stale).
 - When you finish a unit of work, update `docs/handoff/STATE.md` and the status line of
   the hypothesis in `RND_PLAN.md`; a handoff that is not kept current is the next
   agent's phantom.
+
+## 14. Secrets and live data
+
+A credential that reaches a commit is public the moment it is pushed, and
+deleting the commit does not revoke it. The repository is public. Rotate first,
+then clean up.
+
+- **Never write a credential into a file, log, artifact, or memory row.** A
+  pasted token is captured by the hooks into the bank, so it reaches every
+  generator that reads the bank.
+- **Generators that render memory text redact it.** `eval/relevance/run_battery.py`
+  does this with `SECRET`; its pattern list mirrors `scripts/secret-scan.sh` and
+  the two change together.
+- **The gate is `scripts/secret-scan.sh`**, run from `.githooks/pre-commit`. It
+  reports `file:line` and never the value. A line carrying `secret-scan:allow` is
+  skipped; a fixture file with deliberate fake secrets goes in `EXCLUDE` instead.
+- **Live-bank run output is not committed.** Add the directory to `.gitignore`
+  before the run that reads the bank. The pmv2 run directory already is.
+- **Fix the generator, then regenerate.** A committed artifact that contains a
+  leak is regenerated from its frozen input and diffed, not hand-edited.
