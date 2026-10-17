@@ -319,7 +319,8 @@ impl<S: Store> Server<S> {
             Tool::new(
                 RECALL,
                 "Recall memories from a bank, most relevant first, as a JSON \
-                 array of content strings. `budget` is a hard token cap, \
+                 array of content strings, each prefixed with its occurrence \
+                 date `[YYYY-MM-DD] ` when the memory has one. `budget` is a hard token cap, \
                  `tags` restricts the search to memories carrying any of them, \
                  `exclude_tags` drops rows carrying any of them before ranking, \
                  and `format: \"full\"` returns {id, score, created_at, content} objects \
@@ -569,12 +570,30 @@ impl<S: Store> Server<S> {
                 let exclude = arg_tags_key(args, "exclude_tags");
                 let hits = self.svc.recall_filtered(&bank, query, budget, &tags, &exclude)?;
                 // `format: "full"` is the citing shape; the default stays a bare
-                // array of content strings, exactly as the HTTP route serves it.
+                // array of content strings — the shape every consumer since the
+                // first release parses. What changed 2026-10-17 is each string
+                // now carries its occurrence date in-band, `[YYYY-MM-DD] `, when
+                // the memory has one: H12 measured a reader blind to occurrence
+                // time at 0.2056 on newest-value questions, doubling (+20.0pp)
+                // the moment dates were served. The shape is unchanged — still
+                // strings — and a memory with no stored time renders exactly as
+                // it always did.
                 Ok(if arg_str(args, "format").as_deref() == Some("full") {
                     Value::Array(hits.iter().map(full_hit_json).collect())
                 } else {
                     Value::Array(
-                        hits.into_iter().map(|h| Value::String(h.memory.content)).collect(),
+                        hits.into_iter()
+                            .map(|h| {
+                                let prefix = h
+                                    .memory
+                                    .created_at
+                                    .as_deref()
+                                    .filter(|t| t.len() >= 10)
+                                    .map(|t| format!("[{}] ", &t[..10]))
+                                    .unwrap_or_default();
+                                Value::String(format!("{prefix}{}", h.memory.content))
+                            })
+                            .collect(),
                     )
                 })
             }
@@ -1104,7 +1123,12 @@ mod tests {
             let text = found["result"]["content"][0]["text"].as_str().unwrap().to_string();
             let hits: Vec<String> = serde_json::from_str(&text).expect("a JSON array of strings");
             assert_eq!(hits.len(), 1, "{hits:?}");
-            assert!(hits[0].contains("jose"), "{hits:?}");
+            // The default shape is unchanged — an array of strings — but since
+            // 2026-10-17 each carries its occurrence date in-band (H12's
+            // serving shape, at the product surface): a memory retained now is
+            // stamped now, so the prefix is today's date.
+            assert!(hits[0].starts_with("[20"), "occurrence date in-band: {hits:?}");
+            assert!(hits[0].contains("] auth uses jose middleware"), "{hits:?}");
         });
     }
 
@@ -1220,9 +1244,15 @@ mod tests {
         )
         .expect("array");
 
-        assert_eq!(bank_default[0].chars().count(), 5 * 4, "bank recallMaxTokens must apply");
+        // The first string carries its occurrence date in-band (2026-10-17
+        // serving shape) — the budget trims the *content*, so the count is
+        // taken after the `] ` that closes the prefix.
+        let content_chars = |s: &str| {
+            s.split_once("] ").map(|(_, rest)| rest.chars().count()).unwrap_or_else(|| s.chars().count())
+        };
+        assert_eq!(content_chars(&bank_default[0]), 5 * 4, "bank recallMaxTokens must apply");
         assert!(
-            explicit[0].chars().count() > bank_default[0].chars().count(),
+            content_chars(&explicit[0]) > content_chars(&bank_default[0]),
             "an explicit budget must override the bank default"
         );
     }
