@@ -54,6 +54,10 @@ while [ $# -gt 0 ]; do
 done
 
 # --- target detection -------------------------------------------------------
+# tr with explicit ranges, not [:upper:]/[:lower:]: the casing here is ASCII
+# OS/arch names, and locale-dependent character classes in tr are the classic
+# way a Turkish locale turns "I" into "ı" and breaks detection.
+# shellcheck disable=SC2018,SC2019
 os=$(uname -s | tr 'A-Z' 'a-z')
 arch=$(uname -m)
 case "$arch" in
@@ -317,10 +321,14 @@ if [ -n "$OLD_VER" ]; then
 fi
 
 # --- handoff ----------------------------------------------------------------
+# The $PATH in the format string below is literal on purpose: the user's shell
+# expands it when they run the printed line, not this script. SC2016 sees an
+# unexpanded variable in single quotes and flags it; here that is the point.
+# shellcheck disable=SC2016
 case ":$PATH:" in
   *":$MW_INSTALL_DIR:"*) : ;;
   *) printf '\n%s is not on your PATH. Add it:\n  export PATH="%s:$PATH"\n' \
-       "$MW_INSTALL_DIR" "$MW_INSTALL_DIR" >&2 ;;
+        "$MW_INSTALL_DIR" "$MW_INSTALL_DIR" >&2 ;;
 esac
 
 printf '\nnext:\n'
@@ -340,7 +348,10 @@ printf '  curl -s http://127.0.0.1:8888/health      # -> ok\n'
 # Resolve the host list to run first, so the scan is on screen before anything
 # is written: `--list` only reads, and says which hosts are here and which are
 # already wired.
+# shellcheck disable=SC2120  # $@ forwarded from some call sites, not all
 connect() {
+  # $@ is forwarded when callers pass extra arguments (a host list from the
+  # menu path) and swallowed when they don't; one call site, one shape.
   if [ -n "$HOSTS" ]; then
     # $HOSTS unquoted on purpose: a host list is several words, and the names are
     # [a-z-], so there is nothing here for the shell to glob or split wrongly.

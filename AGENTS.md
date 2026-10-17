@@ -99,7 +99,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 | `embed.rs` | 177 | ONNX session, vendored MiniLM |
 
 `tests/` — `backup.rs`, `daemon.rs`, `e2e.rs`, `recall_budget.rs`, `scale.rs`.
-`examples/` — 14 benchmark and evaluation harnesses.
+`examples/` — 15 benchmark and evaluation harnesses.
 `eval/amb/` — our provider for vectorize-io's AMB harness, and its committed runs.
 
 ## 4. The surface, and which document answers what

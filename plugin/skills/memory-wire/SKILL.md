@@ -119,11 +119,14 @@ back to its default instead of taking recall down.
 curl -sS -X PUT "$MW/banks/demo/config" -H 'Content-Type: application/json' -d '{"recallMaxTokens":128,"retainTags":["ops"],"retain_mission":"own the release"}'
 ```
 
-Two keys change behavior. `recallMaxTokens` is the bank's default recall budget — a recall that omits
+Three keys change behavior. `recallMaxTokens` is the bank's default recall budget — a recall that omits
 `budget` uses it, an explicit `budget` still wins. `retainTags` is added to every later retain in that
 bank, after the request's own tags, so a bank-wide default can never displace a tag you named. Tags also
 work with no config at all: `retain` accepts `{"content","tags"}` and `recall` accepts `{"query","tags"}`
 to restrict the search to memories carrying **any** of them (capped at 20, head kept).
+`injectionFormat` picks what this bank's auto-injections serve: `"full"` (default — whole memories with
+their `[YYYY-MM-DD]` date prefix) or `"summary"` (first-line capsules, 41–43% less served text, ranking
+identical); the bank beats the `MEMORY_WIRE_FORMAT` env, and an unknown value reads as unset.
 `memory-wire connect` installs five lifecycle hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `PreCompact`,
 `SessionEnd`) into
 every host it detects — claude-code, codex, copilot-cli, cursor, opencode. Idempotent, and it never
@@ -156,8 +159,11 @@ JWT, `Bearer`, Slack, Google API keys, emails, phones, `<private>` blocks), not 
 - **Expecting an over-budget top hit whole.** It is cut to exactly the cap (4 chars per token) with a
   literal `…[truncated]` tail — but only when the 12-char marker still fits, so budgets of 1–3 tokens
   return the top hit cut to 4–12 chars with no marker, not `[]`. Raise `budget` for the rest.
-- **Expecting `recall` rows to be objects.** The default is a bare array of content strings: no ids, no
-  scores, no timestamps. Send `{"format":"full"}` when you need `{id, score, created_at, content}`;
+- **Expecting `recall` rows to be objects.** The default is still a bare array of strings — but since
+  v0.9.0 each string carries its occurrence date in-band (`[2026-09-20] the deadline moved…`) whenever
+  the memory has one: newest-value and "what did we decide last week" questions were unanswerable
+  without it (+20.0pp on HaluMem Dynamic Update, `docs/CONSISTENCY.md` §46). Send `{"format":"full"}`
+  when you need `{id, score, created_at, content}`.
   retain takes an optional `created_at` (RFC 3339 or `YYYY-MM-DD`) when the memory happened earlier than now.
 - **Reaching for `recall` to enumerate a bank.** It is relevance-ranked, so a memory you stored but cannot
   match is invisible. `GET .../memories` is the custody route: `?limit=` (default 50, capped 500) and

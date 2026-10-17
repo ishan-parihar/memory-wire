@@ -14,9 +14,15 @@ supervisor and no lockfile.
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
   the fitted weight is accounted for. Both numbers are in
   [Benchmarks](#benchmarks); the reason is one sweep on one dataset.
+- **What the reader gets, served:** every auto-injected and MCP-recalled memory
+  carries its occurrence date in-band (`- [2026-09-20] the deadline moved…`) — the
+  serving shape that measured **+20.0pp on newest-value questions** (HaluMem
+  Dynamic Update 0.2056→0.4056, `docs/CONSISTENCY.md` §46), and per-bank capsules
+  (`"injectionFormat":"summary"` in bank config) cut served bytes 41–43% at
+  byte-identical ranking.
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook) · [`TODO.md`](TODO.md) (open work)
 - Agent skill: [`plugin/skills/memory-wire/SKILL.md`](plugin/skills/memory-wire/SKILL.md) — the one file here written for a model to read rather than a person. It is a standard `name`/`description`-front-matter skill: copy it into a host's skills directory (`~/.claude/skills/`, and the equivalents for codex, cursor and opencode) and the agent picks up the retain/recall workflow, the bank rules and the error contract without being told them. `connect` does **not** install it — that command wires hooks and MCP entries only, so this is a deliberate copy.
-- Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `docs/BENCHMARK.md`
+- Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `eval/BEAM.md` (pool-scale re-test) · `eval/relevance/` (frozen battery) · `docs/CONSISTENCY.md` (the measured record) · `docs/BENCHMARK.md`
 
 **Contents** — [Benchmarks](#benchmarks) · [Footprint](#footprint-vs-competitors) · [Quick start](#quick-start) · [CLI](#cli) · [The daemon](#the-daemon) · [Install](#install) · [How it works](#how-it-works) · [Reproduce](#reproduce) · [Roadmap](#roadmap)
 
@@ -38,9 +44,15 @@ the one to trust.** `overlap: 0.25` was chosen by sweeping 46 configurations
 against these same 500 questions. Re-measured on 1,531 LoCoMo queries that never
 chose it, the weight is worth **+1.4pp R@5, not +4.2pp**
 ([`eval/LOCOMO.md`](eval/LOCOMO.md)) — the direction replicated, the magnitude did
-not, which is what the maximum of 46 noisy draws looks like. Adding that measured
-delta to the clean baseline puts the honest out-of-sample estimate at **≈94.4%
-R@5: behind agentmemory's 95.2% hybrid, not 2.0pp ahead of it.**
+not, which is what the maximum of 46 noisy draws looks like. A third re-measure
+on 313 pool-scale BEAM queries ([`eval/BEAM.md`](eval/BEAM.md), turns-as-documents,
+`docs/CONSISTENCY.md` §47) moved the other way — equal weight leads the shipped
+value by +3.5pp R@5 there — so the honest out-of-sample estimate of this line is
+"the direction holds on one dev corpus and inverts on another, neither dominant".
+Adding LoCoMo's measured delta to the clean baseline would put the estimate at
+**≈94.4% R@5: behind agentmemory's 95.2% hybrid, not 2.0pp ahead of it** — but
+BEAM says that adjustment is corpus-dependent, so the weight stays the shipped
+default and changing `FusionWeights::SHIPPED` is a user decision, not ours.
 
 So the honest position is **decisively ahead on footprint, roughly level to
 slightly behind on retrieval.** Both rows ship because publishing only the first
@@ -571,10 +583,17 @@ curl -sS -X PUT localhost:8888/banks/demo/config -H 'Content-Type: application/j
   -d '{"recallMaxTokens":128,"retainTags":["ops"],"retain_mission":"own the release"}'
 ```
 
-Two keys change behavior. `recallMaxTokens` is the bank's default recall budget —
+Three keys change behavior. `recallMaxTokens` is the bank's default recall budget —
 a recall that omits `budget` uses it, an explicit `budget` still wins.
 `retainTags` is added to every later retain in that bank, after the request's own
 tags, so a bank-wide default can never displace a tag you named.
+`injectionFormat` picks what this bank's auto-injections serve: `"full"` (the
+default — whole memories, date-prefixed) or `"summary"` (H8 capsules: first line,
+sentence-cut at 200 chars, with the fetch command when anything was hidden). The
+bank is the more specific scope, so it beats `MEMORY_WIRE_FORMAT` in the
+environment; an unrecognized value reads as unset, never an error. On the frozen
+relevance battery, capsules cut served bytes **41–43% at identical ranking**
+(`eval/relevance/BATTERY-2026-10-16-frozen.txt`).
 
 Tags work without any config: `retain` accepts `{"content", "tags"}` and `recall`
 accepts `{"query", "tags"}` to restrict the search to memories carrying **any** of
