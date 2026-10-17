@@ -4269,3 +4269,31 @@ pinned clone, not this repo.
 Test-set consultations to date: **5** (§34: 2; §39: 1; §42: 1; §45: 1) — this
 section adds 0. No retrieval parameter was touched; nothing is selected on
 any of these numbers. Next free CONSISTENCY section: **§49**.
+
+## §49 — Battery artifact regenerated after a credential leak; the renderer now redacts (2026-10-18)
+
+- **What leaked.** The committed `eval/relevance/BATTERY-2026-10-16-frozen.txt`
+  (added in `06b5bd7`) rendered the K11 row, whose text held a Telegram bot
+  token pasted into a prompt and captured into the `omp` bank. `06b5bd7` is on
+  `origin/main` of a public repository, so the token is public. Revoking it is
+  the owner's step; this record does not repeat the value.
+- **Fix to the generator.** `run_battery.py` redacts secret-shaped text in every
+  rendered row (`<redacted>`, before the 70-character cut). Its pattern list
+  mirrors `scripts/secret-scan.sh`.
+- **Regenerated, not hand-edited.** The snapshot `eval/data/battery/omp-snapshot.jsonl`
+  was checked first (sha256 `c780939b2920daed…`, the prefix the artifact cites),
+  seeded into a scratch serve on `127.0.0.1:8897` (`freeze_battery.py seed`:
+  1429 rows → 1413 memories, 16 byte-identical rows collapsed, 69 distinct tags),
+  then run with `run_battery.py --bank omp`.
+- **Diff against the prior artifact, verified.** The K11 rows (lines 22 and 71)
+  show `<redacted>` in place of the token. Lines 56 and 68 differ only in the
+  memory IDs inside the summary hint (`GET /banks/omp/memories/…`), which are
+  generated per seed and so differ on every reseed. Every gold/junk mark, every
+  char count, and the H8 gate line (`ranking IDENTICAL; chars 14807 vs 25898 auto
+  (+11091, 43% less); fidelity HELD on 17 gold cases`) is unchanged.
+- **Not a measurement.** The battery is a dev set, not LongMemEval. No retrieval
+  parameter changed. The LongMemEval consultation count stays at **5**.
+- **Still open, owner's call.** The live `omp` bank still holds the source row,
+  and the gitignored snapshot still contains the token. Neither was edited here.
+
+Next free CONSISTENCY section: **§50**.

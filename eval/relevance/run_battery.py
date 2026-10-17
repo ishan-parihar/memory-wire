@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import urllib.request
 
 HERE = pathlib.Path(__file__).parent
@@ -26,6 +27,15 @@ DEFAULT_ENDPOINT = "http://127.0.0.1:8888"
 AUTO_EXCLUDE = ["transcript", "marker"]
 AUTO_BUDGET = 1200
 SEARCH_BUDGET = 2000
+# Memory rows are live user text and can hold a pasted credential. The report is
+# committed, so every rendered row is redacted. Mirrors scripts/secret-scan.sh; keep in step.
+SECRET = re.compile(
+    r"[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}"
+    r"|(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"
+    r"|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[A-Za-z0-9]{36}|AKIA[0-9A-Z]{16}"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}|BEGIN [A-Z ]*PRIVATE KEY"
+    r"|(?i:api[_-]?key|secret|passwd|password|token)[\"']?\s*[:=]\s*[\"'][A-Za-z0-9_/+.=-]{24,}[\"']"
+)
 
 
 def recall(endpoint: str, bank: str, query: str, budget: int, exclude: list[str], fmt: str = "full"):
@@ -44,7 +54,7 @@ def recall(endpoint: str, bank: str, query: str, budget: int, exclude: list[str]
 
 def hits(hits: list) -> str:
     def flat(c: str) -> str:
-        return " ".join(c.split())
+        return " ".join(SECRET.sub("<redacted>", c).split())
 
     return " | ".join(flat(h["content"])[:70] for h in hits[:5])
 
