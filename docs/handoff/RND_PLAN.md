@@ -6,6 +6,26 @@ Status 2026-10-14. Each hypothesis has: **Status**, **Mechanism** (the argument,
 where a sweep is unavoidable it runs on **LoCoMo only** and is recorded as selection on
 the dev set with its fittedness stated (AGENTS §6).
 
+## Contents
+
+- [0. The measurement setup in one paragraph](#0-the-measurement-setup-in-one-paragraph)
+- [1. What the evidence says about where headroom is](#1-what-the-evidence-says-about-where-headroom-is)
+- [2. Order of work](#2-order-of-work)
+- [H1.0 — Where do the missing gold sessions sit?  *(do this first — done)*](#h10--where-do-the-missing-gold-sessions-sit--do-this-first--done)
+- [H0 — Make the dev corpus date-aware](#h0--make-the-dev-corpus-date-aware)
+- [H1 — Coverage levers for multi-session questions (target: `recall_all@10`) — **all levers measured, all gates failed**](#h1--coverage-levers-for-multi-session-questions-target-recall_all10--all-levers-measured-all-gates-failed)
+- [H2 — Intermediate granularity (one value, low prior)](#h2--intermediate-granularity-one-value-low-prior)
+- [H3 — Recency on a dated dev set (low prior)](#h3--recency-on-a-dated-dev-set-low-prior)
+- [H4 — A dev set that exhibits "reader drowns in context" (prerequisite for TODO #17)](#h4--a-dev-set-that-exhibits-reader-drowns-in-context-prerequisite-for-todo-17)
+- [H4 — A dev set that exhibits "reader drowns in context" (prerequisite for TODO #17)](#h4--a-dev-set-that-exhibits-reader-drowns-in-context-prerequisite-for-todo-17-1)
+- [H5 — `answer_quality` with dates (one test consultation)](#h5--answer_quality-with-dates-one-test-consultation)
+- [H6 — PrecisionMemBench precision (TODO #7)](#h6--precisionmembench-precision-todo-7)
+- [H7 — Housekeeping measurements](#h7--housekeeping-measurements)
+- [3. Experiment protocol (copy this per hypothesis)](#3-experiment-protocol-copy-this-per-hypothesis)
+- [4. Results log (append; never rewrite)](#4-results-log-append-never-rewrite)
+- [5. Cycle 2026-10-15→ — the survey-sourced queue](#5-cycle-2026-10-15--the-survey-sourced-queue)
+- [6. Cycle 2026-10-16→ — the upcoming cycle, outlined](#6-cycle-2026-10-16--the-upcoming-cycle-outlined)
+
 ## 0. The measurement setup in one paragraph
 
 Three roles (AGENTS §6). **dev** = LoCoMo (1,531 scorable queries, 272 session-documents

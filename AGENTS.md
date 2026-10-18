@@ -6,6 +6,23 @@ to build it, where things live, and which document answers your question. Sectio
 
 ---
 
+## Contents
+
+- [1. What this project is](#1-what-this-project-is)
+- [2. Build, test, run](#2-build-test-run)
+- [3. Where things live](#3-where-things-live)
+- [4. The surface, and which document answers what](#4-the-surface-and-which-document-answers-what)
+- [5. Rust discipline](#5-rust-discipline)
+- [6. The evaluation set is not a training set](#6-the-evaluation-set-is-not-a-training-set)
+- [7. Artifacts and measurement](#7-artifacts-and-measurement)
+- [8. Rejected work stays rejected](#8-rejected-work-stays-rejected)
+- [9. Interface rules](#9-interface-rules)
+- [10. Output conventions for agents](#10-output-conventions-for-agents)
+- [11. Git and releases](#11-git-and-releases)
+- [12. Honesty rules for reports](#12-honesty-rules-for-reports)
+- [13. R&D in flight — read this if you were handed the work](#13-rd-in-flight--read-this-if-you-were-handed-the-work)
+- [14. Secrets and live data](#14-secrets-and-live-data)
+
 ## 1. What this project is
 
 `memory-wire` is a single-binary agent memory service. A bank-isolated SQLite

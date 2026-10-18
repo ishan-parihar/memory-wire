@@ -8,6 +8,20 @@ therefore gains, and where that is quietly broken.
 Every claim carries a `file:line` from this tree or a command run on this machine. Where
 I could not verify something, it says so rather than inferring it.
 
+## Contents
+
+- [0. Method, and what "verified" means here](#0-method-and-what-verified-means-here)
+- [1. What we install, per harness](#1-what-we-install-per-harness)
+- [2. Findings, ranked](#2-findings-ranked)
+- [3. The capability matrix, honestly](#3-the-capability-matrix-honestly)
+- [4. What "perfect" would be](#4-what-perfect-would-be)
+- [5. Where we are better than the competitors](#5-where-we-are-better-than-the-competitors)
+- [6. Where they are better](#6-where-they-are-better)
+- [7. What is explicitly not on the table](#7-what-is-explicitly-not-on-the-table)
+- [8. Two open questions about OMP, one of them about a competitor](#8-two-open-questions-about-omp-one-of-them-about-a-competitor)
+- [Addendum (2026-10-08) — harness surfaces: what changed after the original audit](#addendum-2026-10-08--harness-surfaces-what-changed-after-the-original-audit)
+- [Addendum (2026-10-08, v0.7.0): the retrieval-efficacy waves land](#addendum-2026-10-08-v070-the-retrieval-efficacy-waves-land)
+
 ## 0. Method, and what "verified" means here
 
 Three levels are used and are not interchangeable:

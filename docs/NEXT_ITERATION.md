@@ -11,6 +11,20 @@ work that followed shipped in `v0.7.0` (`docs/RETRIEVAL_EFFICACY_PLAN.md`,
 CONSISTENCY §31–32). Open implementation work lives in `TODO.md` at the repo
 root.
 
+## Contents
+
+- [What changed since the last plan](#what-changed-since-the-last-plan)
+- [Parity, measured](#parity-measured)
+- [Phase E1 — RRF fusion weight sweep (do first)](#phase-e1--rrf-fusion-weight-sweep-do-first)
+- [Phase E2 — Porter stemming — REJECTED, reverted](#phase-e2--porter-stemming--rejected-reverted)
+- [Phase E3 — IDF weighting in the overlap stream](#phase-e3--idf-weighting-in-the-overlap-stream)
+- [Phase E4 — multi-term query handling](#phase-e4--multi-term-query-handling)
+- [Phase E5 — LoCoMo (blocked; low priority)](#phase-e5--locomo-blocked-low-priority)
+- [Phase E6 — release 0.3.0 (cut; this is the record of what was cut)](#phase-e6--release-030-cut-this-is-the-record-of-what-was-cut)
+- [Sequencing and honesty rules](#sequencing-and-honesty-rules)
+- [Where E1–E4 left the retrieval weights](#where-e1e4-left-the-retrieval-weights)
+- [Phase E7 — the oracle-rerank ceiling (sizing, not building)](#phase-e7--the-oracle-rerank-ceiling-sizing-not-building)
+
 ## What changed since the last plan
 
 The four-phase performance plan is complete and verified: `synchronous=NORMAL`,

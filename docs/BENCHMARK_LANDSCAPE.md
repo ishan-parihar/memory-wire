@@ -13,6 +13,16 @@ that governs LongMemEval governs every row here marked *measure-only*.
 
 ---
 
+## Contents
+
+- [1. The one-screen summary](#1-the-one-screen-summary)
+- [2. Where the bytes live on this machine](#2-where-the-bytes-live-on-this-machine)
+- [3. AMB's dataset inventory, measured](#3-ambs-dataset-inventory-measured)
+- [4. The harnesses, and how memory-wire plugs into each](#4-the-harnesses-and-how-memory-wire-plugs-into-each)
+- [5. What has been measured on the external sets](#5-what-has-been-measured-on-the-external-sets)
+- [6. Rules specific to external benchmarks](#6-rules-specific-to-external-benchmarks)
+- [7. The battery, in the order it should be run](#7-the-battery-in-the-order-it-should-be-run)
+
 ## 1. The one-screen summary
 
 | benchmark | what it scores | needs an LLM? | role here | status in this repo |

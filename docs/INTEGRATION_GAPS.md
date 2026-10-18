@@ -25,6 +25,20 @@ a `file:line` citation from those trees or a command run on this machine.
 
 ---
 
+## Contents
+
+- [0. The shape of the field](#0-the-shape-of-the-field)
+- [G1 — No persistent service, and our hooks fail silently without one](#g1--no-persistent-service-and-our-hooks-fail-silently-without-one)
+- [G2 — We capture nothing at the two moments worth capturing](#g2--we-capture-nothing-at-the-two-moments-worth-capturing)
+- [G3 — No hermes-agent integration, and the competitor is installed there](#g3--no-hermes-agent-integration-and-the-competitor-is-installed-there)
+- [G4 — Bank isolation is name-based, and two different repos can collide](#g4--bank-isolation-is-name-based-and-two-different-repos-can-collide)
+- [G5 — 4 MCP tools against 8, 39 and 54, and stdio only](#g5--4-mcp-tools-against-8-39-and-54-and-stdio-only)
+- [G6 — Smaller items, each cheap](#g6--smaller-items-each-cheap)
+- [What we already do better](#what-we-already-do-better)
+- [Recommended order](#recommended-order)
+- [What is left](#what-is-left)
+- [Explicitly not recommended](#explicitly-not-recommended)
+
 ## 0. The shape of the field
 
 | | agentmemory | hindsight | memory-wire |
