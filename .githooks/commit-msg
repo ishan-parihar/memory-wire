@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# A token pasted into a commit message survives a fix to the files, and a message
+# is public the moment it is pushed. Tracked with pre-commit; see docs/SECRETS.md.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+"$root/scripts/secret-scan.sh" --message "$1"

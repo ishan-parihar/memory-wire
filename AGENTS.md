@@ -56,8 +56,8 @@ cargo doc --no-deps --all-features --locked             # must be 0 warnings
 All four are the gate.
 
 First clone, once: `git config core.hooksPath .githooks` — turns on the secret
-gate (`scripts/secret-scan.sh`) for every commit. `scripts/secret-scan.sh --all`
-audits the tracked tree.
+gates for every commit and commit message (`scripts/secret-scan.sh`). Without it
+nothing checks what you commit. Layers and their limits: `docs/SECRETS.md` §1.
 
 The default port is `8888` and there is exactly one
 literal for it (`paths::DEFAULT_ADDR`); every clap default reads from that
@@ -135,6 +135,7 @@ the wrong one is how claims drift.
 | how a bank id is derived, what can collide, and why a hook recalls nothing | `docs/BANK_IDENTITY.md`; `memory-wire doctor` names the bank that holds the memories when the resolved one holds none |
 | the next iteration's plan and its gates | **`docs/handoff/RND_PLAN.md`** (the live register) and `docs/handoff/README.md` (fresh-agent entry point); `docs/NEXT_ITERATION.md` and `docs/EXCEED_PLAN.md` are the earlier dated records |
 | the original audit this all came from | `docs/AUDIT.md` |
+| a credential reached a commit, a tag, or a message; or history must be rewritten | **`docs/SECRETS.md`** — the layers, the response order, and the incident log with its commit map |
 
 **The MCP surface.** Four tools — `memory_retain`, `memory_recall`,
 `memory_reflect`, `memory_bank_config_get` — plus resources
@@ -341,6 +342,11 @@ The CLI and the HTTP surface are read by other agents, so:
 - macOS assets cannot be cross-built from Linux — `libsqlite3-sys` links
   CoreFoundation. The script skips them with that reason.
 - Delegate only with the `space-bunny` model.
+- `scripts/build-release.sh` runs `scripts/secret-scan.sh --all` before it builds
+  anything, `--check` included, and refuses a tracked secret. A tag publishes the
+  tree GitHub serves, so this gate is the last one before a credential goes public.
+- A tag moves only in a history rewrite, and only with the owner's go-ahead. The
+  procedure, with its lease-checked push and the SHA map, is `docs/SECRETS.md` §2.
 
 ## 12. Honesty rules for reports
 
@@ -399,3 +405,11 @@ then clean up.
   before the run that reads the bank. The pmv2 run directory already is.
 - **Fix the generator, then regenerate.** A committed artifact that contains a
   leak is regenerated from its frozen input and diffed, not hand-edited.
+- **Rotate before you clean.** Removing a credential from history does not revoke
+  it; every copy made before the rewrite still works until the issuer revokes it.
+  Tell the owner to revoke first. `docs/SECRETS.md` §2 has the order.
+- **Never rewrite history in a working tree that has uncommitted work.**
+  `git filter-repo` resets the tree it runs in. Use a mirror clone, then sync the
+  working copy with `git reset --mixed`, which keeps the files.
+- **A message is history too.** The commit-msg gate scans it; do not paste a
+  credential into a commit message to explain where it came from.

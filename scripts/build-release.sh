@@ -95,6 +95,12 @@ if [ -n "$UPLOAD_TAG" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   (override deliberately with: git stash -u, rebuild, then re-apply)"
 fi
 
+# A release tags a tree that GitHub serves publicly, so a credential in any tracked
+# file ships with the tag whether or not the binary contains it. Runs on --check
+# too: a check that passes on a leaking tree is the false reassurance to avoid.
+"$ROOT/scripts/secret-scan.sh" --all ||
+  die "secret scan failed: remove the value, rotate it, then see docs/SECRETS.md"
+
 # The tag must exist and must name the commit about to be built. Checked HERE,
 # beside the dirty-tree guard, not after the build loop: a release takes ten
 # minutes per target, and discovering a missing tag at the end of that is a

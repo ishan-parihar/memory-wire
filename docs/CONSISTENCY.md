@@ -4297,3 +4297,25 @@ any of these numbers. Next free CONSISTENCY section: **§49**.
   and the gitignored snapshot still contains the token. Neither was edited here.
 
 Next free CONSISTENCY section: **§50**.
+
+## §50 — Correction to §49: the leaked token is removed from history (2026-10-18)
+
+§49 said the source row and the gitignored snapshot were still open, and that
+history had not been touched. Both statements are superseded. The history was
+rewritten and force-pushed: `main` `20e71a3` → `f170bf7`, tag `v0.9.0` →
+`3557aca`. The commit map (old → new) is in `docs/SECRETS.md` §4. The old SHAs
+cited in §49 and in `docs/handoff/CLOSING-2026-10-17.md` now name different
+commits; those references are mapped there.
+
+- Verified after the rewrite: zero commits and zero commit messages match the
+  token pattern. The only file whose content changed in the rewritten commits is
+  `eval/relevance/BATTERY-2026-10-16-frozen.txt`.
+- The regenerated artifact's numbers are unchanged by this. §49's marks, char counts
+  and the H8 gate line stand.
+- Still open, and the owner's: revoke the token; delete the `omp` row; the
+  gitignored snapshot `eval/data/battery/omp-snapshot.jsonl` still holds the value
+  (re-freezing from it must cite a new sha256).
+- This is not a measurement. No retrieval parameter changed; the LongMemEval
+  consultation count stays at **5**.
+
+Next free CONSISTENCY section: **§51**.

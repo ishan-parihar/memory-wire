@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Blocks secret-shaped strings from entering a commit.
 #   secret-scan.sh --staged    added lines in the index (the pre-commit gate)
-#   secret-scan.sh --all       every tracked file (an audit, not a gate)
-#   secret-scan.sh --selftest  the pattern against a synthetic token
+#   secret-scan.sh --all         every tracked file (the release gate)
+#   secret-scan.sh --message F   a commit message file (the commit-msg gate)
+#   secret-scan.sh --selftest    the pattern against a synthetic token
 # Reports file:line only. Never the match: a scanner that echoes the secret
 # re-leaks it into the terminal and any log that captures it.
 # ponytail: regex list, not gitleaks — no new tool on the box. Add gitleaks
@@ -62,8 +63,16 @@ case "${1:-}" in
     report "$out"
     echo "secret-scan: tracked tree clean"
     ;;
+  --message)
+    [ -n "${2:-}" ] || { echo "usage: secret-scan.sh --message FILE" >&2; exit 2; }
+    out=$(mktemp)
+    trap 'rm -f "$out"' EXIT
+    grep -nE -- "$PAT" "$2" | grep -v 'secret-scan:allow' | cut -d: -f1 |
+      sed 's/^/commit message line /' > "$out" || true
+    report "$out"
+    ;;
   *)
-    echo "usage: secret-scan.sh --staged | --all | --selftest" >&2
+    echo "usage: secret-scan.sh --staged | --all | --message FILE | --selftest" >&2
     exit 2
     ;;
 esac
