@@ -13,6 +13,7 @@ still a leak: every clone, fork and cached view made before the rewrite keeps it
 | Product capture redaction | `src/capture.rs` `redact_pii`, run on retain (`src/api.rs`) | the patterns it lists: `sk-`, `ghp_`, `AKIA`, `AIza`, `xox`, Bearer, JWT, PEM, email | Telegram bot tokens — no pattern (open gap, §3) |
 | pre-commit | `.githooks/pre-commit` → `scripts/secret-scan.sh --staged` | secret-shaped lines being added | a clone without `core.hooksPath`; `git commit --no-verify` |
 | commit-msg | `.githooks/commit-msg` → `--message FILE` | the same, in the commit message | same as pre-commit |
+| remote check | `.githooks/pre-commit` → `--remotes` | a credential embedded in a remote URL (`git remote -v`, `.git/config`) | a clone without `core.hooksPath`; a remote added after the last commit |
 | release gate | `scripts/build-release.sh` → `--all` | any tracked secret-shaped line, at tag time, including `--check` | anything not tracked (gitignored files) |
 
 Enable the local gates once per clone:
@@ -142,3 +143,45 @@ cache needs GitHub Support.
   `api_key`-style in 7) were counted, not read one by one. The tree is gitignored,
   so none of them can reach a commit, but a credential found there would still need
   rotating.
+
+### 2026-10-18 follow-up — the other leaks found while auditing the projects
+
+Found by sweeping every repo under `my-projects/` after the bot-token incident.
+Counts and names only in this record; no value is written here.
+
+- **GitLab personal access token in remote URLs.** Eight repos had it embedded in
+  an `origin` or named remote URL, which is stored in plaintext in `.git/config`:
+  `kali-mahabali`, `metatrader-bridge`, `Aegis`, `AlphaForge`, `AlphaTrade`,
+  `timegpt-testing`, `c-suite-agents`, `c-suite-agents-mcp`. The URLs are now clean.
+  The same token is in `~/.git-credentials` (`credential.helper = store`).
+  *Owner:* rotate it, then move GitLab auth to a keyring helper. GitLab was not
+  reachable from the machine that made this change, so auth after the change is
+  unverified. `--remotes` (above) now blocks this class at commit time.
+- **Supabase, Google and Razorpay secrets in `saas/lifeos-website/frontend/.dev.vars`.**
+  The file was tracked, with a service-role key, OAuth and payment secrets. It is
+  untracked, and its history was rewritten with `git filter-repo --path
+  frontend/.dev.vars --invert-paths` in a mirror. That repo has no remote, so no
+  other copy was pushed. Checked by value: none of the secret values appears in the
+  rewritten history. The remaining matches are public or config values that a
+  tracked `wrangler.toml` also carries. *Owner:* rotate the service-role key, the
+  Google client secret and the Razorpay key and webhook secrets. Those values are
+  still in the untracked `.dev.vars` on disk.
+- **Personal Notion/lifeos config in `agentic-harness/operant`.**
+  `.superpowers/lifeos.config.json` is untracked. That repo is **public** on GitHub,
+  and the file is already in its history. *Owner:* decide whether to rewrite that
+  history and force-push. Nothing was pushed for it here.
+- **Bot-token rows in the live `omp` bank.** Four rows held token-shaped strings.
+  They were deleted through `DELETE /banks/omp/memories/{id}`, and a read-only
+  re-scan found none left. Three distinct strings were involved: one token appeared
+  in three rows, and two other strings appeared once each. **Those two were not
+  identified.** If either is a live credential, revoke it too.
+- **Battery snapshot.** `eval/data/battery/omp-snapshot.jsonl` (gitignored) still
+  holds the token. It is the frozen input whose sha256 the battery record cites, so
+  it was not edited. Redacting it means a new freeze with a new sha, and that is a
+  measurement decision.
+- **Checked and cleared.** `law-of-one-india/.env.example` contains a PEM *header
+  in a comment*, not key material: the body is prose and placeholder text, with no
+  base64 run of 60 or more characters. The earlier worry was wrong.
+- **Hardening.** Secret scanning and push protection are enabled on the public
+  `memory-wire` repo. The redaction pattern for Telegram tokens is in
+  `src/capture.rs` (see the open-gaps entry above).

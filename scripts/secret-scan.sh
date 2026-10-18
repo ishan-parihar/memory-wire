@@ -2,6 +2,7 @@
 # Blocks secret-shaped strings from entering a commit.
 #   secret-scan.sh --staged    added lines in the index (the pre-commit gate)
 #   secret-scan.sh --all         every tracked file (the release gate)
+#   secret-scan.sh --remotes     remote URLs with embedded credentials (pre-commit)
 #   secret-scan.sh --message F   a commit message file (the commit-msg gate)
 #   secret-scan.sh --selftest    the pattern against a synthetic token
 # Reports file:line only. Never the match: a scanner that echoes the secret
@@ -63,6 +64,16 @@ case "${1:-}" in
     report "$out"
     echo "secret-scan: tracked tree clean"
     ;;
+  --remotes)
+    # A credential in a remote URL is written to .git/config in plaintext, and
+    # `git remote -v` prints it. Those URLs never pass the diff scan, so check them
+    # here. Reports the remote name only.
+    out=$(mktemp)
+    trap 'rm -f "$out"' EXIT
+    git remote -v | awk '$2 ~ /:\/\/[^\/ @]+(:[^\/ @]*)?@/ { print "remote " $1 }' | sort -u > "$out" || true
+    report "$out"
+    echo "secret-scan: remote URLs carry no credentials"
+    ;;
   --message)
     [ -n "${2:-}" ] || { echo "usage: secret-scan.sh --message FILE" >&2; exit 2; }
     out=$(mktemp)
@@ -72,7 +83,7 @@ case "${1:-}" in
     report "$out"
     ;;
   *)
-    echo "usage: secret-scan.sh --staged | --all | --message FILE | --selftest" >&2
+    echo "usage: secret-scan.sh --staged | --all | --remotes | --message FILE | --selftest" >&2
     exit 2
     ;;
 esac
