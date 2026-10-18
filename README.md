@@ -1049,6 +1049,18 @@ the HaluMem/PersonaMem v2 corpora (`docs/COMPETITOR_GAPS_PLAN.md` §3). Gaps tha
 need live LLMs/providers (Hindsight system-evals, agentmemory
 quality/real-embeddings) are tracked in `docs/BENCHMARK.md`.
 
+## Contributing
+
+Clone, then turn on the secret gates once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Without it nothing checks what you commit. Credentials never belong in a file, a
+commit message or a memory row. [`docs/SECRETS.md`](docs/SECRETS.md) lists what is
+checked where, and what to do if a credential leaks.
+
 ## Subagents
 
 Project rule: delegate only with the `space-bunny` model.

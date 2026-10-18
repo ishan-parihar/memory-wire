@@ -80,12 +80,12 @@ cache needs GitHub Support.
 
 ## 3. Open gaps
 
-- **Product redaction has no Telegram bot-token pattern.** `src/capture.rs` lists
-  no `<digits>:AA…` shape, so the token in §4 was retained into the `omp` bank
-  unredacted. Fix: add `[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}` to the patterns in
-  `src/capture.rs`, with a test. That is a product change and needs the full gate
-  (`cargo build/test/clippy/doc --locked`) and a version bump, so it is not in the
-  change that wrote this document.
+- **Product redaction had no Telegram bot-token pattern.** That is why the token in
+  §4 reached the `omp` bank unredacted. `src/capture.rs` now has `TELEGRAM_RE`
+  (`[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}` → `[REDACTED:telegram_token]`) with two tests.
+  **Status: written, not yet gated.** The sandbox that made this change could not
+  reach `crates.io`, so `cargo test/clippy/doc --locked` have not run on it. Run the
+  full gate before pushing that commit.
 - **GitHub secret-scanning push protection** is a repository setting. Nothing in
   this repo enables it. It is the only layer that stops a push from a clone with no
   hooks. Owner's decision.
