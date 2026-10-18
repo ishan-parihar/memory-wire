@@ -50,6 +50,24 @@ fn works(version: &str) -> String {
 const WONT_START: &str =
     "#!/bin/sh\necho '/lib/x86_64-linux-gnu/libc.so.6: version GLIBC_2.39 not found' >&2\nexit 127\n";
 
+/// A fake build that answers `--version`, and for `connect` appends its argv to
+/// `$HOME/connect.log` and exits `connect_rc`. The installer's wiring and unwiring
+/// steps run through it, so the arguments they pass are observable, and a log line
+/// proves the binary was still present when that step ran.
+fn recording(version: &str, connect_rc: u8) -> String {
+    format!(
+        "#!/bin/sh\n\
+         case \"$1\" in\n\
+         --version) echo \"memory-wire {version}\"; exit 0;;\n\
+         connect)\n\
+           echo \"$*\" >> \"$HOME/connect.log\"\n\
+           case \"$*\" in *--uninstall*) echo 'claude-code unwired';; *) echo 'claude-code wired';; esac\n\
+           exit {connect_rc};;\n\
+         esac\n\
+         exit 0\n"
+    )
+}
+
 /// Where the installer would put the binary, given the scratch dir it was run in.
 fn bin(dir: &Path) -> PathBuf {
     dir.join("bin").join("memory-wire")
@@ -115,13 +133,31 @@ fn shell() -> String {
 /// network entirely — the host-wiring and skill sections are not under test, and
 /// `HOME` is redirected so nothing can reach the real one.
 fn install(dir: &Path, assets: &Path) -> Output {
+    install_with(dir, assets, &["--no-connect"])
+}
+
+/// [`install`] with the caller's flags in place of `--no-connect`.
+fn install_with(dir: &Path, assets: &Path, flags: &[&str]) -> Output {
     Command::new(shell())
         .arg(INSTALLER)
-        .arg("--no-connect")
+        .args(flags)
         .current_dir(dir)
         .env("HOME", dir)
         .env("MW_INSTALL_DIR", dir.join("bin"))
         .env("MW_LOCAL_ASSET", assets)
+        .output()
+        .expect("spawn installer")
+}
+
+/// The uninstall path, run the way a user does against an install in `dir`.
+fn uninstall(dir: &Path, flags: &[&str]) -> Output {
+    Command::new(shell())
+        .arg(INSTALLER)
+        .arg("--uninstall")
+        .args(flags)
+        .current_dir(dir)
+        .env("HOME", dir)
+        .env("MW_INSTALL_DIR", dir.join("bin"))
         .output()
         .expect("spawn installer")
 }
@@ -349,4 +385,116 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
 
     // Cleanup happens in `Cleanup::drop`, including on the panic path above.
     drop(cleanup);
+}
+
+/// Installs `recording` with `connect_rc` into a fresh scratch dir, guarded so a
+/// failing assertion still removes the directory.
+fn installed_recording(tag: &str, connect_rc: u8) -> (PathBuf, Cleanup) {
+    let dir = scratch(tag);
+    let cleanup = Cleanup {
+        child: None,
+        dir: dir.clone(),
+    };
+    let assets = release_dir(&dir, &[("linux-x86_64", recording("0.6.0", connect_rc))]);
+    let out = install(&dir, &assets);
+    assert!(out.status.success(), "{}", said(&out));
+    (dir, cleanup)
+}
+
+#[test]
+fn uninstall_should_unwire_the_bank_pinned_hosts_before_removing_the_binary() {
+    let (dir, _cleanup) = installed_recording("unwire", 0);
+
+    let out = uninstall(&dir, &["--bank", "omp"]);
+    let log = said(&out);
+    assert!(out.status.success(), "{log}");
+    // The log can only exist if the binary ran, so unwiring happened while it was still there.
+    let calls = std::fs::read_to_string(dir.join("connect.log"))
+        .expect("connect never ran: the binary was removed before the hosts were unwired");
+    assert!(
+        calls.lines().any(|l| l == "connect --bank omp --uninstall"),
+        "{calls}"
+    );
+    assert!(!bin(&dir).exists(), "{log}");
+}
+
+#[test]
+fn uninstall_should_keep_the_binary_when_unwiring_fails() {
+    let (dir, _cleanup) = installed_recording("unwire-fails", 1);
+
+    let out = uninstall(&dir, &[]);
+    let log = said(&out);
+    assert!(
+        !out.status.success(),
+        "a failed unwire must not exit 0:\n{log}"
+    );
+    assert!(log.contains("the binary was kept"), "{log}");
+    // The hosts still run this binary; removing it would strand them.
+    assert!(
+        bin(&dir).exists(),
+        "uninstall removed the binary its hosts still run:\n{log}"
+    );
+}
+
+#[test]
+fn uninstall_with_no_connect_should_remove_the_binary_and_not_touch_the_hosts() {
+    let (dir, _cleanup) = installed_recording("no-connect", 1);
+
+    let out = uninstall(&dir, &["--no-connect"]);
+    let log = said(&out);
+    assert!(out.status.success(), "{log}");
+    assert!(!bin(&dir).exists(), "{log}");
+    assert!(
+        !dir.join("connect.log").exists(),
+        "--no-connect must not call connect:\n{log}"
+    );
+    assert!(
+        log.contains("hosts left wired"),
+        "the leftover hosts must be named:\n{log}"
+    );
+}
+
+#[test]
+fn install_should_wire_the_hosts_under_the_requested_bank() {
+    let dir = scratch("bank");
+    let _cleanup = Cleanup {
+        child: None,
+        dir: dir.clone(),
+    };
+    // A skill already on disk keeps the installer from reaching the network here.
+    let skill = dir.join(".agents").join("skills").join("memory-wire");
+    std::fs::create_dir_all(&skill).expect("skill dir");
+    std::fs::write(skill.join("SKILL.md"), "stub").expect("skill stub");
+    let assets = release_dir(&dir, &[("linux-x86_64", recording("0.6.0", 0))]);
+
+    let out = install_with(&dir, &assets, &["--bank", "omp"]);
+    let log = said(&out);
+    assert!(out.status.success(), "{log}");
+    let calls = std::fs::read_to_string(dir.join("connect.log")).expect("connect never ran");
+    assert!(
+        calls.lines().any(|l| l == "connect --bank omp"),
+        "the wiring step must pin the bank it was given:\n{calls}"
+    );
+    assert!(
+        log.contains("wiring agent hosts (memory-wire connect --bank omp)"),
+        "{log}"
+    );
+}
+
+#[test]
+fn bank_flag_without_an_id_should_refuse_rather_than_wire_unpinned() {
+    let dir = scratch("bank-empty");
+    let _cleanup = Cleanup {
+        child: None,
+        dir: dir.clone(),
+    };
+
+    let out = install_with(&dir, &dir, &["--bank", ""]);
+    let log = said(&out);
+    assert!(!out.status.success(), "{log}");
+    assert!(log.contains("--bank needs a bank id"), "{log}");
+    assert!(
+        !bin(&dir).exists(),
+        "a refused install wrote a binary anyway"
+    );
 }

@@ -470,12 +470,31 @@ fn detected_with(host: Host, home: &Path, on_path: fn(&str) -> bool) -> bool {
 pub fn listing(host: Host, home: &Path, on_path: fn(&str) -> bool) -> String {
     let detected = detected_with(host, home, on_path);
     let wired = detected && wired_with(host, home);
-    format!("{:<12} detected={:<3} wired={}", host.id(), yes_no(detected), yes_no(wired))
+    let state = if wired && matches!(host, Host::ClaudeCode) && !claude_mcp_wired(home) {
+        "partial"
+    } else {
+        yes_no(wired)
+    };
+    format!("{:<12} detected={:<3} wired={state}", host.id(), yes_no(detected))
 }
 
 /// `yes` / `no`, so a line is greppable without a parser.
 fn yes_no(b: bool) -> &'static str {
     if b { "yes" } else { "no" }
+}
+
+/// Is Claude Code's MCP entry present? `connect` writes it to `~/.claude.json`
+/// beside the hooks, and hooks without it are `wired=partial`: the agent gets the
+/// lifecycle hooks but no `memory_*` tools, which a re-run of `connect` repairs.
+/// Parses, never writes.
+fn claude_mcp_wired(home: &Path) -> bool {
+    let Ok(raw) = paths::read_or_empty(&home.join(".claude.json")) else {
+        return false;
+    };
+    let Ok(root) = serde_json::from_str::<Value>(&raw) else {
+        return false;
+    };
+    root.pointer(&format!("/mcpServers/{MARKER}")).is_some()
 }
 
 /// Does this host already carry our entries? Parses, never writes.
@@ -1884,6 +1903,25 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         std::fs::remove_dir_all(&home).ok();
     }
 
+    /// Claude Code's hooks without its MCP entry read as `partial`, not `yes`:
+    /// `connect` writes both, so the missing half is a state the user can repair
+    /// by re-running `connect`, and `yes` would hide that the memory tools are absent.
+    #[test]
+    fn listing_should_report_partial_when_claude_hooks_lack_the_mcp_entry() {
+        let home = tmp_home("list-partial");
+        // A config file makes Claude Code detected; `~/.claude.json` is its CLI config, which `connect` needs for the MCP entry.
+        let rel = Host::ClaudeCode.config_rel();
+        write_config(&home, &rel, "{}\n");
+        std::fs::write(home.join(".claude.json"), "{}\n").expect("seed the CLI config");
+        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=yes"));
+
+        // The state a pre-MCP build left behind: hooks in settings.json, no ~/.claude.json entry.
+        std::fs::remove_file(home.join(".claude.json")).expect("drop the MCP entry");
+        assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=partial"));
+    }
+
     /// `wired` is read out of the file rather than inferred: our own entry means
     /// wired, a config holding only somebody else's hook does not, and reading
     /// the answer must not change the answer's subject.
@@ -1900,6 +1938,8 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             "reading the state must leave the file byte-identical"
         );
 
+        // Claude Code creates `~/.claude.json` on its first run; without it `connect` skips the MCP entry.
+        std::fs::write(home.join(".claude.json"), "{}\n").expect("seed the CLI config");
         let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let wired = std::fs::read_to_string(home.join(&rel)).expect("read");

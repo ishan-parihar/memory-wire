@@ -13,12 +13,18 @@
 #
 # Flags:
 #   --db <path>   echo the serve/daemon lines with this --db
+#   --bank <id>   pin this bank into every hook and MCP entry connect writes, and
+#                 into the --uninstall that removes them. Without it each host
+#                 resolves a bank from its working directory.
 #   --connect     wire the agent hosts (default; --no-connect to skip)
 #   --hosts <a,b> wire only these hosts, e.g. claude-code,codex. Never prompts:
 #                 this is the path for a script or an AI agent. Run the installer
 #                 with no flag on a terminal to pick from a numbered list.
 #   --daemon      also start the background server and run doctor
-#   --uninstall   remove the binary only; the database is left in place
+#   --uninstall   unwire the agent hosts, then remove the binary. The binary is kept
+#                 if unwiring fails, because the hosts still run it. The database
+#                 is left in place. --no-connect removes the binary alone, which
+#                 leaves the hosts pointing at a missing command.
 set -eu
 
 MW_REPO="${MW_REPO:-ishan-parihar/memory-wire}"
@@ -29,6 +35,7 @@ UNINSTALL=0
 DB_PATH=""
 CONNECT=auto        # auto | yes | no
 HOSTS=""            # --hosts <a,b>; empty means every detected host
+BANK=""             # --bank <id>; empty lets each host resolve its own bank
 START_DAEMON=no
 
 die() { printf 'memory-wire: %s\n' "$*" >&2; exit 1; }
@@ -38,6 +45,9 @@ while [ $# -gt 0 ]; do
     --uninstall) UNINSTALL=1 ;;
     --db) [ $# -ge 2 ] || die "--db needs a path"; DB_PATH="$2"; shift ;;
     --db=*) DB_PATH="${1#--db=}" ;;
+    --bank) [ $# -ge 2 ] && [ -n "$2" ] || die "--bank needs a bank id, e.g. --bank omp"
+            BANK="$2"; shift ;;
+    --bank=*) BANK="${1#--bank=}"; [ -n "$BANK" ] || die "--bank needs a bank id, e.g. --bank omp" ;;
     --connect) CONNECT=yes ;;
     --no-connect) CONNECT=no ;;
     --hosts) [ $# -ge 2 ] || die "--hosts needs a host list, e.g. --hosts claude-code,codex"
@@ -76,9 +86,33 @@ TARGET="$os-$arch"
 
 BIN_PATH="$MW_INSTALL_DIR/$BIN"
 
+# `connect` serves both the wiring step below and --uninstall, so it is defined
+# before either. $HOSTS is unquoted on purpose: a host list is several words, and
+# the names are [a-z-], so there is nothing here for the shell to glob or split
+# wrongly. ${BANK:+...} adds the pin only when one was given.
+connect() {
+  # shellcheck disable=SC2086
+  "$BIN_PATH" connect $HOSTS ${BANK:+--bank "$BANK"} "$@"
+}
+
 # --- uninstall --------------------------------------------------------------
+# Unwire the hosts before the binary goes. Their hooks and MCP entries run
+# $BIN_PATH, so removing it first leaves every agent calling a command that no
+# longer exists. If `connect --uninstall` fails the binary stays, because it is the
+# only thing that can unwire those hosts later.
 if [ "$UNINSTALL" -eq 1 ]; then
   [ -e "$BIN_PATH" ] || die "not installed: $BIN_PATH"
+  if [ "$CONNECT" != no ]; then
+    printf 'unwiring agent hosts (memory-wire connect --uninstall%s):\n' \
+      "${HOSTS:+ $HOSTS}${BANK:+ --bank $BANK}"
+    UNWIRE_OUT="$(connect --uninstall 2>&1)" && UNWIRE_RC=0 || UNWIRE_RC=$?
+    printf '%s\n' "$UNWIRE_OUT" | sed 's/^/  /'
+    [ "$UNWIRE_RC" -eq 0 ] || die "memory-wire connect --uninstall exited $UNWIRE_RC, so the binary was kept: the hosts still run it.
+  Fix the reason above and re-run --uninstall, or pass --no-connect to remove the
+  binary and leave the hosts wired by hand."
+  else
+    printf 'hosts left wired (--no-connect): their hooks now point at a missing binary\n' >&2
+  fi
   rm -f "$BIN_PATH"
   printf 'removed %s (database left in place at %s — delete it by hand)\n' \
     "$BIN_PATH" "${XDG_DATA_HOME:-$HOME/.local/share}/memory-wire"
@@ -348,19 +382,6 @@ printf '  curl -s http://127.0.0.1:8888/health      # -> ok\n'
 # Resolve the host list to run first, so the scan is on screen before anything
 # is written: `--list` only reads, and says which hosts are here and which are
 # already wired.
-# shellcheck disable=SC2120  # $@ forwarded from some call sites, not all
-connect() {
-  # $@ is forwarded when callers pass extra arguments (a host list from the
-  # menu path) and swallowed when they don't; one call site, one shape.
-  if [ -n "$HOSTS" ]; then
-    # $HOSTS unquoted on purpose: a host list is several words, and the names are
-    # [a-z-], so there is nothing here for the shell to glob or split wrongly.
-    "$BIN_PATH" connect $HOSTS "$@"
-  else
-    "$BIN_PATH" connect "$@"
-  fi
-}
-
 # Turn an answer at the menu into a host list. $1 is what the person typed, $2 the
 # detected hosts in menu order. A number and a host name are both accepted; an
 # answer that is neither is passed through to `connect`, which names the valid
@@ -402,7 +423,7 @@ if [ "$CONNECT" != no ] && [ -x "$BIN_PATH" ]; then
     fi
   fi
 
-  printf '\nwiring agent hosts (memory-wire connect%s):\n' "${HOSTS:+ $HOSTS}"
+  printf '\nwiring agent hosts (memory-wire connect%s):\n' "${HOSTS:+ $HOSTS}${BANK:+ --bank $BANK}"
   CONNECT_OUT="$(connect 2>&1)" && CONNECT_RC=0 || CONNECT_RC=$?
   printf '%s\n' "$CONNECT_OUT" | sed 's/^/  /'
 

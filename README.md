@@ -885,10 +885,11 @@ quoting a number.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ishan-parihar/memory-wire/main/install/get-memory-wire.sh | sh
 # sh get-memory-wire.sh --db <path>     # echoes the serve line with that --db
+# sh get-memory-wire.sh --bank <id>     # pins that bank into the hooks and MCP entries
 # sh get-memory-wire.sh --daemon        # also start the server and run doctor
 # sh get-memory-wire.sh --hosts a,b     # wire only these hosts, never prompts
 # sh get-memory-wire.sh --no-connect    # install the binary only, wire nothing
-# sh get-memory-wire.sh --uninstall     # removes the binary only, keeps the db
+# sh get-memory-wire.sh --uninstall     # unwires the hosts, removes the binary, keeps the db
 ```
 
 Detects `linux`/`macos` × `x86_64`/`aarch64` and refuses anything else;
@@ -926,7 +927,9 @@ and `docs/VERSIONS.md` §0.
 **The installer wires your agent hosts for you, and lets you choose which.** It
 first runs `memory-wire connect --list`, which reports every supported host with
 whether it is present on this machine and whether it is already wired — read-only,
-touching nothing. Then:
+touching nothing. Claude Code reads `partial` when its hooks are in place but the MCP
+entry in `~/.claude.json` is missing; re-running `memory-wire connect claude-code`
+adds it. Then:
 
 - **`--hosts claude-code,codex`** wires exactly that list. This is the
   non-interactive path and it never prompts. Use it from a script or an agent.

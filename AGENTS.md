@@ -352,10 +352,10 @@ The CLI and the HTTP surface are read by other agents, so:
 - Version bump first: edit `Cargo.toml`, run one unlocked `cargo check` to
   refresh the own-version line in `Cargo.lock`, then the `--locked` gates pass.
   Two commits — feature, then bump — and the tag names the bump commit.
-- `install/get-memory-wire.sh` wires hosts with no `--bank`. On a machine
-  pinned with `connect --bank <id>`, run it with `--no-connect` and re-run
-  `memory-wire connect --bank <id> <hosts>` after, or the surfaces re-default
-  to bank `memory-wire`.
+- `install/get-memory-wire.sh --bank <id>` forwards the pin to every `connect` it
+  runs, including the `--uninstall` that unwires hosts before the binary is removed.
+  `connect` keeps a pin already baked into a host when `--bank` is absent (TODO #1),
+  so a plain re-run does not drop it.
 - macOS assets cannot be cross-built from Linux — `libsqlite3-sys` links
   CoreFoundation. The script skips them with that reason.
 - Delegate only with the `space-bunny` model.

@@ -367,6 +367,7 @@ Commands:
   serve    Start the HTTP server (retain/recall/reflect + health)
   connect  Wire memory-wire into agent hosts; takes zero or more host names
            --list reports every host and its detected/wired state, writing nothing
+           (wired=partial: Claude Code's hooks without its MCP entry)
   hook     Lifecycle hook (hosts call this; reads hook JSON on stdin)
   doctor   Report endpoint, bank, store, and server health
   mcp      Serve MCP over stdio: memory_retain / recall / reflect / bank_config_get
@@ -683,8 +684,11 @@ memory-wire daemon stop                       # if you started one with daemon s
 curl -fsSL "$MW_RAW/install/get-memory-wire.sh" | sh -s -- --uninstall
 ```
 
-Removes the binary only. A daemon started with `daemon start` keeps running
-after the binary is gone, so stop it first — the command above cannot be
+Unwires the agent hosts (`connect --uninstall`), then removes the binary and keeps
+the database. If unwiring fails the binary is kept, because the hosts still run it,
+and the script exits non-zero. `--no-connect` removes the binary alone and leaves the
+hosts pointing at a missing command. A daemon started with `daemon start` keeps
+running after the binary is gone, so stop it first — the command above cannot be
 replaced afterwards. Observed output:
 
 ```
