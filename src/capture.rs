@@ -56,6 +56,12 @@ static SLACK_RE: LazyLock<Regex> = LazyLock::new(|| {
 static GOOGLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"AIza[0-9A-Za-z_\-]{35}").expect("google regex"));
 
+/// Telegram bot tokens: `<bot id>:AA<URL-safe secret>`. The `AA` is what keeps
+/// this from matching any bare `<digits>:` (times, ports). Shape also mirrored in
+/// `scripts/secret-scan.sh` and `eval/relevance/run_battery.py`.
+static TELEGRAM_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}").expect("telegram regex"));
+
 /// Compact JWT serialization: an `eyJ` header plus two more base64url segments.
 static JWT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"eyJ[-A-Za-z0-9_]+\.[-A-Za-z0-9_]+\.[-A-Za-z0-9_]+").expect("jwt regex")
@@ -93,6 +99,7 @@ static RULES: &[(&LazyLock<Regex>, &str)] = &[
     (&AWS_RE, "[REDACTED:aws_key]"),
     (&BEARER_RE, "[REDACTED:bearer]"),
     (&SLACK_RE, "[REDACTED:slack_token]"),
+    (&TELEGRAM_RE, "[REDACTED:telegram_token]"),
     (&GOOGLE_RE, "[REDACTED:google_api_key]"),
     (&JWT_RE, "[REDACTED:jwt]"),
     (&EMAIL_RE, "[REDACTED:email]"),
@@ -104,7 +111,8 @@ static RULES: &[(&LazyLock<Regex>, &str)] = &[
 /// Replaces API keys, tokens, contact details and `<private>` blocks with
 /// `[REDACTED:*]` markers. Covered shapes: `<private>` blocks, PEM private-key
 /// blocks, `sk-`, `ghp_`/`github_pat_`, `AKIA`, `Bearer`, Slack `xox*`/`xapp-`,
-/// Google `AIza`, JWTs, emails and phone numbers (see the `RULES` table).
+/// Telegram bot tokens, Google `AIza`, JWTs, emails and phone numbers (see the
+/// `RULES` table).
 ///
 /// Each rule is asked whether it matches before it is applied: `replace_all`
 /// returns an owned copy of the *whole* input whether or not anything matched,
@@ -150,6 +158,21 @@ mod tests {
     #[test]
     fn redact_should_mask_aws_keys() {
         assert!(redact_pii("id AKIAIOSFODNN7EXAMPLE").contains("[REDACTED:aws_key]"));
+    }
+
+    #[test]
+    fn redact_should_mask_telegram_bot_tokens() {
+        // Built at runtime: a literal token-shaped string in source is what the
+        // secret gate exists to stop. Shape only; the secret part is all Z.
+        let token = format!("1234567890:AA{}", "Z".repeat(33));
+        let out = redact_pii(&format!("bot {token} ok"));
+        assert_eq!(out, "bot [REDACTED:telegram_token] ok");
+    }
+
+    #[test]
+    fn redact_should_leave_bare_digit_colon_alone() {
+        // A time or a host:port has the digits but not the `AA` prefix.
+        assert_eq!(redact_pii("at 12:30 on 10.0.0.1:8888"), "at 12:30 on 10.0.0.1:8888");
     }
 
     #[test]
