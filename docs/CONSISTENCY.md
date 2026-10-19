@@ -49,7 +49,7 @@ verbatim, and paste what came back into the `Expect:` line. Flags are cross-read
 against `src/main.rs:39-110` (the `clap` derive) and the HTTP claims against a
 live server; anything that could not be executed on this machine is marked
 *out of scope* rather than assumed. Files swept: `README.md`,
-`INSTALL_FOR_AGENTS.md`, and `plugin/skills/memory-wire/SKILL.md`.
+`docs/INSTALL_FOR_AGENTS.md`, and `plugin/skills/memory-wire/SKILL.md`.
 
 **Result: 12 wrong claims fixed, 2 doc files left alone, 6 open items.**
 
@@ -147,8 +147,8 @@ live server; anything that could not be executed on this machine is marked
 |---|---|---|---|---|
 | 1 | `README.md` CLI | "Six subcommands" + a table of six; `seed` "is **not built**" | Seven, with `seed` and its four flags | `memory-wire --help` lists `info serve connect hook doctor mcp seed` (+ clap's `help`); `seed --help` shows `--commits/--transcripts/--bank/--db` |
 | 2 | `README.md` roadmap | "Not built yet: a `seed` subcommand" | moved to **Shipped** with the other subcommands | `memory-wire info` prints a `seed` line; `seed --db /tmp/mw-seed.db` runs and exits 0 |
-| 3 | `INSTALL_FOR_AGENTS.md` step 9 | "the binary ships six subcommands" + a six-line `--help` transcript | seven + the verbatim transcript above | same |
-| 4 | `INSTALL_FOR_AGENTS.md` "Not in this build" | row asserting `seed` → `error: unrecognized subcommand 'seed'` | row deleted; replaced by a `backup`-subcommand row saying there is deliberately none | `seed` runs |
+| 3 | `docs/INSTALL_FOR_AGENTS.md` step 9 | "the binary ships six subcommands" + a six-line `--help` transcript | seven + the verbatim transcript above | same |
+| 4 | `docs/INSTALL_FOR_AGENTS.md` "Not in this build" | row asserting `seed` → `error: unrecognized subcommand 'seed'` | row deleted; replaced by a `backup`-subcommand row saying there is deliberately none | `seed` runs |
 | 5 | `README.md` "How it works" | a repeated `append` under a `document_id` "fails the uniqueness constraint and comes back `500 storage error`" | `409 document already exists; use update_mode=replace`, first row unchanged | observed `200` then `409`; the `plan` row still held `plan v1` |
 | 6 | `README.md` bounds, `INSTALL` step 4 | "a budget of 1–3 tokens returns `[]`" | the top hit cut to the cap, unlabelled: `budget: 1` → `["auth"]`, `2` → `["auth use"]`, `3` → `["auth uses jo"]`; the marker lands at 4 | `src/recall.rs:135-140` gates the marker on `room > 12`; observed all four budgets |
 | 7 | `README.md` connect | "`connect claude-code` → `wired  SessionStart, UserPromptSubmit, Stop`" | `claude-code  wired         SessionStart, UserPromptSubmit, Stop` (host column is real), plus `already-wired -`, the `left alone:` case and the `FAILED … left untouched` case | run against a clean `HOME`, then against this machine's real `~/.claude/settings.json` (restored afterwards) |
@@ -659,7 +659,7 @@ section is the index, not the changelog.
 
 ## 12.2 The predicted 19.9x that reproduced as 8-10x
 
-`PLAN.md` quoted a raw-SQL measurement of 1.980 ms/commit at
+`docs/audit/2026-09-27-PLAN.md` quoted a raw-SQL measurement of 1.980 ms/commit at
 `synchronous=FULL` against 0.099 ms/commit at `NORMAL` and called it "a 19.9x
 headroom from one pragma". **19.9x is not a number this store produces, and it
 was never going to be.** The raw figure is a bare single-row `INSERT`; the
@@ -673,7 +673,7 @@ Measured, interleaved, 9,000 samples per arm (full table in §11.1):
 2,953.6 → 321.3 us @1k, 2,450.0 → 339.1 us @10k; 1,000-row bulk load
 140–174 → 1,145–2,029 rows/s. That is **7.2x-10.1x**, and it is what the docs now
 say. The direction and the mechanism are the same; the number is smaller, and the
-19.9x figure has been struck from `PLAN.md` rather than left as a prediction.
+19.9x figure has been struck from `docs/audit/2026-09-27-PLAN.md` rather than left as a prediction.
 
 ## 12.3 The read pool: kept for throughput, paid for in memory
 
@@ -840,13 +840,13 @@ which stopped being true when the read pool landed.
 ## 12.7 Two claims that were simply wrong
 
 **"Recall throughput measured flat at ~60 rec/s whether 1 or 64 concurrent clients
-hit the server."** This was quoted in `PLAN.md` as the motivating measurement for
+hit the server."** This was quoted in `docs/audit/2026-09-27-PLAN.md` as the motivating measurement for
 the whole of Phase B, and it is an **artifact of how it was measured**: over HTTP,
 with Python clients, on a box at `loadavg` 105. In-process, on this tree, a single
 client does **408.7 ops/s (351.3–464.9)** — not 60. The 60 is the Python client
 and the scheduler. The *latency* growth in that same measurement (17.2 ms → 55.4 →
 220.6 → 1012.3 ms) was real, and it is why the pool exists; the *throughput*
-claim was not. `PLAN.md` now quotes the original and retracts it in place.
+claim was not. `docs/audit/2026-09-27-PLAN.md` now quotes the original and retracts it in place.
 
 **`docs/BENCHMARK.md`'s "MCP tools (rmcp) — NOT IMPLEMENTED" row.** This is a
 true record of the `0.1.0` audit and a false statement about the current tree,
@@ -861,11 +861,11 @@ misread.
 
 | Where | Was | Now | Why |
 |---|---|---|---|
-| `PLAN.md` status | "217 tests green ... release binary 8,816,120 B" | kept as the *reference point* the plan was measured against, with a pointer forward | it is the pre-plan baseline; moving it would destroy the delta |
-| `PLAN.md` Phase A | "13 `.prepare(` call sites, zero `prepare_cached`" | 6 of 13, 7 with recorded reasons | §11.2 |
-| `PLAN.md` Phase B | "flat ~60 rec/s" | retracted in place with the in-process number | §12.7 |
-| `PLAN.md` Phase B | "19.9x headroom" | struck, replaced with 8-10x | §12.2 |
-| `PLAN.md` Phase B | the Porter-stemmer morphology probe | **not done**; the probe was not re-run, so 1-of-3 / 6-of-7 is the only evidence and is unversioned | the storage win on the same axis shipped instead |
+| `docs/audit/2026-09-27-PLAN.md` status | "217 tests green ... release binary 8,816,120 B" | kept as the *reference point* the plan was measured against, with a pointer forward | it is the pre-plan baseline; moving it would destroy the delta |
+| `docs/audit/2026-09-27-PLAN.md` Phase A | "13 `.prepare(` call sites, zero `prepare_cached`" | 6 of 13, 7 with recorded reasons | §11.2 |
+| `docs/audit/2026-09-27-PLAN.md` Phase B | "flat ~60 rec/s" | retracted in place with the in-process number | §12.7 |
+| `docs/audit/2026-09-27-PLAN.md` Phase B | "19.9x headroom" | struck, replaced with 8-10x | §12.2 |
+| `docs/audit/2026-09-27-PLAN.md` Phase B | the Porter-stemmer morphology probe | **not done**; the probe was not re-run, so 1-of-3 / 6-of-7 is the only evidence and is unversioned | the storage win on the same axis shipped instead |
 | `docs/BENCHMARK.md` §5 | 217 tests, binary 8,816,120 B | 237 tests, binary 8,836,032 B | re-measured |
 | `docs/VERSIONS.md` §3 | "INCOMPLETE — omits `rmcp`" | **complete**, regenerated; `fastembed`/`ort`/`tokenizers` confirmed absent | §12.4 |
 | `docs/BENCHMARK_SCALE.md` | the 13-17 ms / 16-23 ms p50 pair, profile unverified | **left exactly as recorded**, with its own standing note that the profile is unverified | not re-measured here; inventing a replacement would be worse than the ambiguity |

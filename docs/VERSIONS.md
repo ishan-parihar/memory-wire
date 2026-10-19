@@ -91,4 +91,4 @@ invocation that shows `fastembed`. Re-run §4 and regenerate the list once
 3. Diff upstream `retain/recall/reflect`, hook protocol, RRF/MCP surfaces against
    `src/{api,recall,capture,store}.rs`; port behavior-only (no copied code)
 4. `cargo test` + full clippy gate + `tests/e2e.rs` + benchmark (§5 of benchmark report)
-5. Update this file + `PLAN.md` status; commit lockfile with the change
+5. Update this file + `docs/audit/2026-09-27-PLAN.md` status; commit lockfile with the change
