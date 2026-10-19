@@ -62,3 +62,4 @@ secrets = []               # e.g. [".env:API_KEY", "~/.config/x/token"] — scan
 
 [card]
 architecture = "AGENTS.md"
+status_into = "docs/handoff/STATE.md"

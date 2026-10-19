@@ -241,3 +241,17 @@ From `amb_locomo_rag.json.gz` joined with `eval/data/locomo/queries.json`
 - AMB `rag` serves k = 10 of a 19–32-session bank. That cut is a *harness* parameter,
   not a memory-wire one. The adapter now carries `MEMORY_WIRE_TOPK` to move that cut
   for measurement; H4 used it to fix the served set at k = 3/5/10.
+
+<!-- genome:zone status sha=d357c832892b -->
+| status | items |
+|---|---|
+| open | 4 |
+| in-progress | 1 |
+| done | 15 |
+
+- `4` [in-progress] ~~INTEGRATION_PLAN Phase 0, starting with P0.1~~ — **re-verified 2026-10-15 against the binary**; th
+- `10` [open] agent-memory-bench (GiulioDER) Claude Code arm
+- `11` [open] LLM-judged runs: AMB `rag` (BEAM/PersonaMem/LifeBench), OAMB LME-60, memorybench ConvoMem, MemBase R
+- `12` [open] AMB provider writes at the product's granularity (turn pairs, as the hooks do), not 25k-token sessio
+- `13` [open] aroute: 200-with-`{"error"}` logged `outcome=ok` with no failover (B1); cline replies forwarded insi
+<!-- genome:end status -->
