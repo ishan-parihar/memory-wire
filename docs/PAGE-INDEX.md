@@ -37,3 +37,7 @@
 | [`CLOSED.md`](kb/CLOSED.md) | LEDGER | CLOSED — tried and rejected | — |
 | [`WORKLOG.md`](kb/WORKLOG.md) | LEDGER | Worklog | — |
 | [`feed.md`](kb/feed.md) | LEDGER | Agent feed | — |
+| [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) | Install memory-wire (agent runbook) — Self-contained HTTP API plus an MCP stdio server. Nine curl steps, each with an
+assertion you can check. The s… |
+| [`2026-09-27-PLAN.md`](audit/2026-09-27-PLAN.md) | PLAN: memory-wire (Rust) — Hindsight × agentmemory — Goal: the best memory infrastructure we can have — Hindsight's learning memory
+(retain/recall/reflect + observ… |
