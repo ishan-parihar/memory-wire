@@ -571,6 +571,8 @@ blocking), which is what makes a `cp` taken straight afterwards a usable backup.
 Point it at the same file you gave `serve --db`, or the report describes a store
 the server never touches.
 
+- [Page index](docs/PAGE-INDEX.md) — every active doc and the question it owns.
+
 ## Bank config
 
 `GET`/`PUT /banks/:id/config` is a whole-object store-and-serve: unknown keys
