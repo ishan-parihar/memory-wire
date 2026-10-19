@@ -59,3 +59,6 @@ bulk_allow = [
 ]
 secrets = []               # e.g. [".env:API_KEY", "~/.config/x/token"] — scanned in diffs, never printed
 # jobs = "bin/jobs status"   # shown by `genome wake`
+
+[card]
+architecture = "AGENTS.md"
