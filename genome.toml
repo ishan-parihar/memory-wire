@@ -63,6 +63,9 @@ secrets = []               # e.g. [".env:API_KEY", "~/.config/x/token"] — scan
 [card]
 architecture = "AGENTS.md"
 status_into = "docs/handoff/STATE.md"
+# the ranked recommendations for the §6.4 gates live in docs/handoff/DECISIONS.md,
+# which the generated docs/RECORDS.md index did not point at.
+decisions = "docs/handoff/DECISIONS.md"
 
 [drift]
 warn_until = "2026-11-18"  # warn until rollout+30d; after it a stale manual blocks close
