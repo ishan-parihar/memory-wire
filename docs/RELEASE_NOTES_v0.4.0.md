@@ -105,7 +105,7 @@ The vector arm is inert in every build and costs nothing to leave off — but it
 is a flag someone can flip without reading this. It is off *by measurement*,
 not by oversight.
 
-## Reproduce
+## v0.4.0 Reproduction Steps
 
 ```bash
 cargo test --locked
