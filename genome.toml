@@ -61,7 +61,7 @@ secrets = []               # e.g. [".env:API_KEY", "~/.config/x/token"] — scan
 # jobs = "bin/jobs status"   # shown by `genome wake`
 
 [card]
-architecture = "AGENTS.md"
+architecture = "docs/ARCHITECTURE.md"
 status_into = "docs/handoff/STATE.md"
 # the ranked recommendations for the §6.4 gates live in docs/handoff/DECISIONS.md,
 # which the generated docs/RECORDS.md index did not point at.

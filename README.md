@@ -572,6 +572,7 @@ Point it at the same file you gave `serve --db`, or the report describes a store
 the server never touches.
 
 - [Page index](docs/PAGE-INDEX.md) — every active doc and the question it owns.
+- [Architecture](docs/ARCHITECTURE.md) — what memory-wire is made of, written for a reader who will not read the code.
 
 ## Bank config
 
