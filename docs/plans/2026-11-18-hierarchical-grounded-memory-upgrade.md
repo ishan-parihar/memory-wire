@@ -289,7 +289,7 @@ flag off serves byte-identical output to today.
 
 ---
 
-### W6 — `connect --with-skills`
+### W6 — `connect --with-skills` ✅ DONE (commit 4793326)
 
 Rests on **F5** and audit §4.
 
@@ -312,7 +312,7 @@ reason.
 
 ---
 
-### W7 — The per-turn injection path, and a supersede verb (added after the 2026-11-18 review)
+### W7 — The per-turn injection path, and a supersede verb ✅ W7a DONE (commit d34a0a5), W7b decided (commit eb95a0a) (added after the 2026-11-18 review)
 
 Rests on **D-ASK**, verified at `36bb947`, and on the review's finding 4.
 
@@ -443,9 +443,19 @@ migration; the riskiest is W4 (a new module with a new public verb, which
 
 ## 6. Resume here
 
-Nothing has been implemented. The next agent starts at **W0**, then **W1**,
-and does not begin W4 or W5 until W1's migration and non-uniformity test are
-green. `docs/handoff/STATE.md` is updated when a unit of work lands, per
+**All items complete.** W0–W7 shipped across 10 commits:
+
+- W0 (a45ea07) — hermetic golden_install_shapes + redactor identifier tests
+- W1 (e10ba0b) — dimensional schema: scope/aspect/lifecycle/trust/parent_id/superseded_by
+- W2 (8eaeac3) — mount profiles: readOnly + maxTrust on BankConfig
+- W3 (052f3a6) — retroactive redaction with version audit trail
+- W4 (ad8472a) — deterministic hygiene scan module
+- W5 (4540b19) — startup grounding capsule module
+- W7a (d34a0a5) — supersede verb on the MCP surface (5th tool)
+- W6 (4793326) — connect --with-skills + embedded SKILL.md
+- W7b (eb95a0a) — decision doc: no raw score gate on recall_section
+
+`docs/handoff/STATE.md` is updated when a unit of work lands, per
 `AGENTS.md` §13.
 
 ### 6.1 What the 2026-11-18 external review changed (round 1)
