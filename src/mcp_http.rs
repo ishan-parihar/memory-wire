@@ -358,7 +358,7 @@ mod tests {
             .iter()
             .filter_map(|t| t["name"].as_str())
             .collect();
-        assert_eq!(names.len(), 4, "{names:?}");
+        assert_eq!(names.len(), 5, "{names:?}");
     }
 
     // The decision `Server::resolve_bank` makes, over the wire: an argument that

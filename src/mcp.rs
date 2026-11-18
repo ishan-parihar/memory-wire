@@ -80,6 +80,12 @@ pub const RECALL: &str = "memory_recall";
 pub const REFLECT: &str = "memory_reflect";
 /// `memory_bank_config_get` — the bank's stored config object.
 pub const CONFIG_GET: &str = "memory_bank_config_get";
+/// `memory_supersede` — mark a memory as superseded by another (or by nothing,
+/// for a retract). The row stays in the store but is excluded from default
+/// recall; its lineage survives in `memory_versions` and the `superseded_by`
+/// column. This is the 5th tool, justified: it is a verb no existing tool
+/// expresses, not a second way to spell `retain`.
+pub const SUPERSEDE: &str = "memory_supersede";
 
 /// URI scheme for one addressable stored memory: `memory://{bank}/{id}`.
 ///
@@ -367,6 +373,23 @@ impl<S: Store> Server<S> {
                 })),
             )
             .with_annotations(annotations(true)),
+            Tool::new(
+                SUPERSEDE,
+                "Mark a memory as superseded by another (or by nothing, for a \
+                 retract). The row stays in the store but is excluded from default \
+                 recall; its lineage survives in memory_versions and the \
+                 superseded_by column.",
+                schema(json!({
+                    "type": "object",
+                    "properties": {
+                        "bank": { "type": "string", "description": "Bank id; defaults to the server's bank." },
+                        "id": { "type": "string", "description": "The id of the memory to supersede." },
+                        "superseded_by": { "type": "string", "description": "The id of the superseding memory, or omitted for a plain retract." }
+                    },
+                    "required": ["id"]
+                })),
+            )
+            .with_annotations(annotations(true)),
         ]
         .into_iter()
         .collect()
@@ -604,6 +627,12 @@ impl<S: Store> Server<S> {
             CONFIG_GET => {
                 let raw = self.svc.bank_config(&bank)?;
                 Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({})))
+            }
+            SUPERSEDE => {
+                let id = required_str(args, "id")?;
+                let superseded_by = arg_str(args, "superseded_by");
+                let changed = self.svc.supersede_memory(&bank, id, superseded_by.as_deref())?;
+                Ok(json!({ "superseded": changed, "id": id }))
             }
             other => Err(CallError::UnknownTool(other.to_string())),
         }
@@ -1059,21 +1088,21 @@ mod tests {
 
     // `tools/list` over the wire: four tools, each annotated.
     #[test]
-    fn tools_list_should_show_four_annotated_tools() {
+    fn tools_list_should_show_five_annotated_tools() {
         run(async {
             let (mut c, _running) = session(server());
             let reply = c.request(2, "tools/list", json!({})).await;
             let tools = reply["result"]["tools"].as_array().unwrap_or_else(|| panic!("{reply}"));
-            assert_eq!(tools.len(), 4, "{reply}");
+            assert_eq!(tools.len(), 5, "{reply}");
 
             let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-            assert_eq!(names, vec![RETAIN, RECALL, REFLECT, CONFIG_GET], "{names:?}");
+            assert_eq!(names, vec![RETAIN, RECALL, REFLECT, CONFIG_GET, SUPERSEDE], "{names:?}");
 
             for tool in tools {
                 let name = tool["name"].as_str().unwrap_or_default();
                 let ann = &tool["annotations"];
                 assert_eq!(ann["destructiveHint"], json!(false), "{name} must not be destructive");
-                // Only retain writes; the other three must be marked read-only.
+                // Only retain writes; the other four must be marked read-only.
                 let expected = name != RETAIN;
                 assert_eq!(ann["readOnlyHint"], json!(expected), "{name}");
                 assert_eq!(

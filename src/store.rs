@@ -629,6 +629,16 @@ pub trait Store: Send + Sync {
     fn redact(&self, _bank_id: &str, _id: &str, _pattern: &str, _name: &str) -> Result<usize, StoreError> {
         Err(StoreError::Unsupported("redact"))
     }
+    /// Mark a memory as superseded by another (or by nothing, for a retract).
+    /// The row stays in the store but is excluded from default recall; its
+    /// lineage survives in `memory_versions` and the `superseded_by` column.
+    ///
+    /// `Ok(true)` when a row was marked, `Ok(false)` when the id was not in
+    /// `bank_id`. Default is [`StoreError::Unsupported`], because a backend
+    /// that cannot supersede must say so rather than report a silent no-op.
+    fn supersede(&self, _bank_id: &str, _id: &str, _superseded_by: Option<&str>) -> Result<bool, StoreError> {
+        Err(StoreError::Unsupported("supersede"))
+    }
     /// One page of a bank's memories, in the backend's own insertion order.
     ///
     /// Default pages [`Store::list`] in memory, which is the same order; a
@@ -843,6 +853,9 @@ impl<T: Store + ?Sized> Store for &T {
     }
     fn redact(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, StoreError> {
         (*self).redact(bank_id, id, pattern, name)
+    }
+    fn supersede(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, StoreError> {
+        (*self).supersede(bank_id, id, superseded_by)
     }
     fn list_page(
         &self,
@@ -2274,6 +2287,34 @@ impl Store for SqliteStore {
             }
         }
         Ok(count)
+    }
+
+    fn supersede(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, StoreError> {
+        let conn = self.conn()?;
+        // Mark the row as superseded. The row stays in the store; default recall
+        // excludes it because `lifecycle` is now 'superseded'. The `superseded_by`
+        // column records the lineage.
+        let changed = conn.execute(
+            "UPDATE memories SET lifecycle='superseded', superseded_by=?1 WHERE bank_id=?2 AND id=?3 AND lifecycle='active'",
+            params![superseded_by, bank_id, id],
+        )?;
+        // Record the supersede in the version history.
+        if changed > 0 {
+            let content: String = conn
+                .query_row(
+                    "SELECT content FROM memories WHERE bank_id=?1 AND id=?2",
+                    params![bank_id, id],
+                    |r| r.get(0),
+                )
+                .unwrap_or_default();
+            let digest = hash_content(&content);
+            conn.execute(
+                "INSERT INTO memory_versions (memory_id, bank_id, op, content, content_sha256, created_at) \
+                 VALUES (?1, ?2, 'supersede', ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                params![id, bank_id, content, digest.as_slice()],
+            )?;
+        }
+        Ok(changed > 0)
     }
 
     fn get(&self, bank_id: &str, id: &str) -> Result<Option<Memory>, StoreError> {
@@ -4609,6 +4650,49 @@ mod tests {
         s.put(&mem("a", "m1")).expect("put");
         let err = s.redact("a", "m1", "(unclosed", "email").expect_err("bad pattern");
         assert!(matches!(err, StoreError::BadInput(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn supersede_marks_a_row_and_excludes_it_from_recall() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&crate::store::Bank {
+            id: "a".into(),
+            name: "a".into(),
+        })
+        .expect("bank");
+        s.put(&mem("a", "m1")).expect("put");
+        // Default recall should find it.
+        let hits = s.list("a").expect("list");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].meta.lifecycle.0, "active");
+        // Supersede it.
+        let changed = s.supersede("a", "m1", Some("m2")).expect("supersede");
+        assert!(changed, "supersede should report a change");
+        // It is now marked superseded.
+        let row = s.get("a", "m1").expect("get").expect("row");
+        assert_eq!(row.meta.lifecycle.0, "superseded");
+        assert_eq!(row.meta.superseded_by.as_deref(), Some("m2"));
+        // A second supersede is a no-op (already superseded).
+        let again = s.supersede("a", "m1", None).expect("supersede again");
+        assert!(!again, "a second supersede finds nothing to change");
+    }
+
+    #[test]
+    fn supersede_on_another_banks_memory_is_a_no_op() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&crate::store::Bank {
+            id: "a".into(),
+            name: "a".into(),
+        })
+        .expect("bank a");
+        s.put_bank(&crate::store::Bank {
+            id: "b".into(),
+            name: "b".into(),
+        })
+        .expect("bank b");
+        s.put(&mem("a", "m1")).expect("put");
+        let changed = s.supersede("b", "m1", None).expect("supersede");
+        assert!(!changed, "another bank's id must be unreachable");
     }
 
     #[test]

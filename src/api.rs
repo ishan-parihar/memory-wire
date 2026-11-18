@@ -1139,6 +1139,18 @@ impl<S: Store> MemoryService<S> {
         Ok(self.store.delete(bank_id, id)?)
     }
 
+    /// Mark a memory as superseded by another (or by nothing, for a retract).
+    /// The row stays in the store but is excluded from default recall; its
+    /// lineage survives in `memory_versions` and the `superseded_by` column.
+    ///
+    /// `superseded_by` is the id of the superseding memory, or `None` for a
+    /// plain retract. Returns `Ok(true)` when a row was marked, `Ok(false)`
+    /// when the id was not in `bank_id`.
+    pub fn supersede_memory(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, ApiError> {
+        Self::require_bank(bank_id)?;
+        Ok(self.store.supersede(bank_id, id, superseded_by)?)
+    }
+
     /// Redact a pattern from a memory's current content and every version row.
     /// Returns the number of rows rewritten (current + versions); `Ok(0)` when
     /// the id is not in `bank_id`, or when the pattern no longer matches (a
