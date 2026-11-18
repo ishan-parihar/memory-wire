@@ -677,6 +677,7 @@ fn main() -> Result<()> {
                 content: text.join("\n"),
                 context: None,
                 created_at: Some(lme_date(date)?),
+                meta: memory_wire::memory::MemoryMeta::default(),
             })?;
         }
         let svc = MemoryService::new(store);

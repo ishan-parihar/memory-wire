@@ -1994,6 +1994,7 @@ mod tests {
             content: "content".to_string(),
             context: None,
             created_at: Some(created.to_string()),
+            meta: crate::memory::MemoryMeta::default(),
         }
     }
 

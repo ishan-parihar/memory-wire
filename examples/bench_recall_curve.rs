@@ -607,6 +607,7 @@ fn build(db: &Path, size: usize, n_queries: usize, seed: u64) -> Result<(Vec<usi
             content,
             context: Some(format!("session-{}", pos / 8)),
             created_at: None,
+            meta: memory_wire::memory::MemoryMeta::default(),
         })?;
     }
     let build_s = start.elapsed().as_secs_f64();

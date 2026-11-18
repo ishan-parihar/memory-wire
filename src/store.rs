@@ -103,6 +103,21 @@ const DOCUMENT_ID_COLUMN: &str = "document_id";
 /// databases.
 const CONTENT_HASH_COLUMN: &str = "content_hash";
 
+/// `memories.scope`, added W1. Free text; defaults to `local`.
+const SCOPE_COLUMN: &str = "scope";
+/// `memories.aspect`, added W1. Free text; defaults to `episodic`.
+const ASPECT_COLUMN: &str = "aspect";
+/// `memories.lifecycle`, added W1. Free text; defaults to `active`.
+const LIFECYCLE_COLUMN: &str = "lifecycle";
+/// `memories.trust`, added W1. Free text; defaults to `agent_inferred`.
+const TRUST_COLUMN: &str = "trust";
+/// `memories.parent_id`, added W1. Nullable, no foreign key.
+const PARENT_ID_COLUMN: &str = "parent_id";
+/// `memories.superseded_by`, added W1. Nullable, no foreign key.
+const SUPERSEDED_BY_COLUMN: &str = "superseded_by";
+/// `memories.scope_globs`, added W1. Comma-separated, empty by default.
+const SCOPE_GLOBS_COLUMN: &str = "scope_globs";
+
 /// `banks.ttl_days`, added after the table shipped; `NULL` means the bank never
 /// expires anything.
 const TTL_DAYS_COLUMN: &str = "ttl_days";
@@ -239,7 +254,14 @@ impl UpdateMode {
 }
 
 /// Column list every `memories` read selects, in [`memory_from_row`] order.
-const MEMORY_COLUMNS: &str = "id, bank_id, content, context, created_at";
+///
+/// The six W1 dimensions are appended, not spliced in: every read that selects
+/// this list is mapped by `memory_from_row`, and that function is the one place
+/// their order is known. The list never shrinks, and a new column is added to
+/// the tail, so a row selected before W1 (id..created_at) would not parse —
+/// which is fine, because every read and the mapper ship in the same build.
+const MEMORY_COLUMNS: &str =
+    "id, bank_id, content, context, created_at, scope, aspect, lifecycle, trust, parent_id, superseded_by, scope_globs";
 
 /// One-shot markers recording work a database only ever needs once.
 const MARKER_TABLE: &str = "schema_markers";
@@ -338,6 +360,12 @@ pub struct BankStats {
 
 /// Map a `memories` row selected as [`MEMORY_COLUMNS`].
 fn memory_from_row(row: &Row<'_>) -> rusqlite::Result<Memory> {
+    // The six W1 dimensions were added by `ALTER TABLE ... ADD COLUMN`, all of
+    // them defaulted, so a legacy database reads back the same shape a new one
+    // writes. `scope_globs` is stored as a comma-separated string (empty when
+    // the memory applies everywhere) rather than as JSON so the read path does
+    // not have to parse it on every recall.
+    let globs: String = row.get(11)?;
     Ok(Memory {
         id: row.get(0)?,
         bank_id: row.get(1)?,
@@ -346,6 +374,20 @@ fn memory_from_row(row: &Row<'_>) -> rusqlite::Result<Memory> {
         // The read path always fills it: the column is `NOT NULL`, so a row
         // that exists has a stamp and the only way to express one is `Some`.
         created_at: Some(row.get(4)?),
+        meta: crate::memory::MemoryMeta {
+            scope: crate::memory::Scope(row.get(5)?),
+            aspect: crate::memory::Aspect(row.get(6)?),
+            lifecycle: crate::memory::Lifecycle(row.get(7)?),
+            trust: crate::memory::Trust(row.get(8)?),
+            parent_id: row.get(9)?,
+            superseded_by: row.get(10)?,
+            scope_globs: globs
+                .split(',')
+                .map(str::trim)
+                .filter(|g| !g.is_empty())
+                .map(str::to_string)
+                .collect(),
+        },
     })
 }
 
@@ -412,6 +454,65 @@ fn tag_predicate(alias: &str, tags: &[String]) -> String {
         " AND EXISTS (SELECT 1 FROM memory_tags t \
          WHERE t.memory_id = {alias}.id AND t.tag IN ({marks}))"
     )
+}
+
+/// Dimensional filter for one recall, pre-ranking.
+///
+/// Emitted as `AND <col> IN (?,?,..)` clauses on `memories` plus the default
+/// hide of `superseded`/`quarantined` lifecycles. Returns the clause text and
+/// the values it binds, in the order the SQL binds them.
+///
+/// The clause set is built from the *presence* of each dimension rather than
+/// from a mask, so a caller that sets none of them gets the empty string — a
+/// recall with no dimensional arguments pays for nothing at all.
+///
+/// `include_history` widens the lifecycle clause: with no history asked for,
+/// `superseded` and `quarantined` are filtered out; with it, an explicit
+/// `lifecycles` list wins and nothing is hidden by default.
+///
+/// `archived` and `candidate` are not hidden by default — they are explicit
+/// states an operator asked for, not results that disappeared.
+fn dimensional_predicate(alias: &str, dims: Option<&DimensionalFilter>) -> (String, Vec<String>) {
+    let Some(dims) = dims else {
+        return (String::new(), Vec::new());
+    };
+    let mut sql = String::new();
+    let mut values = Vec::new();
+    for (col, allowed) in [
+        ("scope", &dims.scopes),
+        ("aspect", &dims.aspects),
+        ("lifecycle", &dims.lifecycles),
+    ] {
+        if allowed.is_empty() {
+            continue;
+        }
+        let marks = vec!["?"; allowed.len()].join(",");
+        sql.push_str(&format!(" AND {alias}.{col} IN ({marks})"));
+        values.extend(allowed.iter().cloned());
+    }
+    if !dims.include_history && dims.lifecycles.is_empty() {
+        sql.push_str(&format!(" AND {alias}.lifecycle NOT IN ('superseded','quarantined')"));
+    }
+    (sql, values)
+}
+
+/// The dimensional filter carried across the store boundary.
+///
+/// `Option` rather than an empty struct because "no filter at all" and
+/// "filter by nothing" are different answers: the first must not emit SQL.
+/// `trust` is deliberately not here — it decides what a mount may *write*,
+/// not what a recall should rank, and W2 owns the read side of that.
+#[derive(Debug, Clone, Default)]
+pub struct DimensionalFilter {
+    /// Allowed `scope` values; empty keeps them all.
+    pub scopes: Vec<String>,
+    /// Allowed `aspect` values; empty keeps them all.
+    pub aspects: Vec<String>,
+    /// Allowed `lifecycle` values; empty keeps them all (minus the default
+    /// hide of `superseded`/`quarantined`).
+    pub lifecycles: Vec<String>,
+    /// Serve superseded/quarantined rows too.
+    pub include_history: bool,
 }
 
 /// True when a driver error is the one constraint a caller can act on: the
@@ -580,6 +681,22 @@ pub trait Store: Send + Sync {
     ) -> Result<RecallInputs, StoreError> {
         self.recall_inputs(bank_id, lq.text, tags, fts_limit)
     }
+    /// Recall with an explicit dimensional filter (W1).
+    ///
+    /// Default is [`StoreError::Unsupported`] rather than a silent fallback to
+    /// [`Store::recall_inputs_lexical`]: a backend that did not opt in must not
+    /// answer a filtered question with an unfiltered set.
+    fn recall_inputs_dimensional(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        tags: &[String],
+        fts_limit: usize,
+        dims: &DimensionalFilter,
+    ) -> Result<RecallInputs, StoreError> {
+        let _ = (bank_id, lq, tags, fts_limit, dims);
+        Err(StoreError::Unsupported("dimensional recall"))
+    }
     /// Raw bank config JSON, or `None` when the bank does not exist.
     fn get_bank_config(&self, _bank_id: &str) -> Result<Option<String>, StoreError> {
         Ok(None)
@@ -733,6 +850,16 @@ impl<T: Store + ?Sized> Store for &T {
         fts_limit: usize,
     ) -> Result<RecallInputs, StoreError> {
         (*self).recall_inputs_lexical(bank_id, lq, tags, fts_limit)
+    }
+    fn recall_inputs_dimensional(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        tags: &[String],
+        fts_limit: usize,
+        dims: &DimensionalFilter,
+    ) -> Result<RecallInputs, StoreError> {
+        (*self).recall_inputs_dimensional(bank_id, lq, tags, fts_limit, dims)
     }
     fn get_bank_config(&self, bank_id: &str) -> Result<Option<String>, StoreError> {
         (*self).get_bank_config(bank_id)
@@ -1161,6 +1288,25 @@ impl SqliteStore {
         if !Self::has_column(&conn, "memories", CONTENT_HASH_COLUMN)? {
             conn.execute_batch("ALTER TABLE memories ADD COLUMN content_hash BLOB;")?;
         }
+        // The W1 dimensional bundle. Every one of these is `NOT NULL` with a
+        // default (except the two nullable pointers), so a legacy database
+        // reads unchanged and a new one can write them unconditionally. Free
+        // text rather than `CHECK` constraints on purpose: a bank that writes
+        // a value this build does not know must degrade to "unfilterable",
+        // never to a failed retain.
+        for (column, sql) in [
+            (SCOPE_COLUMN, "ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'local';"),
+            (ASPECT_COLUMN, "ALTER TABLE memories ADD COLUMN aspect TEXT NOT NULL DEFAULT 'episodic';"),
+            (LIFECYCLE_COLUMN, "ALTER TABLE memories ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active';"),
+            (TRUST_COLUMN, "ALTER TABLE memories ADD COLUMN trust TEXT NOT NULL DEFAULT 'agent_inferred';"),
+            (PARENT_ID_COLUMN, "ALTER TABLE memories ADD COLUMN parent_id TEXT;"),
+            (SUPERSEDED_BY_COLUMN, "ALTER TABLE memories ADD COLUMN superseded_by TEXT;"),
+            (SCOPE_GLOBS_COLUMN, "ALTER TABLE memories ADD COLUMN scope_globs TEXT NOT NULL DEFAULT '';"),
+        ] {
+            if !Self::has_column(&conn, "memories", column)? {
+                conn.execute_batch(sql)?;
+            }
+        }
         // The one column this build removes rather than adds. DROP COLUMN is
         // irreversible, so a database that actually recorded something in it
         // keeps the column and says so: the data outranks the tidy schema, and
@@ -1434,17 +1580,32 @@ impl SqliteStore {
         document_id: Option<&str>,
         digest: &[u8; 32],
     ) -> Result<(), StoreError> {
+        // `context`, `parent_id`, `superseded_by` and `scope_globs` are the only
+        // W1 columns that hold no rows' worth of state the write needs to see.
+        // All six are written unconditionally: a legacy row being re-written
+        // (the `ON CONFLICT ... DO UPDATE` path) keeps whatever the caller sent,
+        // which is the same contract `context` has always had.
+        let scope_globs = m.meta.scope_globs.join(",");
         // bank_id moves too: reusing an id in a second bank must relocate the
         // row, not rewrite its content under the other bank's ownership.
         conn.execute(
-            "INSERT INTO memories (id, bank_id, content, context, created_at, document_id, content_hash)
+            "INSERT INTO memories (id, bank_id, content, context, created_at, document_id, content_hash,
+                                   scope, aspect, lifecycle, trust, parent_id, superseded_by, scope_globs)
              VALUES (?1, ?2, ?3, ?4,
-                     COALESCE(NULLIF(?5, ''), strftime('%Y-%m-%dT%H:%M:%fZ','now')), ?6, ?7)
+                     COALESCE(NULLIF(?5, ''), strftime('%Y-%m-%dT%H:%M:%fZ','now')), ?6, ?7,
+                     ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(id) DO UPDATE SET
                bank_id=excluded.bank_id,
                content=excluded.content,
                context=excluded.context,
                content_hash=excluded.content_hash,
+               scope=excluded.scope,
+               aspect=excluded.aspect,
+               lifecycle=excluded.lifecycle,
+               trust=excluded.trust,
+               parent_id=excluded.parent_id,
+               superseded_by=excluded.superseded_by,
+               scope_globs=excluded.scope_globs,
                document_id=COALESCE(excluded.document_id, memories.document_id)",
             params![
                 m.id,
@@ -1453,7 +1614,14 @@ impl SqliteStore {
                 m.context,
                 m.created_at.as_deref(),
                 document_id,
-                digest.as_slice()
+                digest.as_slice(),
+                m.meta.scope.0,
+                m.meta.aspect.0,
+                m.meta.lifecycle.0,
+                m.meta.trust.0,
+                m.meta.parent_id.as_deref(),
+                m.meta.superseded_by.as_deref(),
+                scope_globs
             ],
         )
         .map_err(|e| match is_repeated_document(&e) {
@@ -1546,6 +1714,7 @@ impl SqliteStore {
         tags: &[String],
         limit: usize,
         hit_ids: &[&str],
+        dims: Option<&DimensionalFilter>,
     ) -> Result<Vec<Memory>, StoreError> {
         // `IN ()` is a syntax error, so the union clause only exists when there
         // is a hit to union in.
@@ -1554,10 +1723,15 @@ impl SqliteStore {
         } else {
             format!(" OR id IN ({})", vec!["?"; hit_ids.len()].join(","))
         };
+        // Both the outer pool and the per-window subquery get the same filter,
+        // so a window cannot leak rows the filter excluded, and the filter
+        // cannot widen a subquery that should have been narrower.
         let tags_sql = tag_predicate("memories", tags);
+        let (dims_outer, dims_vals_outer) = dimensional_predicate("memories", dims);
+        let (dims_window, dims_vals_window) = dimensional_predicate("memories", dims);
         let sql = format!(
-            "SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=?{tags_sql} \
-             AND (rowid IN (SELECT rowid FROM memories WHERE bank_id=?{tags_sql} \
+            "SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=?{tags_sql}{dims_outer} \
+             AND (rowid IN (SELECT rowid FROM memories WHERE bank_id=?{tags_sql}{dims_window} \
                             ORDER BY rowid DESC LIMIT ?){union}) \
              ORDER BY rowid"
         );
@@ -1569,14 +1743,18 @@ impl SqliteStore {
         // and pin 16 prepared statements alive for nothing. Parsing is the price
         // of a variable query, and it is not what the recall budget goes on.
         // Bound in the order the statement binds them: the outer bank, the outer
-        // tag filter, then the window's own bank and tag filter, its limit, and
-        // finally the hit ids. saturating cast: a wrap would silently read a
-        // different window.
+        // tag filter, the outer dimensional filter, the window's own bank, its
+        // tag filter and dimensional filter, its limit, and finally the hit ids.
+        // saturating cast: a wrap would silently read a different window.
         let win_limit = i64::try_from(limit).unwrap_or(i64::MAX);
         let mut args: Vec<&dyn ToSql> = vec![&bank_id];
         args.extend(tags.iter().map(|t| t as &dyn ToSql));
+        let dvals_outer: Vec<String> = dims_vals_outer;
+        args.extend(dvals_outer.iter().map(|v| v as &dyn ToSql));
         args.push(&bank_id);
         args.extend(tags.iter().map(|t| t as &dyn ToSql));
+        let dvals_window: Vec<String> = dims_vals_window;
+        args.extend(dvals_window.iter().map(|v| v as &dyn ToSql));
         args.push(&win_limit);
         args.extend(hit_ids.iter().map(|id| id as &dyn ToSql));
         let rows = stmt.query_map(params_from_iter(args), memory_from_row)?;
@@ -1603,6 +1781,7 @@ impl SqliteStore {
             &LexicalQuery { text: query, ..LexicalQuery::default() },
             limit,
             tags,
+            None,
         )
     }
 
@@ -1617,6 +1796,7 @@ impl SqliteStore {
         lq: &LexicalQuery<'_>,
         limit: usize,
         tags: &[String],
+        dims: Option<&DimensionalFilter>,
     ) -> Result<KeywordHits, StoreError> {
         let base = Self::fts_hits_conn(
             conn,
@@ -1624,6 +1804,7 @@ impl SqliteStore {
             &Self::fts_match_query_scoped(lq.text, lq.scope),
             limit,
             tags,
+            dims,
         )?;
         if lq.synonyms.is_empty() {
             return Ok(base);
@@ -1642,7 +1823,7 @@ impl SqliteStore {
             // over groups is the same algebra as scoring each term at `wᵢ` in
             // one pass, at the cost of a scan per group — bounded by
             // [`MAX_SYNONYM_WEIGHT_GROUPS`].
-            for (id, score) in Self::fts_hits_conn(conn, bank_id, &m, limit, tags)? {
+            for (id, score) in Self::fts_hits_conn(conn, bank_id, &m, limit, tags, dims)? {
                 *combined.entry(id).or_insert(0.0) += weight * score;
             }
         }
@@ -1700,16 +1881,21 @@ impl SqliteStore {
         m: &str,
         limit: usize,
         tags: &[String],
+        dims: Option<&DimensionalFilter>,
     ) -> Result<KeywordHits, StoreError> {
         if m.is_empty() {
             return Ok(Vec::new());
         }
+        // The dimensional filter must apply to the FTS hits, not just to the
+        // candidate pool, or a superseded row that still matches could outrank
+        // the live ones. Same predicate, same bind order.
+        let (dims_sql, dims_vals) = dimensional_predicate("memories", dims);
         let sql = format!(
             "SELECT memories.id, bm25(memories_fts) AS rank
              FROM memories_fts JOIN memories ON memories.rowid = memories_fts.rowid
              WHERE memories_fts MATCH ? AND memories.bank_id = ?{}
              ORDER BY rank LIMIT ?",
-            tag_predicate("memories", tags)
+            tag_predicate("memories", tags) + &dims_sql
         );
         let mut stmt = conn.prepare(&sql)?;
         // `prepare`, not `prepare_cached`: as in `recall_pool_conn`, the text
@@ -1722,6 +1908,8 @@ impl SqliteStore {
         let rank_limit = i64::try_from(limit).unwrap_or(i64::MAX);
         let mut args: Vec<&dyn ToSql> = vec![&m, &bank_id];
         args.extend(tags.iter().map(|t| t as &dyn ToSql));
+        let dvals: Vec<String> = dims_vals;
+        args.extend(dvals.iter().map(|v| v as &dyn ToSql));
         args.push(&rank_limit);
         let rows = stmt.query_map(params_from_iter(args), |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
@@ -1840,7 +2028,7 @@ impl SqliteStore {
         limit: usize,
     ) -> Result<KeywordHits, StoreError> {
         let conn = self.read_conn()?;
-        Self::keyword_search_lexical_conn(&conn, bank_id, lq, limit, &[])
+        Self::keyword_search_lexical_conn(&conn, bank_id, lq, limit, &[], None)
     }
 }
 
@@ -2056,15 +2244,26 @@ impl Store for SqliteStore {
         tags: &[String],
         fts_limit: usize,
     ) -> Result<RecallInputs, StoreError> {
+        self.recall_inputs_dimensional(bank_id, lq, tags, fts_limit, &DimensionalFilter::default())
+    }
+
+    fn recall_inputs_dimensional(
+        &self,
+        bank_id: &str,
+        lq: &LexicalQuery<'_>,
+        tags: &[String],
+        fts_limit: usize,
+        dims: &DimensionalFilter,
+    ) -> Result<RecallInputs, StoreError> {
         let conn = self.read_conn()?;
         // BM25 first: the pool it feeds is bounded by the window *plus* these
         // hits, so the hit list has to be in hand before the pool can be asked
         // for. Doing it the other way round would need a second FTS scan.
-        let hits = Self::keyword_search_lexical_conn(&conn, bank_id, lq, fts_limit, tags)?;
+        let hits = Self::keyword_search_lexical_conn(&conn, bank_id, lq, fts_limit, tags, Some(dims))?;
         // Borrowed, not cloned: these are SQL bind parameters that are only ever
         // read, and `hits` outlives the statement.
         let hit_ids: Vec<&str> = hits.iter().map(|(id, _)| id.as_str()).collect();
-        let pool = Self::recall_pool_conn(&conn, bank_id, tags, RECALL_POOL_LIMIT, &hit_ids)?;
+        let pool = Self::recall_pool_conn(&conn, bank_id, tags, RECALL_POOL_LIMIT, &hit_ids, Some(dims))?;
         Ok((pool, hits))
     }
 
@@ -2248,6 +2447,7 @@ mod tests {
             content: format!("content-{id}"),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         }
     }
 
@@ -2286,6 +2486,7 @@ mod tests {
             content: content.to_string(),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         }
     }
 
@@ -4428,6 +4629,140 @@ fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp()
     );
     // …and the sentinel is gone, because "unknown age" is older than any cutoff.
 }
+    // ---- W1 dimensional schema ------------------------------------------
+
+    /// A database opened *before* W1 shipped, with none of the new columns,
+    /// reads back after migrate with every legacy row defaulting cleanly. The
+    /// fixture carries only what a pre-W1 store wrote: banks, memories without
+    /// the new columns, tags and FTS — and nothing else. This is the exact
+    /// shape that must not fail to open.
+    #[test]
+    fn migrate_should_add_w1_dimensional_columns_to_a_legacy_database() {
+        let path = tmp_db("w1-legacy");
+        {
+            // The pre-W1 schema: no scope/aspect/lifecycle/trust/parent_id/
+            // superseded_by/scope_globs columns anywhere.
+            let conn = Connection::open(&path).expect("raw open");
+            conn.execute_batch(
+                "CREATE TABLE banks (
+                   id TEXT PRIMARY KEY,
+                   name TEXT NOT NULL,
+                   config TEXT NOT NULL DEFAULT '{}'
+                 );
+                 CREATE TABLE memories (
+                   id TEXT PRIMARY KEY,
+                   bank_id TEXT NOT NULL REFERENCES banks(id) ON DELETE CASCADE,
+                   content TEXT NOT NULL,
+                   context TEXT,
+                   created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+                   document_id TEXT
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_memories_bank ON memories(bank_id);
+                 CREATE TABLE IF NOT EXISTS memory_tags (
+                   memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+                   tag TEXT NOT NULL,
+                   PRIMARY KEY(memory_id, tag)
+                 );
+                 INSERT INTO banks (id, name) VALUES ('a', 'a');
+                 INSERT INTO memories (id, bank_id, content)
+                   VALUES ('legacy-1', 'a', 'a legacy row with no dimensions');",
+            )
+            .expect("pre-W1 schema");
+        }
+        let s = SqliteStore::open(&path).expect("reopen");
+        let old = s.get("a", "legacy-1").expect("get").expect("some");
+        assert_eq!(old.meta.scope.0, "local", "legacy rows read as scope=local");
+        assert_eq!(old.meta.aspect.0, "episodic");
+        assert_eq!(old.meta.lifecycle.0, "active");
+        assert_eq!(old.meta.trust.0, "agent_inferred");
+        assert!(old.meta.parent_id.is_none());
+        assert!(old.meta.superseded_by.is_none());
+        assert!(old.meta.scope_globs.is_empty());
+
+        // The rest of the schema is created around the legacy table, so the
+        // database is usable: a new write with explicit dimensions lands and
+        // reads back verbatim.
+        let mut m = content_mem("a", "new-1", "a fresh row about jose");
+        m.meta.scope.0 = "global".to_string();
+        m.meta.aspect.0 = "preference".to_string();
+        m.meta.trust.0 = "human_approved".to_string();
+        // Stored comma-separated with no space, so a path with a space can
+        // never split into two globs on the way back.
+        m.meta.scope_globs = vec!["src".to_string(), "tests".to_string()];
+        s.put(&m).expect("put with dimensions");
+        let got = s.get("a", "new-1").expect("get").expect("some");
+        assert_eq!(got.meta.scope.0, "global");
+        assert_eq!(got.meta.aspect.0, "preference");
+        assert_eq!(got.meta.trust.0, "human_approved");
+        assert_eq!(got.meta.scope_globs, vec!["src".to_string(), "tests".to_string()]);
+
+        // Reopening runs migrate again and must not re-apply the ALTERs.
+        let s = SqliteStore::open(&path).expect("reopen again");
+        let old = s.get("a", "legacy-1").expect("get").expect("some");
+        assert_eq!(old.meta.scope.0, "local");
+        assert_eq!(s.list("a").expect("list").len(), 2);
+        rm_db(&path);
+    }
+
+    /// A fresh in-memory store has the W1 columns with the right defaults, and
+    /// they survive an update round-trip without leaking between writes.
+    #[test]
+    fn put_should_roundtrip_meta_through_update() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        let mut m = mem("a", "m1");
+        m.meta.scope.0 = "domain".to_string();
+        m.meta.aspect.0 = "map".to_string();
+        s.put(&m).expect("put with meta");
+        assert_eq!(s.get("a", "m1").expect("get").expect("some").meta.scope.0, "domain");
+        // A second put is an upsert: dimensions are rewritten as part of the
+        // row, so a new value replaces the old one rather than stacking.
+        let mut m2 = mem("a", "m1");
+        m2.meta.scope.0 = "session".to_string();
+        s.put(&m2).expect("put again");
+        assert_eq!(s.get("a", "m1").expect("get").expect("some").meta.scope.0, "session");
+    }
+
+    // The column list every read selects; pinning it stops a future read that
+    // forgets one of the W1 fields from silently defaulting on the way out.
+    #[test]
+    fn memory_columns_should_cover_every_w1_dimension() {
+        let sql = MEMORY_COLUMNS;
+        for col in ["scope", "aspect", "lifecycle", "trust", "parent_id", "superseded_by", "scope_globs"] {
+            assert!(sql.contains(col), "MEMORY_COLUMNS is missing {col}: {sql}");
+        }
+    }
+
+    // The uniform-default trap: every fixture corpus row the test corpus above
+    // would create, when left at defaults, is not a usable filter surface. The
+    // anti-pattern the plan names is a system whose columns are all the same
+    // value everywhere, so every filter is a silent no-op. This test asserts
+    // that the store *can* hold a non-uniform corpus, and pins the assertion
+    // as the requirement it is: if a future change makes the defaults the only
+    // thing a real retain ever writes, this fails and the dimension is dead.
+    #[test]
+    fn the_w1_columns_should_be_able_to_hold_a_non_uniform_corpus() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        for (i, scope, aspect) in [
+            ("m-0", "policy", "invariant"),
+            ("m-1", "global", "preference"),
+            ("m-2", "local", "episodic"),
+            ("m-3", "agent", "fact"),
+        ] {
+            let mut m = content_mem("a", i, "about jose");
+            m.meta.scope.0 = scope.to_string();
+            m.meta.aspect.0 = aspect.to_string();
+            s.put(&m).expect("put");
+        }
+        let rows = s.list("a").expect("list");
+        let mut scopes: Vec<&str> = rows.iter().map(|m| m.meta.scope.0.as_str()).collect();
+        scopes.sort();
+        assert_ne!(scopes, ["local", "local", "local", "local"], "a column that cannot vary is dead");
+        let mut aspects: Vec<&str> = rows.iter().map(|m| m.meta.aspect.0.as_str()).collect();
+        aspects.sort();
+        assert_ne!(aspects, ["episodic", "episodic", "episodic", "episodic"]);
+    }
 }
 
 #[cfg(test)]
@@ -4436,7 +4771,14 @@ mod probe_prefix {
     use crate::memory::Memory;
 
     fn mem(bank: &str, id: &str, content: &str) -> Memory {
-        Memory { id: id.into(), bank_id: bank.into(), content: content.into(), context: None, created_at: None }
+        Memory {
+            id: id.into(),
+            bank_id: bank.into(),
+            content: content.into(),
+            context: None,
+            created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
+        }
     }
 
     #[test]

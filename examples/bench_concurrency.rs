@@ -414,6 +414,7 @@ fn seed(db: &Path, memories: usize) -> Result<u64> {
             },
             context: Some(format!("session-{}", i / 8)),
             created_at: None,
+            meta: memory_wire::memory::MemoryMeta::default(),
         })?;
     }
     Ok(memories as u64)

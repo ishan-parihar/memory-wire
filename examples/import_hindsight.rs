@@ -356,6 +356,7 @@ fn main() -> anyhow::Result<()> {
                 content: chunk.text.to_string(),
                 context: Some(context),
                 created_at: stamp,
+                meta: memory_wire::memory::MemoryMeta::default(),
             };
             match store.put_doc(&memory, &doc_tags, Some(&document_id), UpdateMode::Replace) {
                 Ok(_) => written += 1,

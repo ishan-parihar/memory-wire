@@ -380,6 +380,7 @@ fn build(db: &std::path::Path, size: usize) -> Result<()> {
             },
             context: Some(format!("session-{}", i / 8)),
             created_at: None,
+            meta: memory_wire::memory::MemoryMeta::default(),
         })?;
     }
     Ok(())

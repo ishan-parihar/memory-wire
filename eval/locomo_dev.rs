@@ -281,6 +281,7 @@ impl Corpus {
                         content: text,
                         context: None,
                         created_at,
+                        meta: memory_wire::memory::MemoryMeta::default(),
                     })?;
                 }
                 Granularity::Turns => {
@@ -291,6 +292,7 @@ impl Corpus {
                             content: line,
                             context: None,
                             created_at: created_at.clone(),
+                            meta: memory_wire::memory::MemoryMeta::default(),
                         })?;
                     }
                 }
@@ -308,6 +310,7 @@ impl Corpus {
                             content: lines[start..end].join("\n"),
                             context: None,
                             created_at: created_at.clone(),
+                            meta: memory_wire::memory::MemoryMeta::default(),
                         })?;
                     }
                 }

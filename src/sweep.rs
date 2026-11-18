@@ -159,6 +159,7 @@ mod tests {
             content: content.to_string(),
             context: None,
             created_at: Some(created_at.to_string()),
+            meta: memory_wire::memory::MemoryMeta::default(),
         })
         .expect("put");
     }

@@ -446,6 +446,7 @@ pub fn recall(
                 content,
                 context: m.context.clone(),
                 created_at: m.created_at.clone(),
+                meta: m.meta.clone(),
             },
             score: scores.get(id.as_str()).copied().unwrap_or(0.0),
         });
@@ -527,6 +528,7 @@ mod tests {
             content: content.to_string(),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         }
     }
 

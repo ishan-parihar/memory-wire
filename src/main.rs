@@ -1920,6 +1920,7 @@ A third line exists so the remainder is definitely hidden."#;
                 content: content.to_string(),
                 context: None,
                 created_at: (!created_at.is_empty()).then(|| created_at.to_string()),
+                meta: memory_wire::memory::MemoryMeta::default(),
             };
             store
                 .put(&row("gone", "jose middleware from last year", "2020-01-01T00:00:00.000Z"))
@@ -1996,6 +1997,7 @@ A third line exists so the remainder is definitely hidden."#;
                     content: "a very old note".into(),
                     context: None,
                     created_at: Some("1970-01-01T00:00:00.000Z".into()),
+                    meta: memory_wire::memory::MemoryMeta::default(),
                 })
                 .expect("put");
         }

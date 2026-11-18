@@ -296,6 +296,7 @@ fn main() -> anyhow::Result<()> {
                 content: text.join("\n"),
                 context: None,
                 created_at: None,
+                meta: memory_wire::memory::MemoryMeta::default(),
             })?;
         }
         // One service, one index, every configuration. `recall_with_weights` is

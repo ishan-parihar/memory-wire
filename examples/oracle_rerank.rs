@@ -352,6 +352,7 @@ fn main() -> anyhow::Result<()> {
                 content: text.join("\n"),
                 context: None,
                 created_at: None,
+                meta: memory_wire::memory::MemoryMeta::default(),
             })?;
         }
         let svc = MemoryService::new(store);

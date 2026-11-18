@@ -84,6 +84,7 @@ fn main() -> anyhow::Result<()> {
             content: s.content.clone(),
             context: None,
             created_at: None,
+            meta: memory_wire::memory::MemoryMeta::default(),
         })?;
     }
     let svc = MemoryService::new(store);

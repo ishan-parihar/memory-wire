@@ -436,17 +436,53 @@ pub struct MemoryService<S: Store> {
 /// The two halves of tag filtering as one parameter, so the recall funnel
 /// keeps a fixed arity: `include` narrows to rows carrying any of them,
 /// `exclude` drops rows carrying any of them before ranking.
+/// The dimensional filter one recall narrows the candidate pool by.
+///
+/// `include_history` is the only flag that widens rather than narrows: the
+/// default read path hides `superseded`/`quarantined` rows entirely (see
+/// [`DimensionalScope::active`]), and passing it opts back in so the lineage of
+/// a superseded memory stays readable. `lifecycle` narrows further, on top of
+/// that default. Every filter is applied in SQL before ranking — a filter that
+/// narrowed after fusion would still pay for the ranking work.
+#[derive(Debug, Clone, Default)]
+pub struct DimensionalScope<'a> {
+    /// Allowed `scope` values; empty keeps them all.
+    pub scopes: &'a [String],
+    /// Allowed `aspect` values; empty keeps them all.
+    pub aspects: &'a [String],
+    /// Allowed `lifecycle` values; empty keeps them all (minus the default
+    /// hide of `superseded`/`quarantined`).
+    pub lifecycles: &'a [String],
+    /// Serve superseded/quarantined rows too.
+    pub include_history: bool,
+}
+
+impl DimensionalScope<'_> {
+    /// The default scope: no filter, hide superseded/quarantined.
+    pub fn active() -> DimensionalScope<'static> {
+        DimensionalScope::default()
+    }
+}
+
 #[derive(Default)]
 struct TagScope<'a> {
     include: &'a [String],
     exclude: &'a [String],
+    /// Optional dimensional filter; `None` keeps the shape byte-identical to
+    /// the pre-W1 recall (no SQL, no filters, no row removal).
+    dimensions: Option<DimensionalScope<'a>>,
 }
 
 impl<'a> TagScope<'a> {
     fn new(include: &'a [String], exclude: &'a [String]) -> Self {
-        Self { include, exclude }
+        Self {
+            include,
+            exclude,
+            dimensions: None,
+        }
     }
 }
+
 
 impl<S: Store> MemoryService<S> {
     /// Create a service over the given store.
@@ -575,6 +611,10 @@ impl<S: Store> MemoryService<S> {
             // `None`: the store stamps it on insert. `Some`: already normalized
             // by `parse_created_at`, so the stored stamp is byte-comparable.
             created_at,
+            // W1 defaults: every field here is a store default, so a caller that
+            // did not ask for dimensional metadata gets exactly the same row a
+            // pre-W1 retain wrote.
+            meta: crate::memory::MemoryMeta::default(),
         };
         // The store returns the id of the row that now holds the content, which is
         // this memory's own id unless the write was deduplicated.
@@ -640,6 +680,23 @@ impl<S: Store> MemoryService<S> {
         tags: &[String],
         exclude: &[String],
     ) -> Result<Vec<ScoredMemory>, ApiError> {
+        self.recall_filtered_dimensional(bank_id, query, budget, tags, exclude, None)
+    }
+
+    /// Recall narrowed by the W1 dimensions, in SQL, before ranking.
+    ///
+    /// Passing `None` for `dimensions` is byte-identical to [`Self::recall_filtered`]:
+    /// no extra SQL clause is emitted and no row is removed, so the shipped
+    /// recall path pays nothing for the capability it does not use.
+    pub fn recall_filtered_dimensional(
+        &self,
+        bank_id: &str,
+        query: &str,
+        budget: Option<usize>,
+        tags: &[String],
+        exclude: &[String],
+        dimensions: Option<DimensionalScope<'_>>,
+    ) -> Result<Vec<ScoredMemory>, ApiError> {
         Self::require_bank(bank_id)?;
         // Both branches read the config, because `recallSynonyms` is independent
         // of the budget: a caller who passes an explicit `budget` named the token
@@ -669,14 +726,18 @@ impl<S: Store> MemoryService<S> {
                 )
             }
         };
-        self.recall_with(
-            bank_id,
-            query,
-            budget,
-            TagScope::new(tags, exclude),
-            &FusionWeights::SHIPPED,
-            synonyms,
-        )
+        {
+            let mut scope = TagScope::new(tags, exclude);
+            scope.dimensions = dimensions;
+            self.recall_with(
+                bank_id,
+                query,
+                budget,
+                scope,
+                &FusionWeights::SHIPPED,
+                synonyms,
+            )
+        }
     }
 
     /// Recall top memories for `query` within `budget_tokens`.
@@ -764,9 +825,23 @@ impl<S: Store> MemoryService<S> {
             scope: weights.keyword_scope,
             synonyms: expand_synonyms(synonyms, query),
         };
-        let (mut all, mut keyword_hits) = self
-            .store
-            .recall_inputs_lexical(bank_id, &lexical, &normalized, FTS_LIMIT)?;
+        // The dimensional filter is built from what the caller passed; `None`
+        // means the shipped recall path runs byte-identically — no SQL, no rows
+        // removed, same ranking, same score. `Some` narrows both streams in SQL
+        // before fusion, so an excluded row never votes.
+        let dims = tags.dimensions.as_ref().map(|d| crate::store::DimensionalFilter {
+            scopes: d.scopes.to_vec(),
+            aspects: d.aspects.to_vec(),
+            lifecycles: d.lifecycles.to_vec(),
+            include_history: d.include_history,
+        });
+        let (mut all, mut keyword_hits) = if let Some(dims) = dims.as_ref() {
+            self.store
+                .recall_inputs_dimensional(bank_id, &lexical, &normalized, FTS_LIMIT, dims)?
+        } else {
+            self.store
+                .recall_inputs_lexical(bank_id, &lexical, &normalized, FTS_LIMIT)?
+        };
         // Exclusion, one set lookup for the whole recall: the ids carrying any
         // excluded tag are dropped from both streams before fusion, so an
         // excluded row neither votes nor can be injected (audit GAP-3).
@@ -868,6 +943,9 @@ impl<S: Store> MemoryService<S> {
                     content,
                     context: m.context.clone(),
                     created_at: m.created_at.clone(),
+                    // Borrowed as-is: recall never rewrites metadata, so the
+                    // served shape is the stored shape.
+                    meta: m.meta.clone(),
                 },
                 score: scores.get(id.as_str()).copied().unwrap_or(0.0),
             });
@@ -1864,6 +1942,7 @@ mod tests {
             content: "gold marker: the auth stack.\nThe second line hides.\nThird.".into(),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         };
         let served = summary_content(&m, "b");
         assert!(served.starts_with("gold marker: the auth stack."), "{served}");
@@ -1882,6 +1961,7 @@ mod tests {
             content: long,
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         };
         let served = summary_content(&m, "b");
         let capsule_end = served.find("…[summary").expect("marker");
@@ -1900,6 +1980,7 @@ mod tests {
             content: "n".repeat(500),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         };
         let served = summary_content(&m, "b");
         let capsule_end = served.find("…[summary").expect("marker");
@@ -1914,6 +1995,7 @@ mod tests {
             content: "one line, short".into(),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         };
         assert_eq!(summary_content(&m, "b"), "one line, short");
         // Empty content serves empty, borrowed, no marker.
@@ -1931,6 +2013,7 @@ mod tests {
             content: format!("{}{}", "é".repeat(100), "\nsecond line"),
             context: None,
             created_at: None,
+            meta: crate::memory::MemoryMeta::default(),
         };
         let served = summary_content(&m, "b");
         assert!(served.starts_with(&"é".repeat(100)), "{served}");
@@ -2778,6 +2861,7 @@ mod tests {
                 content: "auth uses jose middleware".to_string(),
                 context: None,
                 created_at: None,
+                meta: crate::memory::MemoryMeta::default(),
             })
             .expect("put");
 
@@ -2993,6 +3077,7 @@ mod tests {
                     content: (*content).to_string(),
                     context: None,
                     created_at: Some((*created).to_string()),
+                    meta: crate::memory::MemoryMeta::default(),
                 })
                 .expect("put");
         }

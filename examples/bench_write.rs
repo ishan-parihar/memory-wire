@@ -381,6 +381,7 @@ fn time_write(path: Write3, n: usize) -> Result<Write> {
                     content: content(i),
                     context: Some(format!("session-{}", i / 8)),
                     created_at: None,
+                    meta: memory_wire::memory::MemoryMeta::default(),
                 })?;
                 lat.push(t.elapsed().as_micros() as u64);
             }

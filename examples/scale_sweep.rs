@@ -62,6 +62,7 @@ fn main() -> anyhow::Result<()> {
                 content: c,
                 context: Some(format!("session-{}", i / 8)),
                 created_at: None,
+                meta: memory_wire::memory::MemoryMeta::default(),
             })?;
         }
         let build_ms = t.elapsed().as_millis();

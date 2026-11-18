@@ -159,6 +159,7 @@ fn main() -> Result<()> {
                 },
                 context: Some(format!("session-{}", i / 8)),
                 created_at: None,
+                meta: memory_wire::memory::MemoryMeta::default(),
             })?;
         }
         harness_loaded.push(rss_kb().unwrap_or(0));
