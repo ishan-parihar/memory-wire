@@ -65,7 +65,7 @@ meaningful.
 W0  correctness fixes (test hermeticity, redactor test gap)   [hours, unblocks gates]
 W1  dimensional metadata (scope/aspect/lifecycle/trust)       [schema + write + read]
 W2  mount profiles (read_only, trust ceiling)                 [config + 2 guards]
-W3  retroactive redaction (id/version + pattern)              [version table]
+W3  retroactive redaction (id/version + pattern)              [version table] ✅
 W4  deterministic hygiene scan + apply                        [new module + verb]
 W5  startup grounding capsule (bounded, opt-in)               [new read path]
 W6  connect --with-skills                                     [one flag]
@@ -184,7 +184,7 @@ path tested; zero change to a bank with no config.
 
 ---
 
-### W3 — Retroactive redaction
+### W3 — Retroactive redaction ✅ DONE (commit 052f3a6)
 
 Rests on **"genuinely unbuilt" row 3** and **F6**.
 
