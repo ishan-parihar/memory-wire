@@ -39,6 +39,7 @@ pub mod api;
 pub mod capture;
 pub mod embed;
 pub mod hygiene;
+pub mod grounding;
 pub mod memory;
 pub mod recall;
 pub mod store;
