@@ -1133,9 +1133,32 @@ impl<S: Store> MemoryService<S> {
         Ok(self.store.get(bank_id, id)?)
     }
 
-    /// Delete one memory; `Ok(false)` when it was not in `bank_id`.
-    pub fn delete_memory(&self, bank_id: &str, id: &str) -> Result<bool, ApiError> {
+    /// The read side of the W2 `readOnly` guard, for the write paths that are
+    /// not `retain`.
+    ///
+    /// `retain_doc_at_trusted` reads the config inline because it also needs the
+    /// `maxTrust` ceiling; the three custody writes — delete, supersede, redact —
+    /// need only this. They were gated on `require_bank` alone until the audit,
+    /// which meant `readOnly` refused the write a caller usually means and
+    /// silently allowed the three a caller uses to *remove* data. A read-only
+    /// bank that can still be emptied is not a boundary, so the guard is one
+    /// function every non-retain write calls rather than three copies that can
+    /// drift.
+    fn require_writable(&self, bank_id: &str) -> Result<(), ApiError> {
         Self::require_bank(bank_id)?;
+        if self.config_of(bank_id)?.read_only {
+            return Err(ApiError::ReadOnlyBank);
+        }
+        Ok(())
+    }
+
+    /// Delete one memory; `Ok(false)` when it was not in `bank_id`.
+    ///
+    /// A `readOnly` bank refuses this like every other write (W2): the flag is
+    /// "this bank's contents are settled", and a delete is the most settled-
+    /// content-destroying operation there is.
+    pub fn delete_memory(&self, bank_id: &str, id: &str) -> Result<bool, ApiError> {
+        self.require_writable(bank_id)?;
         Ok(self.store.delete(bank_id, id)?)
     }
 
@@ -1146,8 +1169,12 @@ impl<S: Store> MemoryService<S> {
     /// `superseded_by` is the id of the superseding memory, or `None` for a
     /// plain retract. Returns `Ok(true)` when a row was marked, `Ok(false)`
     /// when the id was not in `bank_id`.
+    ///
+    /// A `readOnly` bank refuses this: a supersede hides a row from default
+    /// recall and appends to the audit trail, so it changes what the bank serves
+    /// even though the row survives. Hiding is a write.
     pub fn supersede_memory(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, ApiError> {
-        Self::require_bank(bank_id)?;
+        self.require_writable(bank_id)?;
         Ok(self.store.supersede(bank_id, id, superseded_by)?)
     }
 
@@ -1159,8 +1186,11 @@ impl<S: Store> MemoryService<S> {
     /// The audit skeleton (op, created_at, actor, row id) survives; the value
     /// is gone from `memories` and `memory_versions`. The replacement is
     /// `[REDACTED:<name>]` so the row is still recognizable.
+    ///
+    /// A `readOnly` bank refuses this. Redaction rewrites stored bytes in place,
+    /// which is the clearest case of a write the flag exists to stop.
     pub fn redact_memory(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, ApiError> {
-        Self::require_bank(bank_id)?;
+        self.require_writable(bank_id)?;
         Ok(self.store.redact(bank_id, id, pattern, name)?)
     }
 
@@ -2790,14 +2820,59 @@ mod tests {
     #[test]
     fn a_read_only_bank_should_refuse_every_write_at_every_surface() {
         let svc = svc_with_banks(&["ro"]);
-        svc.set_bank_config("ro", r#"{"readOnly":true}"#).expect("set");
-        // The retain path (used by HTTP and MCP alike) refuses.
-        let err = svc
-            .retain("ro", "jose is great", None)
-            .expect_err("a read-only bank must refuse writes");
-        assert_eq!(http_error(&err), (StatusCode::BAD_REQUEST, "bank is read-only"));
-        // No row landed: the refusal happens before any write.
-        assert!(svc.list_memories("ro", 10, 0).expect("list").is_empty());
+
+        // Seed one row *before* the flag goes on, so the custody writes have
+        // something real to refuse. This is the case the earlier version of
+        // this test missed: it only exercised `retain`, so it went green while
+        // DELETE and supersede happily emptied the bank.
+        svc.retain("ro", "jose is great", None).expect("seed before read-only");
+        let id = svc.list_memories("ro", 10, 0).expect("list").remove(0).id;
+        svc.set_bank_config("ro", r#"{"readOnly":true}"#).expect("set read-only");
+
+        let denied = |e: ApiError| {
+            assert_eq!(http_error(&e), (StatusCode::BAD_REQUEST, "bank is read-only"))
+        };
+
+        // 1. retain (HTTP and MCP both route through here).
+        denied(svc.retain("ro", "jose is great", None).expect_err("retain must refuse"));
+
+        // 2. delete. The destructive half the flag exists for.
+        denied(svc.delete_memory("ro", &id).expect_err("delete must refuse"));
+
+        // 3. supersede. Hiding a row from default recall is a write.
+        denied(svc.supersede_memory("ro", &id, None).expect_err("supersede must refuse"));
+
+        // 4. redact. Rewriting stored bytes in place is a write.
+        denied(svc.redact_memory("ro", &id, "jose", "probe").expect_err("redact must refuse"));
+
+        // Nothing changed: the row is still there and still readable. A guard
+        // that refused the call but let the write through would pass every
+        // assertion above, so the state is the real test.
+        let after = svc.list_memories("ro", 10, 0).expect("list after");
+        assert_eq!(after.len(), 1, "the seeded row survived every refused write");
+        assert_eq!(after[0].content, "jose is great");
+        assert!(svc.get_memory("ro", &id).expect("get").is_some());
+        // And it is still in default recall, i.e. the supersede did not land.
+        assert!(!svc.recall("ro", "jose", 100).expect("recall").is_empty());
+    }
+
+    #[test]
+    fn a_writable_bank_keeps_every_custody_write() {
+        // The mirror of the test above: with no `readOnly` the same four calls
+        // must all still work. A guard that refused everything would pass the
+        // read-only test and break every real bank.
+        let svc = svc_with_banks(&["rw"]);
+        let a = svc.retain("rw", "alpha", None).expect("retain a");
+        let b = svc.retain("rw", "beta", None).expect("retain b");
+
+        svc.supersede_memory("rw", &a, Some(&b)).expect("supersede");
+        assert!(svc.get_memory("rw", &a).expect("get").expect("some").meta.superseded_by.is_some());
+
+        svc.redact_memory("rw", &b, "beta", "probe").expect("redact");
+        assert!(svc.get_memory("rw", &b).expect("get").expect("some").content.contains("[REDACTED:probe]"));
+
+        assert!(svc.delete_memory("rw", &a).expect("delete"));
+        assert!(!svc.delete_memory("rw", &a).expect("second delete finds nothing"));
     }
 
     #[test]

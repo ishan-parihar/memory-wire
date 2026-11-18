@@ -234,6 +234,13 @@ enum ToolOutcome {
 /// `memory_retain` adds a memory, it never removes or overwrites one — and
 /// none of the four is idempotent, because a repeated retain writes a second
 /// memory rather than recognizing the first.
+///
+/// W7a's `memory_supersede` is the one tool whose `read_only_hint` must be
+/// `false`: it changes what the bank serves. The row survives, but its
+/// `lifecycle` becomes `superseded` so default recall no longer returns it,
+/// and a `memory_versions` row is appended. A host that trusts `readOnlyHint`
+/// to decide whether a call needs a confirmation prompt would have skipped
+/// that prompt for a mutating write.
 fn annotations(read_only: bool) -> ToolAnnotations {
     let mut a = ToolAnnotations::default();
     a.read_only_hint = Some(read_only);
@@ -389,7 +396,9 @@ impl<S: Store> Server<S> {
                     "required": ["id"]
                 })),
             )
-            .with_annotations(annotations(true)),
+            // Not `readOnly`: a supersede removes the row from default recall and
+            // appends an audit row. See `annotations`.
+            .with_annotations(annotations(false)),
         ]
         .into_iter()
         .collect()
@@ -1102,8 +1111,12 @@ mod tests {
                 let name = tool["name"].as_str().unwrap_or_default();
                 let ann = &tool["annotations"];
                 assert_eq!(ann["destructiveHint"], json!(false), "{name} must not be destructive");
-                // Only retain writes; the other four must be marked read-only.
-                let expected = name != RETAIN;
+                // Only the read paths and retain-minus-supersede are read-only.
+                // The rule is not "retain writes, the rest read": `SUPERSEDE`
+                // mutates too — it sets `lifecycle='superseded'` and appends an
+                // audit row — so marking it read-only would tell a host it can
+                // run it without a confirmation prompt. Two tools write.
+                let expected = name != RETAIN && name != SUPERSEDE;
                 assert_eq!(ann["readOnlyHint"], json!(expected), "{name}");
                 assert_eq!(
                     tool["inputSchema"]["type"], json!("object"),
