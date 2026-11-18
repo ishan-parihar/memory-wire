@@ -66,8 +66,8 @@ W0  correctness fixes (test hermeticity, redactor test gap)   [hours, unblocks g
 W1  dimensional metadata (scope/aspect/lifecycle/trust)       [schema + write + read]
 W2  mount profiles (read_only, trust ceiling)                 [config + 2 guards]
 W3  retroactive redaction (id/version + pattern)              [version table] ✅
-W4  deterministic hygiene scan + apply                        [new module + verb]
-W5  startup grounding capsule (bounded, opt-in)               [new read path]
+W4  deterministic hygiene scan + apply                        [new module + verb] ✅
+W5  startup grounding capsule (bounded, opt-in)               [new read path] ✅
 W6  connect --with-skills                                     [one flag]
 ```
 
@@ -209,7 +209,7 @@ original; a second `redact` is idempotent.
 
 ---
 
-### W4 — Deterministic hygiene scan
+### W4 — Deterministic hygiene scan ✅ DONE (commit ad8472a)
 
 Rests on **"genuinely unbuilt" row 4** and **F8**. This is the "Dreaming
 substrate" — **no LLM, no new dependency, no new process**.
@@ -251,7 +251,7 @@ nothing else; scan is deterministic across runs; scan touches no ranking path.
 
 ---
 
-### W5 — Startup grounding capsule
+### W5 — Startup grounding capsule ✅ DONE (commit 4540b19)
 
 Rests on **"genuinely unbuilt" row 5** and **F10**.
 
@@ -329,7 +329,7 @@ available and unused.
 
 **Two sub-items, deliberately separate because they fail differently.**
 
-**W7a — a supersede/retract verb on the MCP surface.** Today `memory_retain`
+**W7a — a supersede/retract verb on the MCP surface.** ✅ DONE (commit d34a0a5) Today `memory_retain`
 can only append, so an agent that notices an outdated memory mid-turn has no way
 to correct it; it can only add a competing row. `delete_memory` exists but is
 HTTP-only, so an MCP client cannot reach it. Add one verb — `memory_supersede`
