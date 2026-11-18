@@ -1,0 +1,24 @@
+{
+  "round": "context-pack-2026-11-18-round2",
+  "venue": "aistudio",
+  "model": "gemini-4-hydrogen/xhigh",
+  "effort": "xhigh",
+  "account_slot": 0,
+  "account_label": "Google Account: Ishan Parihar",
+  "pack_bytes": 93498,
+  "pack_max_bytes": 110000,
+  "pack_sections": 7,
+  "prompt_words": 808,
+  "response_provenance": "DOM extraction \u2014 BrowserOS read of page 192 (the send path's own archive() never ran; see SEND-NOTE.md)",
+  "response_chars": 22244,
+  "response_bytes": 22328,
+  "response_captured_at": "2026-11-18T22:36:52Z",
+  "send_page": 192,
+  "send_result": "pack posted correctly (91,834-char user turn); adapter reported a stale-draft failure because its readback took the last turn (the model's 78-char thinking chrome) instead of the last user turn \u2014 see SEND-NOTE.md",
+  "tool_defect_found": "venue_aistudio.posted_message_readback_js used us[us.length-1]; fixed to prefer the sentinel-bearing turn, then the longest turn. Mutation-verified: 2 new tests in tests/test_venue_aistudio.py fail with the old selector and pass with the new. 75 tests pass.",
+  "web_citations": [
+    "https://doi.org/10.48550/arXiv.2609.13889",
+    "https://api.semanticscholar.org/CorpusID:267312595"
+  ],
+  "response_url": "https://aistudio.google.com/prompts/1Now0X_xKq8fHPVvL4h7uskUH4FpzPlD8"
+}
