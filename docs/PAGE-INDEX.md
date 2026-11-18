@@ -39,3 +39,5 @@
 | [`feed.md`](kb/feed.md) | LEDGER | Agent feed | — |
 | [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) | LIVE | Install memory-wire (agent runbook) — Self-contained HTTP API plus an MCP stdio server. Nine curl steps, each with an assertion you can ch… | — |
 | [`2026-09-27-PLAN.md`](audit/2026-09-27-PLAN.md) | EVIDENCE | PLAN: memory-wire (Rust) — Hindsight × agentmemory — Goal: the best memory infrastructure we can have — Hindsight's learning memory (retain/recall/reflec… | — |
+| [`2026-11-18-surface-audit.md`](audit/2026-11-18-surface-audit.md) | EVIDENCE | Surface audit — the tree as it is at v0.10.0, against three external upgrade proposals: what is already shipped, what is closed by measurement, what is genuinely unbuilt | — |
+| [`2026-11-18-hierarchical-grounded-memory-upgrade.md`](plans/2026-11-18-hierarchical-grounded-memory-upgrade.md) | PLAN-ACTIVE | Plan: hierarchical grounded memory (W0–W6) — dimensional schema, mount profiles, retroactive redaction, deterministic hygiene, grounding capsule, `--with-skills` | — |

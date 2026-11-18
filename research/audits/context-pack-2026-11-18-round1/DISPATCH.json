@@ -1,0 +1,23 @@
+{
+  "round": "context-pack-2026-11-18-round1",
+  "date": "2026-11-18",
+  "venue": "aistudio",
+  "surface": "aistudio.google.com — Gemini 4 Hydrogen",
+  "model": "gemini-4-hydrogen/xhigh",
+  "thinking_level": "xhigh",
+  "url_context": true,
+  "google_search_grounding": true,
+  "transport": "inline (no attachment path on this venue)",
+  "pack_bytes": 74961,
+  "prompt_bytes": 3786,
+  "body_bytes": 78189,
+  "response_provenance": "DOM extraction from the live page body (evaluate_in_page on page 89); a three-dots Copy-as-markdown capture was NOT used",
+  "response_chars": 18985,
+  "response_captured_at": "2026-11-18T04:13:22Z",
+  "reply_titled": "Reviewing Agent Memory Service Plan",
+  "notes": [
+    "First send attempt logged 'composer holds -1 of 78189 chars' and reported failure, but the message had in fact been posted: page 89 carried the prompt and a complete reply. The -1 was a post-typing verify that read a different page than the fill wrote to, on a surface shared with three concurrent context-pack rounds from another session.",
+    "Two other context-pack rounds (operant onboarding-ux, operant generative-ui) were dispatching to the same AI Studio surface during this round; their SEND.log files show the same dirty-composer churn. Pages were cleared between probes.",
+    "No RAW-PAGE.md: the capture is a DOM extraction, and the page has since been navigated away from."
+  ]
+}

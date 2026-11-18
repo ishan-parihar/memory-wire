@@ -10,7 +10,69 @@ correction of the v0.8.0-era "live-verified update" claim). racknerd sits on 0.8
 (installer hop; wiring preserved; `update` now reads 12 known releases). The H9 BEAM
 shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
+> **This page's header is stale and says so.** HEAD is `36bb947` (**v0.10.0**), not
+> `c919f13`/v0.8.2. §1 below carries the 2026-11-18 correction, the upgrade plan it
+> produced, and the external review round run against it. Read §1 first.
+
+## Contents
+
+- [1. What is in the working tree](#1-what-is-in-the-working-tree-post-release-residue)
+- [2. Current numbers](#2-current-numbers-every-one-traces-to-a-committed-artifact)
+- [3. Instrument caveats](#3-instrument-caveats-a-fresh-agent-will-otherwise-rediscover-the-hard-way)
+- [4. Environment](#4-environment)
+- [5. What the LoCoMo judged run says](#5-what-the-locomo-judged-run-says-about-where-the-headroom-is)
+
 ## 1. What is in the working tree (post-release residue)
+
+  **2026-11-18 — read this first if you are picking the upgrade up.** HEAD is
+  `36bb947`, **v0.10.0**, not the `c919f13`/v0.8.2 this page was written at;
+  the tree has moved a long way since. Three external upgrade proposals arrived
+  (Claude hierarchical memory + Dreaming, a red-team of it, and an `operant` ×
+  `memory-wire` blueprint) and **all three describe a tree that does not exist**:
+  they claim 54 MCP tools where there are **4**, they ask for `WAL` /
+  `busy_timeout` / loopback bind / `spawn_blocking` which **shipped in v0.7.0**,
+  and they promise a `single-session-preference` R@1 lift from a hierarchy that
+  **structurally cannot produce one** (LongMemEval-S is per-question fresh index,
+  session-as-document — there is no HotIndex and no global tier to score).
+
+  The grounded replacement is **`docs/audit/2026-11-18-surface-audit.md`**
+  (findings F1–F10, every one marked verified or asserted) and
+  **`docs/plans/2026-11-18-hierarchical-grounded-memory-upgrade.md`** (W0–W7).
+  TODO rows 21–29 are the register. **Nothing is implemented yet.**
+
+  **A context-pack review round has been run against that plan** (Hydrogen at
+  `xhigh`, 2026-11-18): pack, prompt, reply and the mandatory verification pass
+  are in **`research/audits/context-pack-2026-11-18-round1/`**. It changed the
+  plan in four ways, and one of its findings was a defect in my own pack:
+
+  - **W7 added** — the per-turn injection path, and a supersede verb. The review
+    was right that W0–W6 optimised a subsystem that is already fine while a
+    diagnosed per-turn defect sat outside it.
+  - **Gate 4 now says plainly that W1–W5 cannot move any LongMemEval-S or LoCoMo
+    metric.** True by construction (every gate is byte-identical), and the plan
+    had never said so.
+  - **Two of the review's claims are refuted** and recorded as such: `hooks.rs`
+    does **not** discard the score (it has carried `ScoredHit.score` since before
+    v0.10.0, pinned at `src/hooks.rs:1497`), and the provenance label **is**
+    present. D-ASK's own doc was stale and is corrected in place.
+  - **The pack omitted the plan's W0–W6 body** (lines 82–331) to fit a byte
+    budget — my error, and the reason the reviewer fell back on D-ASK's stale
+    description. Any future round packs the plan whole.
+
+  Three facts from that audit outrank everything else on this page:
+
+  - **The four "built but inert" ranking mechanisms are not inert-pending, they
+    are measured and closed** (`eval/LOCOMO_LEVERS.md`, `CLOSED.md`): H1a
+    `keyword_scope` R@1 +3.0pp but gate failed; H1b `overlap_scope` multi-hop
+    R@1 **−11.2pp**; H1c `bm25_magnitude` a wash; H3 recency temporal R@1
+    **−33.4pp**. Do not re-propose them (AGENTS §8).
+  - **`cargo test --locked` is currently RED on this machine**, not from a
+    regression: `connect::tests::golden_install_shapes` uses the real `PATH`
+    probe and `copilot` is not installed. Verified pre-existing by stashing and
+    re-running on the pristine tree. TODO #21 fixes it; until then "the gate is
+    green" is false here.
+  - **No item in the new plan changes `FusionWeights::SHIPPED`**, and no item is
+    selected on LongMemEval. The plan ships zero ranking changes.
 
   The §45 records pass and the navigation pass are **committed** (`3ac422c`,
   `c919f13`); the tree was clean at `c919f13`. It now holds the **§6 cycle
@@ -242,10 +304,10 @@ From `amb_locomo_rag.json.gz` joined with `eval/data/locomo/queries.json`
   not a memory-wire one. The adapter now carries `MEMORY_WIRE_TOPK` to move that cut
   for measurement; H4 used it to fix the served set at k = 3/5/10.
 
-<!-- genome:zone status sha=d357c832892b -->
+<!-- genome:zone status sha=6ccf7a72b2dd -->
 | status | items |
 |---|---|
-| open | 4 |
+| open | 13 |
 | in-progress | 1 |
 | done | 15 |
 
@@ -254,4 +316,9 @@ From `amb_locomo_rag.json.gz` joined with `eval/data/locomo/queries.json`
 - `11` [open] LLM-judged runs: AMB `rag` (BEAM/PersonaMem/LifeBench), OAMB LME-60, memorybench ConvoMem, MemBase R
 - `12` [open] AMB provider writes at the product's granularity (turn pairs, as the hooks do), not 25k-token sessio
 - `13` [open] aroute: 200-with-`{"error"}` logged `outcome=ok` with no failover (B1); cline replies forwarded insi
+- `21` [open] **W0.1 — make `golden_install_shapes` hermetic.** It calls `run()`, which uses the real `binary_on_p
+- `22` [open] **W0.2 — pin the redactor against code identifiers.** `src/capture.rs` tests cover OpenAI/GitHub/AWS
+- `23` [open] **W1 — dimensional metadata.** Add `scope` / `aspect` / `lifecycle` / `trust` / `parent_id` / `super
+- `24` [open] **W2 — mount profiles.** `read_only` and `max_trust` on `BankConfig`; writes to a `read_only` bank r
+- `25` [open] **W3 — retroactive redaction.** `memory_versions` table (append-only) + `redact(memory_id, pattern)`
 <!-- genome:end status -->

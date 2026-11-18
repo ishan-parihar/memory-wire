@@ -24,7 +24,24 @@ system has no notion of relevant*.
 
 ## Mechanism
 
-`src/hooks.rs:333-362`, the live path.
+> **CORRECTION 2026-11-18 — the code block below is STALE. Do not file a bug
+> against it.** It was written 2026-09-30. The score is **no longer discarded**:
+> at `36bb947` (v0.10.0) `src/hooks.rs:660` `recall_at` returns
+> `Option<Vec<ScoredHit>>`, `ScoredHit` (`:496-507`) carries `content`,
+> `created_at` **and** `score: Option<f64>`, `recall_at_fmt` (`:583`) asks for
+> `format` explicitly so the score is on the wire, and
+> `the_score_should_survive_the_client_boundary` (`:1497`) pins it.
+>
+> **The open defect is narrower and still real:** `recall_section` (`:680-706`)
+> reads `content` and `created_at` and **never reads `score`**. The only consumer
+> of `score` is a `tracing::debug!` (`:640`) whose own comment says "Nothing
+> branches on this and nothing is gated by it". So the evidence-gathering half
+> of this document has **landed**; the policy half has not.
+>
+> Tracked as **W7** in
+> `docs/plans/2026-11-18-hierarchical-grounded-memory-upgrade.md`.
+
+`src/hooks.rs:333-362`, the live path **as it was when this was written**.
 
 ```rust
 fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<String>> {
