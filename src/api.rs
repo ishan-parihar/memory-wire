@@ -17,7 +17,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::capture::redact_pii;
-use crate::memory::{Bank, Memory};
+use crate::memory::{Aspect, Bank, Lifecycle, Memory, MemoryMeta, Scope};
 use crate::recall::{
     rank_candidates_scoped, recency_rank, rrf_fuse_with_magnitudes, trim_to_budget, FusionWeights,
     RankedHit,
@@ -693,6 +693,84 @@ impl<S: Store> MemoryService<S> {
             created_at,
             Trust::AgentInferred,
         )
+    }
+
+    /// [`Self::retain_doc_at_trusted`] with explicit dimensional metadata (W1).
+    ///
+    /// The six W1 fields — `scope`, `aspect`, `lifecycle`, `trust`,
+    /// `parent_id`, `superseded_by` and `scope_globs` — were writable only from
+    /// Rust: no HTTP, MCP or CLI caller could set any of them, so every row in
+    /// every real store carried the defaults (`local`/`episodic`). The filters
+    /// that read those columns therefore had nothing to filter, and `grounding`
+    /// correctly returned nothing because nothing could be eligible.
+    ///
+    /// `meta.trust` is still the caller's *claim*: the bank's `maxTrust` ceiling
+    /// decides what is stored, exactly as in `retain_doc_at_trusted`. Every other
+    /// field is stored verbatim, because they are descriptive and a descriptive
+    /// field the store second-guessed would make a write non-reproducible.
+    ///
+    /// `lifecycle` is the caller's too: a migration importing an archive needs to
+    /// write `superseded` or `quarantined` directly rather than through a second
+    /// call.
+    #[allow(clippy::too_many_arguments)] // one optional metadata bundle, not seven params
+    pub fn retain_doc_at_full(
+        &self,
+        bank_id: &str,
+        content: &str,
+        context: Option<String>,
+        tags: &[String],
+        document_id: Option<&str>,
+        update_mode: UpdateMode,
+        created_at: Option<String>,
+        meta: crate::memory::MemoryMeta,
+    ) -> Result<String, ApiError> {
+        Self::require_bank(bank_id)?;
+        if content.trim().is_empty() {
+            return Err(ApiError::InvalidContent);
+        }
+        let cfg = self.config_of(bank_id)?;
+        if cfg.read_only {
+            return Err(ApiError::ReadOnlyBank);
+        }
+        // The caller's `trust` is free text on the wire; parse it into the typed
+        // tier the ceiling is defined against. An unrecognised value reads as
+        // `AgentInferred`, the same fail-open rule `Trust::tier` documents for a
+        // typo'd `maxTrust` — a value this build does not understand must not
+        // take a write down, and the floor tier is the safe reading.
+        let claimed = Trust::tier(&meta.trust.0).unwrap_or(Trust::AgentInferred);
+        let stored_trust = match cfg.max_trust {
+            Some(ceiling) if claimed > ceiling => claimed.downgrade(),
+            _ => claimed,
+        };
+        self.store.put_bank(&Bank {
+            id: bank_id.to_string(),
+            name: bank_id.to_string(),
+        })?;
+        let document_id = document_id.map(str::trim).filter(|d| !d.is_empty());
+        let mut all = tags.to_vec();
+        all.extend(cfg.retain_tags);
+        // Everything the caller set, with only `trust` replaced by what the
+        // ceiling accepted. A descriptive field the store rewrote would make two
+        // identical requests store different rows.
+        let meta = crate::memory::MemoryMeta {
+            trust: crate::memory::Trust(stored_trust.as_str().to_string()),
+            ..meta
+        };
+        let memory = Memory {
+            id: Uuid::new_v4().to_string(),
+            bank_id: bank_id.to_string(),
+            content: redact_pii(content),
+            context: context.as_deref().map(redact_pii),
+            created_at,
+            meta,
+        };
+        // Same call as `retain_doc_at_trusted`, so dedup-on-content-hash and the
+        // version write behave identically here. The returned id is the row that
+        // now holds the content, which is this memory's own id unless the write
+        // deduplicated onto an existing row.
+        self.store
+            .put_doc(&memory, &normalize_tags(&all), document_id, update_mode)
+            .map_err(ApiError::from)
     }
 
     /// [`Self::retain_doc_at`] with an explicit trust tier (W2).
@@ -1452,6 +1530,12 @@ pub fn summary_content<'a>(memory: &'a Memory, bank: &str) -> Cow<'a, str> {
 /// memory stored without capture context does not claim an empty one. `content` is
 /// the served string rather than the stored one, which is the same string unless
 /// `?truncate` cut it.
+///
+/// The W1 dimensions ride in a `meta` object and are omitted when the memory is
+/// default on every one of them, so a row written through the shipped path reads
+/// back exactly as it did before. A caller who *did* set `scope`/`aspect` can now
+/// see what was stored: without this the write side was exposed on the wire while
+/// the read side silently dropped it, and every filter's result was unauditable.
 fn memory_json(memory: &Memory, content: &str) -> serde_json::Value {
     let mut v = serde_json::json!({
         "id": memory.id,
@@ -1460,6 +1544,68 @@ fn memory_json(memory: &Memory, content: &str) -> serde_json::Value {
     });
     if let Some(ctx) = &memory.context {
         v["context"] = serde_json::json!(ctx);
+    }
+    let meta = memory_meta_json(memory);
+    if !meta.is_null() {
+        v["meta"] = meta;
+    }
+    v
+}
+
+/// The W1 dimension block for one memory, or `null` when every axis is at its
+/// default.
+///
+/// `Default` is the test: an empty list and an empty `Trust` mean "not set", and a
+/// memory that set nothing should not carry five empty fields a client has to
+/// special-case. `trust` is the one axis that is *always* set (the shipped path
+/// writes `AgentInferred` like every insert), so it is emitted as a bare string
+/// rather than folded into the omission rule.
+fn memory_meta_json(memory: &Memory) -> serde_json::Value {
+    let MemoryMeta {
+        scope,
+        aspect,
+        lifecycle,
+        trust,
+        parent_id,
+        superseded_by,
+        scope_globs,
+    } = &memory.meta;
+    // The defaults every write carries: a request that names no tier lands on
+    // these. A row that set nothing should not carry five default fields a client
+    // has to special-case, so each axis is checked against its default and only
+    // non-default values are emitted.
+    let def_scope = Scope::default().0;
+    let def_aspect = Aspect::default().0;
+    let def_lifecycle = Lifecycle::default().0;
+    let def_trust = crate::memory::Trust::default().0;
+    if scope.0 == def_scope
+        && aspect.0 == def_aspect
+        && lifecycle.0 == def_lifecycle
+        && trust.0 == def_trust
+        && parent_id.is_none()
+        && superseded_by.is_none()
+        && scope_globs.is_empty()
+    {
+        return serde_json::Value::Null;
+    }
+    let mut v = serde_json::json!({
+        "scope": scope.0,
+        "trust": trust.0,
+    });
+    if aspect.0 != def_aspect {
+        v["aspects"] = serde_json::json!(aspect.0);
+    }
+    if lifecycle.0 != def_lifecycle {
+        v["lifecycle"] = serde_json::json!(lifecycle.0);
+    }
+    if let Some(p) = parent_id {
+        v["parent_id"] = serde_json::json!(p);
+    }
+    if let Some(s) = superseded_by {
+        v["superseded_by"] = serde_json::json!(s);
+    }
+    if !scope_globs.is_empty() {
+        v["scope_globs"] = serde_json::json!(scope_globs);
     }
     v
 }

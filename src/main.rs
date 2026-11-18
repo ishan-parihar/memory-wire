@@ -657,6 +657,44 @@ struct RetainReq {
     /// Anything else is `400 invalid content`. Served back as `created_at` in
     /// `format: "full"` recall, and read by a bank's `ttl_days` sweep.
     created_at: Option<String>,
+    /// W1 dimensional metadata. Absent means the defaults (`scope: "local"`,
+    /// `aspect: "episodic"`, `lifecycle: "active"`, `trust: "agent_inferred"`),
+    /// which is byte-identical to what every write stored before this existed.
+    ///
+    /// A field the caller does not name keeps its default, so a partial object
+    /// (`{"aspect": "preference"}`) is legal and means "this aspect, everything
+    /// else default". `trust` is a *claim*: the bank's `maxTrust` ceiling still
+    /// decides what lands, and an unrecognised `scope`/`aspect` string is stored
+    /// verbatim rather than refused — a typo then matches no filter instead of
+    /// failing the write.
+    #[serde(default)]
+    meta: Option<RetainMeta>,
+}
+
+/// The dimensional metadata a retain may carry (W1).
+///
+/// Every field is optional and defaults to the store's own default, so this is
+/// additive over the wire: an older client that sends no `meta` at all keeps
+/// the shipped write path byte-for-byte.
+#[derive(Deserialize, Default)]
+struct RetainMeta {
+    /// Sphere of influence, e.g. `local` | `domain` | `policy` | `global`.
+    scope: Option<String>,
+    /// What the memory is for, e.g. `fact` | `preference` | `invariant` |
+    /// `trap` | `map` | `episodic`.
+    aspect: Option<String>,
+    /// Lifecycle stage. Defaults to `active`; a migration may set
+    /// `superseded`/`quarantined` directly.
+    lifecycle: Option<String>,
+    /// Caller's trust claim. The bank's `maxTrust` ceiling may downgrade it.
+    trust: Option<String>,
+    /// The row this one was derived from. Not a foreign key.
+    parent_id: Option<String>,
+    /// The row that supersedes this one. Not a foreign key.
+    superseded_by: Option<String>,
+    /// Comma-separated path prefixes this memory applies to, e.g. `src/,tests/`.
+    /// Empty means every path.
+    scope_globs: Option<Vec<String>>,
 }
 
 /// Retain response body.
@@ -686,6 +724,39 @@ struct RecallReq {
     /// command for the whole (H8). Anything else (the default) keeps the bare
     /// array of content strings.
     format: Option<String>,
+    /// W1 dimensional filter. Absent = no filter, which is byte-identical to
+    /// the recall that shipped before this existed: same SQL, same pool, same
+    /// ranking, same scores.
+    ///
+    /// With it, the filter runs **in SQL** on both the BM25 stream and the
+    /// candidate pool before fusion, so an excluded row never votes against the
+    /// ones that remain. An empty list means "no constraint on this dimension",
+    /// and `include_history` widens the default `active`-only view.
+    #[serde(default)]
+    dims: Option<RecallDims>,
+}
+
+/// The dimensional filter a recall may carry (W1).
+///
+/// Every field is optional. A field left out imposes no constraint on that
+/// dimension, so `{"scopes": ["policy"]}` filters by scope and leaves aspect
+/// and lifecycle at their defaults — a caller should not have to spell out every
+/// axis to use one.
+#[derive(Deserialize, Default)]
+struct RecallDims {
+    /// Only rows whose `scope` is one of these.
+    #[serde(default)]
+    scopes: Vec<String>,
+    /// Only rows whose `aspect` is one of these.
+    #[serde(default)]
+    aspects: Vec<String>,
+    /// Only rows whose `lifecycle` is one of these. Empty means the default:
+    /// `active` only.
+    #[serde(default)]
+    lifecycles: Vec<String>,
+    /// Serve `superseded`/`quarantined` rows too.
+    #[serde(default)]
+    include_history: bool,
 }
 
 /// Delete response body.
@@ -860,10 +931,29 @@ async fn retain(
 ) -> Result<Json<RetainRes>, HttpErr> {
     let mode = parse_update_mode(req.update_mode.as_deref()).map_err(to_http)?;
     let created_at = parse_created_at(req.created_at.as_deref()).map_err(to_http)?;
+    // W1: a caller that sends `meta` gets it stored; one that does not keeps the
+    // shipped write path byte-for-byte, so this branch is purely additive.
+    //
+    // A named field is stored verbatim; an unnamed one keeps the store's own
+    // default, so a partial object means "this field, everything else default".
+    let meta = req.meta.map(|m| memory_wire::memory::MemoryMeta {
+        scope: m.scope.map(memory_wire::memory::Scope).unwrap_or_default(),
+        aspect: m.aspect.map(memory_wire::memory::Aspect).unwrap_or_default(),
+        lifecycle: m
+            .lifecycle
+            .map(memory_wire::memory::Lifecycle)
+            .unwrap_or_default(),
+        trust: m.trust.map(memory_wire::memory::Trust).unwrap_or_default(),
+        // An empty string here would read as "derived from nothing"; treat it as
+        // absent so the pointer is either a real id or unset.
+        parent_id: m.parent_id.filter(|s| !s.trim().is_empty()),
+        superseded_by: m.superseded_by.filter(|s| !s.trim().is_empty()),
+        scope_globs: m.scope_globs.unwrap_or_default(),
+    });
     // The service declares the bank itself, so declaring it here as well was a
     // second write per retain for nothing.
-    let id = blocking(move || {
-        svc.retain_doc_at(
+    let id = blocking(move || match meta {
+        Some(meta) => svc.retain_doc_at_full(
             &bank,
             &req.content,
             req.context,
@@ -871,7 +961,17 @@ async fn retain(
             req.document_id.as_deref(),
             mode,
             created_at,
-        )
+            meta,
+        ),
+        None => svc.retain_doc_at(
+            &bank,
+            &req.content,
+            req.context,
+            &req.tags.unwrap_or_default(),
+            req.document_id.as_deref(),
+            mode,
+            created_at,
+        ),
     })
     .await
     .map_err(to_http)?;
@@ -882,7 +982,7 @@ async fn retain(
 async fn recall(
     State(svc): State<Svc>,
     Path(bank): Path<String>,
-    Json(req): Json<RecallReq>,
+    Json(mut req): Json<RecallReq>,
 ) -> Result<Json<Value>, HttpErr> {
     // `budget` stays an Option all the way down: `recall_filtered` resolves it
     // against the bank's `recallMaxTokens` before the 2000 default, and
@@ -890,13 +990,31 @@ async fn recall(
     // blocking closure, so the serve step gets its own copy — the capsule's
     // fetch pointer names the bank and must be built from the same spelling.
     let bank_for_serve = bank.clone();
+    // W1: `dims` is threaded straight through. Absent is the shipped path
+    // byte-for-byte — the service passes `None` and emits no extra SQL clause.
+    //
+    // `RecallDims` is moved into the closure whole (rather than converted to a
+    // borrowing `DimensionalScope` outside it) because `DimensionalScope` holds
+    // slices, and the blocking closure has to own everything it hands to the
+    // store. The conversion therefore happens inside, where the owned vectors
+    // outlive the borrow. `None` and `Some(empty)` stay distinguishable: `None`
+    // emits no SQL clause at all, which is what keeps the unfiltered path
+    // byte-identical.
+    let dims = req.dims.take();
     let hits = blocking(move || {
-        svc.recall_filtered(
+        let scope = dims.as_ref().map(|d| memory_wire::api::DimensionalScope {
+            scopes: &d.scopes,
+            aspects: &d.aspects,
+            lifecycles: &d.lifecycles,
+            include_history: d.include_history,
+        });
+        svc.recall_filtered_dimensional(
             &bank,
             &req.query,
             req.budget,
             &req.tags.unwrap_or_default(),
             &req.exclude_tags.unwrap_or_default(),
+            scope,
         )
     })
     .await
@@ -1107,6 +1225,75 @@ mod tests {
             serde_json::from_str(&post(&base, "/banks/t/recall", r#"{"query":"jose"}"#).body)
                 .expect("array");
         assert_eq!(all.len(), 2, "an unfiltered recall is unchanged: {all:?}");
+    }
+
+    // W1's dimensions were writable only from Rust, so no real store ever held a
+    // non-default row and every filter had nothing to filter. This pins the wire
+    // round trip: a caller can *set* scope/aspect on retain and *filter* on them
+    // at recall, naming one axis at a time.
+    #[test]
+    fn dimensions_should_round_trip_through_retain_and_filter_recall() {
+        let (base, _db) = serve_scratch("dims");
+        post(
+            &base,
+            "/banks/d/retain",
+            r#"{"content":"deploy uses jose","meta":{"scope":"policy","aspect":"invariant"}}"#,
+        );
+        post(
+            &base,
+            "/banks/d/retain",
+            r#"{"content":"deploy prefers jose","meta":{"aspect":"preference"}}"#,
+        );
+        // No `meta` at all: the shipped default path, which must still work.
+        post(&base, "/banks/d/retain", r#"{"content":"deploy mentions jose"}"#);
+
+        // Unfiltered: all three, in the ranking's order.
+        let all: Vec<String> =
+            serde_json::from_str(&post(&base, "/banks/d/recall", r#"{"query":"jose"}"#).body)
+                .expect("array");
+        assert_eq!(all.len(), 3, "{all:?}");
+
+        // Scope filter: only the policy row. The other two carry the default
+        // `local` scope, so they cannot match.
+        let policy: Vec<String> = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/d/recall",
+                r#"{"query":"jose","dims":{"scopes":["policy"]}}"#,
+            )
+            .body,
+        )
+        .expect("array");
+        assert_eq!(policy.len(), 1, "{policy:?}");
+        assert!(!policy[0].contains("invariant"), "{policy:?}");
+        assert!(policy[0].contains("deploy uses"), "{policy:?}");
+
+        // Aspect filter: only the preference row. This is the axis a caller most
+        // often wants alone, and naming it must not require the other two.
+        let pref: Vec<String> = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/d/recall",
+                r#"{"query":"jose","dims":{"aspects":["preference"]}}"#,
+            )
+            .body,
+        )
+        .expect("array");
+        assert_eq!(pref.len(), 1, "{pref:?}");
+        assert!(pref[0].contains("prefers"), "{pref:?}");
+
+        // An aspect no row carries answers with an empty array, not the whole
+        // bank: the filter is a real constraint, not a hint.
+        let none: Vec<String> = serde_json::from_str(
+            &post(
+                &base,
+                "/banks/d/recall",
+                r#"{"query":"jose","dims":{"aspects":["trap"]}}"#,
+            )
+            .body,
+        )
+        .expect("array");
+        assert!(none.is_empty(), "a filter no row matches must serve nothing: {none:?}");
     }
 
     // The bug the `Option<usize>` fix exists for: an absent `budget` used to be
