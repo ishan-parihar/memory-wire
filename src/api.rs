@@ -103,6 +103,11 @@ pub enum ApiError {
     /// Retained content was empty or whitespace only.
     #[error("invalid content")]
     InvalidContent,
+    /// The bank is mounted read-only (W2): every write at all three surfaces
+    /// is refused. Carries no detail beyond the refusal — the bank id is
+    /// already in the URL the client called, and echoing it back adds nothing.
+    #[error("bank is read-only")]
+    ReadOnlyBank,
 }
 
 /// Classify a service error into a client-safe HTTP status and body.
@@ -137,6 +142,11 @@ pub fn http_error(e: &ApiError) -> (StatusCode, &'static str) {
             "document already exists; use update_mode=replace",
         ),
         ApiError::InvalidContent => (StatusCode::BAD_REQUEST, "invalid content"),
+        // W2: a read-only bank refuses writes at all three surfaces. The
+        // frozen HTTP error contract maps it to the same 400 shape
+        // `InvalidContent` already uses, so a client that already handles a
+        // refused retain needs no new code.
+        ApiError::ReadOnlyBank => (StatusCode::BAD_REQUEST, "bank is read-only"),
         _ => {
             // Opaque to the client, loud on the server. Without this, disk-full,
             // a corrupt page, a locked database, a poisoned lock and a panicking
@@ -260,6 +270,17 @@ struct BankConfig {
     /// produces an empty table for a config that omits the key, a config that
     /// spells it wrong, and a config that is not an object at all.
     recall_synonyms: SynonymTable,
+    /// `readOnly` (W2) — refuse every write to this bank at all three surfaces
+    /// (HTTP, MCP, hook). Defaults to `false` so a bank that does not opt in
+    /// keeps the shipped write path. A bank that wants to swallow a write
+    /// entirely (an untrusted mount ingesting web content it must never read
+    /// back as trusted rules) sets this rather than relying on a trust ceiling:
+    /// the ceiling downgrades, which still lands a row.
+    read_only: bool,
+    /// `maxTrust` (W2) — the highest trust tier a write may carry verbatim.
+    /// `None` (the default) means no ceiling: every trust accepted. A write
+    /// above the ceiling is downgraded one tier and lands; see [`Trust`].
+    max_trust: Option<Trust>,
 }
 
 /// `recallSynonyms` as parsed: lowercased trigger term to its entry.
@@ -294,6 +315,65 @@ struct RecallSynonyms {
     weight: f64,
 }
 
+/// A ceiling on the trust a write may carry.
+///
+/// Ordered from least to most trusted. A bank's `maxTrust` names the highest
+/// tier the bank is willing to store verbatim; a write that exceeds it is
+/// **downgraded** (never refused) to the next tier down. Refusing would break
+/// the never-fail hook path — a hook that cannot write its capture must exit 0
+/// silently, not put an error in front of a model — so a bank that wants to
+/// swallow a write entirely sets `readOnly` instead.
+///
+/// The tiers are free text in the config, matched case-insensitively; an
+/// unrecognised value reads as "no ceiling" (every trust accepted), which is
+/// the same fail-open default `readOnly` and every other `BankConfig` key has:
+/// a typo in a hand-written config must not take writes down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Trust {
+    /// Inferred by an agent with no further verification.
+    AgentInferred,
+    /// Stated by a named person in an authorised channel.
+    HumanStated,
+    /// Confirmed by a tool, file, or commit this build can name.
+    Verified,
+}
+
+impl Trust {
+    /// Parse a free-text tier. Unknown values read as "no ceiling", which the
+    /// caller expresses as `None` — see [`Trust::ceiling`].
+    fn tier(raw: &str) -> Option<Trust> {
+        match raw.to_ascii_lowercase().as_str() {
+            "agent_inferred" | "agent-inferred" | "agent_inferred_only" => Some(Trust::AgentInferred),
+            "human_stated" | "human-stated" | "human" => Some(Trust::HumanStated),
+            "verified" => Some(Trust::Verified),
+            _ => None,
+        }
+    }
+
+    /// One tier down from `self`, or `self` when already at the floor. A
+    /// downgrade at the floor is a no-op: there is nothing below
+    /// `AgentInferred` to fall to, and the write must still land.
+    fn downgrade(self) -> Trust {
+        match self {
+            Trust::Verified => Trust::HumanStated,
+            Trust::HumanStated => Trust::AgentInferred,
+            Trust::AgentInferred => Trust::AgentInferred,
+        }
+    }
+
+    /// The canonical string form stored in `memories.trust` (W1 column).
+    ///
+    /// The strings match what [`Trust::tier`] accepts, so a round-trip is
+    /// byte-stable: parse -> store -> read -> parse returns the same variant.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Trust::AgentInferred => "agent_inferred",
+            Trust::HumanStated => "human_stated",
+            Trust::Verified => "verified",
+        }
+    }
+}
+
 impl BankConfig {
     /// Read the keys this build understands, treating everything else as absent.
     ///
@@ -323,6 +403,18 @@ impl BankConfig {
                 .and_then(|n| usize::try_from(n).ok()),
             retain_tags,
             recall_synonyms: parse_recall_synonyms(&value),
+            // W2. A malformed value falls back to the default (false / None) for
+            // the same reason every other key does: a typo in a hand-written
+            // config must not take writes down with it. The raw value is still
+            // served by `GET .../config`, so the typo stays visible.
+            read_only: value
+                .get("readOnly")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            max_trust: value
+                .get("maxTrust")
+                .and_then(|v| v.as_str())
+                .and_then(Trust::tier),
         }
     }
 }
@@ -507,6 +599,12 @@ impl<S: Store> MemoryService<S> {
     ///
     /// Both `content` and `context` are redacted before they touch storage:
     /// capture context carries hook payloads and is just as leaky as content.
+    ///
+    /// The write is stored at `Trust::AgentInferred`, the floor of the trust
+    /// ladder. A caller that has actually verified a fact (a tool read it, a
+    /// commit names it) uses [`Self::retain_doc_at_trusted`] to declare a
+    /// higher tier; a bank with a `maxTrust` ceiling below that tier will
+    /// downgrade the write one step. See [`Trust`].
     pub fn retain(
         &self,
         bank_id: &str,
@@ -585,6 +683,37 @@ impl<S: Store> MemoryService<S> {
         update_mode: UpdateMode,
         created_at: Option<String>,
     ) -> Result<String, ApiError> {
+        self.retain_doc_at_trusted(
+            bank_id,
+            content,
+            context,
+            tags,
+            document_id,
+            update_mode,
+            created_at,
+            Trust::AgentInferred,
+        )
+    }
+
+    /// [`Self::retain_doc_at`] with an explicit trust tier (W2).
+    ///
+    /// The tier is the caller's *claim* about how much the row has been
+    /// checked. The bank's `maxTrust` ceiling decides what is actually stored:
+    /// a tier above the ceiling is downgraded one step and lands, never
+    /// refused — a refusal would break the never-fail hook path. A bank with
+    /// no ceiling (the default) stores the tier verbatim.
+    #[allow(clippy::too_many_arguments)] // one more optional field on the same write
+    pub fn retain_doc_at_trusted(
+        &self,
+        bank_id: &str,
+        content: &str,
+        context: Option<String>,
+        tags: &[String],
+        document_id: Option<&str>,
+        update_mode: UpdateMode,
+        created_at: Option<String>,
+        trust: Trust,
+    ) -> Result<String, ApiError> {
         Self::require_bank(bank_id)?;
         if content.trim().is_empty() {
             // A memory of nothing matches no query and cites nothing, so it is
@@ -592,6 +721,29 @@ impl<S: Store> MemoryService<S> {
             // mistake instead of storing a row that can never be retrieved.
             return Err(ApiError::InvalidContent);
         }
+        // W2 mount profiles: the bank's config is read before any write so
+        // `readOnly` and `maxTrust` are honoured at every surface. A bank that
+        // does not exist yet has no config, which reads as the defaults
+        // (`read_only: false`, no ceiling) — the shipped behaviour.
+        let cfg = self.config_of(bank_id)?;
+        if cfg.read_only {
+            // A read-only bank refuses every write at all three surfaces. The
+            // frozen HTTP error contract carries this as 400 invalid content —
+            // the same shape `InvalidContent` already uses — so a client that
+            // already handles a refused retain needs no new code. The hook path
+            // never sees the refusal (it swallows errors and exits 0); the HTTP
+            // and MCP surfaces surface it as a clean 4xx the caller can act on.
+            return Err(ApiError::ReadOnlyBank);
+        }
+        // W2 trust ceiling: a tier above the bank's `maxTrust` is downgraded
+        // one step and lands. Refusing would break the never-fail hook path,
+        // which must exit 0 silently — a bank that wants to swallow a write
+        // entirely sets `readOnly` instead. With no ceiling (the default) the
+        // tier is stored verbatim.
+        let stored_trust = match cfg.max_trust {
+            Some(ceiling) if trust > ceiling => trust.downgrade(),
+            _ => trust,
+        };
         // Insert-if-missing, so a re-declared bank keeps its stored name and
         // config and only a bank that was never written to is created. Done here
         // rather than left to the foreign key, which would turn a first retain
@@ -602,7 +754,15 @@ impl<S: Store> MemoryService<S> {
         })?;
         let document_id = document_id.map(str::trim).filter(|d| !d.is_empty());
         let mut all = tags.to_vec();
-        all.extend(self.config_of(bank_id)?.retain_tags);
+        all.extend(cfg.retain_tags);
+        // W1 schema + W2 ceiling: the stored meta carries the tier the bank
+        // actually accepted (possibly downgraded), so a reader can tell a
+        // human-stated fact from an agent's inference even after the fact that
+        // the caller asked for a higher tier was lost.
+        let meta = crate::memory::MemoryMeta {
+            trust: crate::memory::Trust(stored_trust.as_str().to_string()),
+            ..crate::memory::MemoryMeta::default()
+        };
         let memory = Memory {
             id: Uuid::new_v4().to_string(),
             bank_id: bank_id.to_string(),
@@ -611,10 +771,7 @@ impl<S: Store> MemoryService<S> {
             // `None`: the store stamps it on insert. `Some`: already normalized
             // by `parse_created_at`, so the stored stamp is byte-comparable.
             created_at,
-            // W1 defaults: every field here is a store default, so a caller that
-            // did not ask for dimensional metadata gets exactly the same row a
-            // pre-W1 retain wrote.
-            meta: crate::memory::MemoryMeta::default(),
+            meta,
         };
         // The store returns the id of the row that now holds the content, which is
         // this memory's own id unless the write was deduplicated.
@@ -2601,6 +2758,140 @@ mod tests {
         let hits = svc.recall_filtered("b", "jose", None, &[], &[]).expect("recall");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].memory.content, "auth uses jose middleware");
+    }
+
+    // ── W2 mount profiles ──────────────────────────────────────────────
+
+    #[test]
+    fn a_read_only_bank_should_refuse_every_write_at_every_surface() {
+        let svc = svc_with_banks(&["ro"]);
+        svc.set_bank_config("ro", r#"{"readOnly":true}"#).expect("set");
+        // The retain path (used by HTTP and MCP alike) refuses.
+        let err = svc
+            .retain("ro", "jose is great", None)
+            .expect_err("a read-only bank must refuse writes");
+        assert_eq!(http_error(&err), (StatusCode::BAD_REQUEST, "bank is read-only"));
+        // No row landed: the refusal happens before any write.
+        assert!(svc.list_memories("ro", 10, 0).expect("list").is_empty());
+    }
+
+    #[test]
+    fn a_bank_without_read_only_should_keep_the_shipped_write_path() {
+        let svc = svc_with_banks(&["b"]);
+        // The default (no config) writes fine.
+        svc.retain("b", "jose is great", None).expect("retain");
+        // So does a bank whose config spells readOnly wrong — the typo must not
+        // take writes down, the same fail-open rule every BankConfig key has.
+        svc.set_bank_config("b", r#"{"readOnly":"yes"}"#).expect("set");
+        svc.retain("b", "jose again", None).expect("retain after typo");
+    }
+
+    #[test]
+    fn a_write_above_the_trust_ceiling_should_downgrade_and_land() {
+        let svc = svc_with_banks(&["b"]);
+        svc.set_bank_config("b", r#"{"maxTrust":"human_stated"}"#).expect("set");
+        // A verified write against a human_stated ceiling is downgraded one
+        // step (verified -> human_stated) and lands, never refused.
+        let id = svc
+            .retain_doc_at_trusted(
+                "b",
+                "the auth stack uses jose",
+                None,
+                &[],
+                None,
+                UpdateMode::Replace,
+                None,
+                Trust::Verified,
+            )
+            .expect("downgrade and land");
+        let got = svc.get_memory("b", &id).expect("get").expect("some");
+        assert_eq!(got.meta.trust.0, "human_stated", "verified downgraded to human_stated");
+    }
+
+    #[test]
+    fn a_write_at_or_below_the_trust_ceiling_should_land_verbatim() {
+        let svc = svc_with_banks(&["b"]);
+        svc.set_bank_config("b", r#"{"maxTrust":"verified"}"#).expect("set");
+        let id = svc
+            .retain_doc_at_trusted(
+                "b",
+                "the auth stack uses jose",
+                None,
+                &[],
+                None,
+                UpdateMode::Replace,
+                None,
+                Trust::Verified,
+            )
+            .expect("verified under a verified ceiling");
+        let got = svc.get_memory("b", &id).expect("get").expect("some");
+        assert_eq!(got.meta.trust.0, "verified");
+
+        // And an agent_inferred write under a verified ceiling is also verbatim
+        // — the ceiling only bites when the write exceeds it.
+        let id2 = svc
+            .retain_doc_at_trusted(
+                "b",
+                "a hunch",
+                None,
+                &[],
+                None,
+                UpdateMode::Replace,
+                None,
+                Trust::AgentInferred,
+            )
+            .expect("agent_inferred under a verified ceiling");
+        let got2 = svc.get_memory("b", &id2).expect("get").expect("some");
+        assert_eq!(got2.meta.trust.0, "agent_inferred");
+    }
+
+    #[test]
+    fn a_bank_without_a_trust_ceiling_should_store_every_tier_verbatim() {
+        let svc = svc_with_banks(&["b"]);
+        // No config at all: the default ceiling is "no ceiling".
+        let id = svc
+            .retain_doc_at_trusted(
+                "b",
+                "the auth stack uses jose",
+                None,
+                &[],
+                None,
+                UpdateMode::Replace,
+                None,
+                Trust::Verified,
+            )
+            .expect("verified with no ceiling");
+        let got = svc.get_memory("b", &id).expect("get").expect("some");
+        assert_eq!(got.meta.trust.0, "verified", "no ceiling stores verbatim");
+    }
+
+    #[test]
+    fn an_unknown_trust_tier_in_config_should_read_as_no_ceiling() {
+        let svc = svc_with_banks(&["b"]);
+        svc.set_bank_config("b", r#"{"maxTrust":"totally_bogus"}"#).expect("set");
+        // An unrecognised tier is the same fail-open default every other key
+        // has: a typo must not take writes down.
+        let id = svc
+            .retain_doc_at_trusted(
+                "b",
+                "the auth stack uses jose",
+                None,
+                &[],
+                None,
+                UpdateMode::Replace,
+                None,
+                Trust::Verified,
+            )
+            .expect("verified under a bogus ceiling");
+        let got = svc.get_memory("b", &id).expect("get").expect("some");
+        assert_eq!(got.meta.trust.0, "verified", "a bogus ceiling stores verbatim");
+    }
+
+    #[test]
+    fn trust_round_trips_through_the_string_form() {
+        for t in [Trust::AgentInferred, Trust::HumanStated, Trust::Verified] {
+            assert_eq!(Trust::tier(t.as_str()), Some(t), "round-trip {}", t.as_str());
+        }
     }
 
     #[test]
