@@ -35,7 +35,6 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use crate::memory::{Aspect, Scope};
-use crate::store::{SqliteStore, Store};
 
 /// Default Jaccard threshold for near-duplicate detection.
 pub const DEFAULT_MIN_JACCARD: f64 = 0.6;
@@ -224,8 +223,14 @@ fn jaccard(a: &BTreeSet<String>, b: &BTreeSet<String>) -> f64 {
 /// The scan is read-only and deterministic. `cursor` is a `created_at`
 /// watermark; rows with `created_at <= cursor` are skipped (the cursor is
 /// exclusive). A `None` cursor scans the whole bank.
-pub fn hygiene_scan(
-    store: &SqliteStore,
+///
+/// Generic over [`crate::store::Store`] rather than `&SqliteStore`: the scan
+/// reads one trait method and writes nothing, and pinning it to the one
+/// backend would make the HTTP route impossible — every route in this crate
+/// is generic because the service is. The bank comes back as `list()` gives it,
+/// so a backend that orders rows differently still scans deterministically.
+pub fn hygiene_scan<S: crate::store::Store>(
+    store: &S,
     bank: &str,
     cursor: Option<&str>,
     opts: &HygieneOptions,
@@ -402,6 +407,7 @@ pub fn hygiene_scan(
 mod tests {
     use super::*;
     use crate::memory::{Memory, MemoryMeta};
+    use crate::store::{SqliteStore, Store};
     
 
     fn mem_with_content(

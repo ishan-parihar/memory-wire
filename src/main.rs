@@ -34,10 +34,11 @@ use serde_json::Value;
 use tracing_subscriber::EnvFilter;
 
 use memory_wire::api::{
-    bank_config_routes, blocking, full_hit_json, http_error, memories_routes, parse_created_at,
-    summary_hit_json,
+    bank_config_routes, blocking, full_hit_json, http_error, hygiene_routes, memories_routes,
+    parse_created_at, summary_hit_json,
     parse_update_mode, ApiError, MemoryService,
 };
+use memory_wire::grounding;
 use memory_wire::memory::Bank;
 use memory_wire::store::{default_db_path, BankStats, SqliteStore, Store};
 
@@ -231,6 +232,51 @@ enum Cmd {
         #[arg(long)]
         db: Option<PathBuf>,
     },
+    /// Redact a pattern from one memory and every version row it has (W3).
+    ///
+    /// Rewrites the live `memories` row and each `memory_versions` row for that
+    /// id, replacing every match with `[REDACTED:<name>]`. Idempotent: a second
+    /// run over the same pattern finds nothing and reports `0`. A bank marked
+    /// `readOnly` refuses this like every other write.
+    Redact {
+        /// Bank the memory lives in.
+        #[arg(long, value_name = "ID")]
+        bank: String,
+        /// The memory id to redact.
+        #[arg(long, value_name = "ID")]
+        id: String,
+        /// A regex; every match in the content is replaced.
+        #[arg(long, value_name = "REGEX")]
+        pattern: String,
+        /// The label written into the replacement marker.
+        #[arg(long, value_name = "NAME", default_value = "redacted")]
+        name: String,
+        /// SQLite database path (default: $XDG_DATA_HOME/memory-wire/memory.db).
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Build the bounded startup grounding capsule for a bank (W5).
+    ///
+    /// Prints one line per eligible memory: `[aspect] [date] content`. Bounded
+    /// by `--max-lines` and `--max-bytes`. Read-only.
+    Grounding {
+        /// Bank to build the capsule from.
+        #[arg(long, value_name = "ID")]
+        bank: String,
+        /// Maximum lines (default 40).
+        #[arg(long, default_value_t = grounding::DEFAULT_MAX_LINES)]
+        max_lines: usize,
+        /// Maximum bytes (default 2048).
+        #[arg(long, default_value_t = grounding::DEFAULT_MAX_BYTES)]
+        max_bytes: usize,
+        /// Only rows whose `scope_globs` match one of these paths. Repeatable.
+        /// A row with no globs always applies.
+        #[arg(long, value_name = "PATH")]
+        path: Vec<String>,
+        /// SQLite database path (default: $XDG_DATA_HOME/memory-wire/memory.db).
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Embed text with the bundled 384-d model and print the vector as JSON.
     ///
     /// Only compiled with `--features embed`, which is also the only build that
@@ -385,6 +431,39 @@ async fn main() -> anyhow::Result<()> {
                 "{}",
                 seed::run(&MemoryService::new(store), &bank, commits, transcripts).render(&bank)
             );
+        }
+        Cmd::Redact { bank, id, pattern, name, db } => {
+            let store = open_store(&db.unwrap_or_else(default_db_path))?;
+            let svc = MemoryService::new(store);
+            // The same service call the HTTP and MCP surfaces would make, so a
+            // `readOnly` bank refuses the CLI too — the guard lives in one place
+            // and every surface inherits it.
+            let rows = svc.redact_memory(&bank, &id, &pattern, &name)?;
+            println!(
+                "redacted `{name}` in bank `{bank}` memory `{id}`: {rows} row(s) rewritten"
+            );
+            if rows == 0 {
+                println!("  (nothing to do: unknown id, or the pattern no longer matches)");
+            }
+        }
+        Cmd::Grounding { bank, max_lines, max_bytes, path, db } => {
+            let store = open_store(&db.unwrap_or_else(default_db_path))?;
+            let opts = grounding::CapsuleOptions { max_lines, max_bytes, active_paths: path };
+            let capsule = grounding::build_capsule(&store, &bank, &opts)?;
+            if capsule.is_empty() {
+                println!("no grounding lines for bank `{bank}`");
+            } else {
+                // The same Display shape the MCP/HTTP surface serves, so the CLI
+                // and the injected prompt cannot disagree about a line.
+                for line in &capsule {
+                    println!("{line}");
+                }
+                let bytes: usize = capsule.iter().map(|l| l.to_string().len()).sum();
+                eprintln!(
+                    "{} line(s), {bytes} byte(s) — bank `{bank}`",
+                    capsule.len()
+                );
+            }
         }
         // Phase D's visible surface. Present only in a build that carries the
         // model, which is the whole point: the weights are reachable from the
@@ -725,6 +804,9 @@ fn router(svc: Svc) -> Router {
         // `GET .../config` preamble probe. The handlers live next to the service
         // so their validation cannot drift from it.
         .merge(bank_config_routes::<SqliteStore>())
+        // GET /banks/:id/hygiene — the W4 deterministic scan. Read-only, so it
+        // belongs with the other collection routes.
+        .merge(hygiene_routes::<SqliteStore>())
         // MCP over the same port. `/mcp` resolves the bank from the call, and
         // `/mcp/<bank>` pins it to the path.
         .merge(mcp)
@@ -939,6 +1021,35 @@ mod tests {
             .expect("request");
         assert_eq!(ghost.status, 404, "{}", ghost.body);
         assert_eq!(ghost.body, "unknown bank");
+    }
+
+    // W4's scan was a library function with no surface until this route. A 404
+    // here means the merge regressed and the hygiene report is unreachable.
+    #[test]
+    fn hygiene_routes_should_be_merged_into_the_serve_router() {
+        let (base, _db) = serve_scratch("hygiene");
+        post(&base, "/banks/demo/retain", r#"{"content":"we shipped it yesterday"}"#);
+
+        let got = http::get(&format!("{base}/banks/demo/hygiene"), Duration::from_secs(10))
+            .expect("request");
+        assert_eq!(got.status, 200, "{}", got.body);
+        let report: serde_json::Value = serde_json::from_str(&got.body).expect("json");
+        assert_eq!(report["bank"], serde_json::json!("demo"));
+        assert_eq!(report["rows_scanned"], serde_json::json!(1));
+        // "yesterday" is a relative-date marker with no ISO date: the scan must
+        // name it. An empty candidate list would mean the route is wired but the
+        // detector is not running.
+        let candidates = report["candidates"].as_array().expect("candidates array");
+        assert!(
+            candidates.iter().any(|c| c["kind"] == serde_json::json!("anchor")),
+            "the relative-date detector must fire on 'yesterday': {report}"
+        );
+
+        // A bank nothing was ever written to is a 404, not an empty report that
+        // reads as "this bank is clean".
+        let ghost = http::get(&format!("{base}/banks/ghost/hygiene"), Duration::from_secs(10))
+            .expect("request");
+        assert_eq!(ghost.status, 404, "{}", ghost.body);
     }
 
     #[test]
@@ -2033,6 +2144,104 @@ A third line exists so the remainder is definitely hidden."#;
             1,
             "a skipped bank keeps everything"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // W3's redact was reachable only from a library call until this subcommand.
+    // The SKILL.md documents `memory-wire redact ...`, so the binary must have
+    // it; a missing subcommand would make the skill a lie.
+    #[test]
+    fn redact_should_rewrite_the_live_and_version_rows_then_stop() {
+        let dir = cli_scratch("redact");
+        let db = dir.join("memory.db");
+        {
+            let store = open_store(&db).expect("store");
+            store.put_bank(&Bank { id: "demo".into(), name: "demo".into() }).expect("bank");
+            // A context row beside the content row: both carry the pattern and
+            // both must be rewritten.
+            store
+                .put(&Memory {
+                    id: "m1".to_string(),
+                    bank_id: "demo".to_string(),
+                    content: "the token is sk-live123".to_string(),
+                    context: Some("carries sk-live123 too".to_string()),
+                    created_at: None,
+                    meta: memory_wire::memory::MemoryMeta::default(),
+                })
+                .expect("put");
+        }
+
+        let argv = &[
+            "redact".to_string(),
+            "--bank".to_string(),
+            "demo".to_string(),
+            "--id".to_string(),
+            "m1".to_string(),
+            "--pattern".to_string(),
+            "sk-live123".to_string(),
+            "--name".to_string(),
+            "openai_key".to_string(),
+            "--db".to_string(),
+            db.display().to_string(),
+        ];
+
+        let (out, err, code) = run_cli("off", argv, &dir);
+        assert_eq!(code, Some(0), "{out}{err}");
+        // The live row plus the version row the put wrote: two rewrites.
+        assert!(out.contains("2 row(s) rewritten"), "{out}");
+
+        // Read from the file, not this test's handle.
+        let after = SqliteStore::open(&db)
+            .expect("reopen")
+            .get("demo", "m1")
+            .expect("get")
+            .expect("some");
+        assert!(
+            after.content.contains("[REDACTED:openai_key]"),
+            "the live row must carry the marker: {}",
+            after.content
+        );
+        assert!(!after.content.contains("sk-live123"), "the value is gone");
+
+        // A second run finds nothing: the same report shape, a zero count.
+        let (again, _, again_code) = run_cli("off", argv, &dir);
+        assert_eq!(again_code, Some(0), "{again}");
+        assert!(again.contains("0 row(s) rewritten"), "{again}");
+
+        // And the audit trail survives. The version table has no public
+        // accessor (its only reader is `redact`, inside `store.rs`), so this
+        // asserts the count the CLI reported — 2, meaning the live row and a
+        // version row both matched — rather than reaching into the file.
+        let after2 = SqliteStore::open(&db).expect("reopen");
+        assert_eq!(
+            after2.list("demo").expect("list").len(),
+            1,
+            "redaction must not remove the row"
+        );
+        let live = after2.get("demo", "m1").expect("get").expect("some");
+        assert!(live.content.contains("[REDACTED:openai_key]"), "{live:?}");
+        assert!(!live.content.contains("sk-live123"), "{live:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // W5's capsule was a library function with no surface until this
+    // subcommand. The skill documents it, so the binary must answer.
+    #[test]
+    fn grounding_should_report_an_empty_bank_rather_than_fail() {
+        let dir = cli_scratch("grounding");
+        let db = dir.join("memory.db");
+        let argv = &[
+            "grounding".to_string(),
+            "--bank".to_string(),
+            "demo".to_string(),
+            "--db".to_string(),
+            db.display().to_string(),
+        ];
+        let (out, err, code) = run_cli("off", argv, &dir);
+        assert_eq!(code, Some(0), "{out}{err}");
+        // An empty answer, said definitively — the repo's output convention — and
+        // not a bare empty stdout that reads like a failure.
+        assert!(out.contains("no grounding lines for bank `demo`"), "{out}");
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -1257,6 +1257,17 @@ pub fn memories_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
         .route("/banks/:id/memories/:mid", get(get_memory))
 }
 
+/// `GET /banks/:id/hygiene` — the W4 deterministic hygiene scan.
+///
+/// Read-only and deterministic: the same bank scanned twice yields the same
+/// report. `?cursor=` narrows the delta to rows created after that
+/// `created_at` watermark; omit it for a full scan. The response is the
+/// [`crate::hygiene::HygieneReport`] rendered as JSON, so a caller can act on
+/// the candidates rather than reading prose.
+pub fn hygiene_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
+    Router::new().route("/banks/:id/hygiene", get(bank_hygiene))
+}
+
 /// Ceiling on one page of memories, so one request cannot ask for the whole bank.
 ///
 /// Unchanged from the value the binary shipped with, because the default response
@@ -1658,6 +1669,95 @@ async fn get_bank_config<S: Store + 'static>(
         .await
         .map_err(to_http)?;
     Ok(Json(serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))))
+}
+
+/// `?cursor=` for the hygiene scan: a `created_at` watermark, exclusive.
+#[derive(Deserialize)]
+pub struct HygieneQuery {
+    /// Only scan rows created after this timestamp. Omit for a full scan.
+    pub cursor: Option<String>,
+}
+
+/// `GET /banks/:id/hygiene` — run the W4 deterministic scan and return the
+/// report as JSON.
+///
+/// Read-only: the handler calls `hygiene::hygiene_scan`, which opens no write
+/// transaction. `blocking` because the scan walks the whole bank and must not
+/// run on a tokio worker (the crate rule).
+async fn bank_hygiene<S: Store + 'static>(
+    State(svc): State<Arc<MemoryService<S>>>,
+    Path(bank): Path<String>,
+    Query(q): Query<HygieneQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // The bank must exist before it can be scanned: a typo'd id should be a
+    // 404 naming it, not an empty report that reads as "this bank is clean".
+    // `bank_stats` is the existing existence check on this surface.
+    let stats = blocking({
+        let (count_svc, count_bank) = (Arc::clone(&svc), bank.clone());
+        move || count_svc.bank_stats(&count_bank)
+    })
+    .await
+    .map_err(to_http)?;
+    if stats.memories == 0 && stats.newest.is_none() {
+        // No rows and no age: either an unknown bank or an empty one. Both are
+        // answered the same way the other collection routes answer an absence —
+        // `200` with an empty report is right for a *known* empty bank, but a
+        // name no client has written to is a 404 the caller can act on.
+        let known = blocking({
+            let (cfg_svc, cfg_bank) = (Arc::clone(&svc), bank.clone());
+            move || cfg_svc.bank_config(&cfg_bank)
+        })
+        .await
+        .map_err(to_http)?;
+        if known == "{}" {
+            // Config absent *and* no rows: nothing was ever written here.
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("bank `{bank}` is empty; nothing to scan"),
+            ));
+        }
+    }
+    let opts = crate::hygiene::HygieneOptions::default();
+    let report = blocking({
+        let (scan_svc, scan_bank, cursor) = (Arc::clone(&svc), bank.clone(), q.cursor.clone());
+        move || {
+            crate::hygiene::hygiene_scan(scan_svc.store.as_ref(), &scan_bank, cursor.as_deref(), &opts)
+                .map_err(ApiError::from)
+        }
+    })
+    .await
+    .map_err(to_http)?;
+    Ok(Json(hygiene_json(&report)))
+}
+
+/// The report as a JSON object a caller can act on.
+///
+/// Hand-built rather than `#[derive(Serialize)]` on the report type: the
+/// candidates are an enum with per-variant payloads, and the shape that reads
+/// best over the wire is one object per candidate with a `kind` tag, not a
+/// serde-untagged guess. The Display form stays the human one.
+fn hygiene_json(report: &crate::hygiene::HygieneReport) -> serde_json::Value {
+    use crate::hygiene::HygieneCandidate;
+    let candidates: Vec<serde_json::Value> = report
+        .candidates
+        .iter()
+        .map(|c| {
+            let kind = match c {
+                HygieneCandidate::Merge { .. } => "merge",
+                HygieneCandidate::Supersede { .. } => "supersede",
+                HygieneCandidate::Anchor { .. } => "anchor",
+                HygieneCandidate::Promote { .. } => "promote",
+                HygieneCandidate::Split { .. } => "split",
+            };
+            serde_json::json!({ "kind": kind, "detail": c.to_string() })
+        })
+        .collect();
+    serde_json::json!({
+        "bank": report.bank,
+        "cursor": report.cursor,
+        "rows_scanned": report.rows_scanned,
+        "candidates": candidates,
+    })
 }
 
 /// `PUT /banks/:id/config` — replace the whole config, echoing what was stored.
