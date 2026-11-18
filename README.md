@@ -653,7 +653,7 @@ version opens, reads, and sweeps exactly as it was.
 
 ## MCP
 
-The same four tools are served two ways. `memory-wire mcp` is stdio —
+The same five tools are served two ways. `memory-wire mcp` is stdio —
 JSON-RPC 2.0, newline-delimited, stdout only for protocol, logs to stderr.
 `--bank` sets the default bank, falling back to `$MEMORY_WIRE_BANK` and then
 to `memory-wire`; a per-call `bank` argument overrides both.
@@ -719,7 +719,7 @@ recall       → candidate pool: newest 200 rows ∪ the BM25 hits (bounded, so 
 reflect      → recall(2000).first() cited by id
 memories     → SELECT … LIMIT ? OFFSET ? (50/0 default, 500 cap) → {id, content, created_at}
 stats        → COUNT(*) + COUNT(DISTINCT tag) + MIN/MAX(created_at) for the bank
-mcp          → same four calls, over JSON-RPC on stdio
+mcp          → same five calls, over JSON-RPC on stdio
 ```
 
 `document_id` turns retain into an upsert: with the default
@@ -1021,7 +1021,7 @@ Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 Shipped: `GET`/`PUT /banks/:id/config` (merged into the `serve` router) · the
 `connect [HOSTS]...` / `hook` / `doctor` / `seed` / `update` CLI subcommands ·
 `doctor --all-hosts` with per-host wiring and hook-liveness findings · the MCP stdio
-server (`rmcp`, 4 tools, +1.6 MB binary) · tag filtering on retain and recall ·
+server (`rmcp`, 5 tools, +1.6 MB binary) · tag filtering on retain and recall ·
 the lifecycle routes (`GET .../memories`, `GET`/`DELETE .../memories/:mid`,
 `GET .../stats`) with `created_at` on every served memory · `format: "full"` on
 recall · `document_id` upsert on retain (replace works; a repeated `append` is a

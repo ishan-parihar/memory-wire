@@ -1,11 +1,11 @@
 ---
 name: memory-wire
-description: Persist and retrieve agent memory across sessions with memory-wire — one 8.8 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a memory-wire server (`memory-wire daemon start` to run one in the background, `memory-wire daemon status` to check), or over MCP stdio with `memory-wire mcp`, or over MCP HTTP at `/mcp` on a running server.
+description: Persist and retrieve agent memory across sessions with memory-wire — one 10.4 MiB binary, three shared libraries — exposing an HTTP retain/recall/reflect API over bank-isolated SQLite + FTS5 with PII redaction on write. Use when you need durable memory across sessions, want to record a decision or fact you will need later, or need to recall what was previously decided. Invoke with curl against a memory-wire server (`memory-wire daemon start` to run one in the background, `memory-wire daemon status` to check), or over MCP stdio with `memory-wire mcp`, or over MCP HTTP at `/mcp` on a running server.
 ---
 
 # memory-wire
 
-Agent memory over HTTP or MCP. One 8.8 MiB binary (9,261,472 B), three shared libraries, no language
+Agent memory over HTTP or MCP. One 10.4 MiB binary (10,937,128 B), three shared libraries, no language
 runtime, no database server, and no background process until you ask for one with
 `memory-wire daemon start`. **retain** stores a
 fact/decision (redacted before it touches disk), **recall** is ranked bank-isolated retrieval under a
@@ -196,7 +196,7 @@ Every memory carries three orthogonal facets on `PutContent`:
 - `dimensions` — `target: <who/what this is about>`, `window: <session | durable>`. Target gates
   recall: a target-specific query only sees that target's memories; a general query sees all.
 - `aspect` — the recall mode: `fact` (default), `preference`, `invariant`, `trap`, `map`.
-- `scope` — the sharing blast radius: `private` (default), `domain`, `policy`, `global`.
+- `scope` — the sharing blast radius: `local` (default), `domain`, `policy`, `global`.
 
 `Aspect` and `Scope` are plain strings (no enums) because they are pre-release wire format.
 Strict validation is a post-stability item.
