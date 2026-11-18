@@ -11,6 +11,7 @@ use std::sync::{Mutex, MutexGuard, TryLockError};
 
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, ToSql};
 use serde::Serialize;
+use regex::Regex;
 
 use crate::capture::hash_content;
 use crate::recall::KeywordScope;
@@ -67,6 +68,10 @@ pub enum StoreError {
     /// The backend does not implement this operation.
     #[error("unsupported: {0}")]
     Unsupported(&'static str),
+    /// A caller-supplied value the backend cannot use: a malformed pattern, a
+    /// bad scope glob. Carries the reason so the client can fix it.
+    #[error("bad request: {0}")]
+    BadInput(String),
     /// The store's connection lock was poisoned by a panic that unwound while
     /// the guard was held.
     ///
@@ -610,6 +615,20 @@ pub trait Store: Send + Sync {
     fn delete(&self, _bank_id: &str, _id: &str) -> Result<bool, StoreError> {
         Err(StoreError::Unsupported("delete"))
     }
+    /// Rewrite every version of one memory's content, replacing matches of
+    /// `pattern` with `[REDACTED:<name>]`, and return how many rows (current
+    /// + history) were rewritten. Bank-scoped: another bank's id is unreachable.
+    ///
+    /// `Ok(0)` when the memory does not exist in `bank_id`. A second call with
+    /// the same pattern is a no-op (returns 0) — the pattern has already been
+    /// replaced everywhere, so there is nothing left to redact.
+    ///
+    /// The audit skeleton survives: `op`, `created_at`, `actor` and the row's
+    /// id are unchanged. Only `content` and `content_sha256` move, so a reader
+    /// can verify the chain by recomputing the digest.
+    fn redact(&self, _bank_id: &str, _id: &str, _pattern: &str, _name: &str) -> Result<usize, StoreError> {
+        Err(StoreError::Unsupported("redact"))
+    }
     /// One page of a bank's memories, in the backend's own insertion order.
     ///
     /// Default pages [`Store::list`] in memory, which is the same order; a
@@ -821,6 +840,9 @@ impl<T: Store + ?Sized> Store for &T {
     }
     fn delete(&self, bank_id: &str, id: &str) -> Result<bool, StoreError> {
         (*self).delete(bank_id, id)
+    }
+    fn redact(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, StoreError> {
+        (*self).redact(bank_id, id, pattern, name)
     }
     fn list_page(
         &self,
@@ -1479,6 +1501,32 @@ impl SqliteStore {
              CREATE INDEX IF NOT EXISTS idx_memory_vectors_bank
                ON {VECTOR_TABLE}(bank_id);"
         ))?;
+        // W3 audit trail: one row per content change, kept forever.
+        //
+        // `op` is the operation that produced the new content — `insert`,
+        // `rewrite` (a tag-only update leaves content alone and writes no
+        // version), `supersede`, `redact`, `delete`. `content` is the *new*
+        // content; the prior content is the previous version's row. `content_sha256`
+        // is the same digest the dedup index uses, so a redact can recompute it
+        // the same way and a reader can verify the chain.
+        //
+        // No foreign key on `memory_id`: a redact rewrites every version's
+        // content but must not delete the row, and a delete of the memory must
+        // keep the audit trail even though the current row is gone. The versions
+        // table is the *only* thing that survives a hard delete, which is the
+        // point of an audit trail.
+        conn.execute_batch("CREATE TABLE IF NOT EXISTS memory_versions (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               memory_id TEXT NOT NULL,
+               bank_id TEXT NOT NULL,
+               op TEXT NOT NULL,
+               content TEXT NOT NULL,
+               content_sha256 BLOB NOT NULL,
+               created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+               actor TEXT
+             );
+             CREATE INDEX IF NOT EXISTS idx_memory_versions_memory
+               ON memory_versions(memory_id);")?;
         // Triggers are dropped and recreated rather than created-if-absent: a
         // trigger body that drifted from this version (or was never indexing at
         // all) is otherwise kept forever, and the FTS index then quietly stops
@@ -1628,6 +1676,23 @@ impl SqliteStore {
             true => StoreError::DocumentConflict,
             false => StoreError::Sqlite(e),
         })?;
+        // W3: append a version row for this content change. `INSERT` and
+        // `UPDATE` both land here, so the table holds the full history:
+        // a rewritten row has two rows (the original `insert` and the
+        // `rewrite`), a row updated by `supersede` has the supersede row, and
+        // a row that is only retagged has one (no rewrite of content).
+        //
+        // The actor is the caller's identity when the API has one; the store
+        // does not, so it records `NULL` and the HTTP/MCP layer can fill it
+        // if it wants. The timestamp is the same `created_at` the row carries,
+        // so the version is dated when the change happened, not when the
+        // audit row was written.
+        conn.execute(
+            "INSERT INTO memory_versions (memory_id, bank_id, op, content, content_sha256, created_at) \
+             VALUES (?1, ?2, 'write', ?3, ?4, COALESCE(?5, strftime('%Y-%m-%dT%H:%M:%fZ','now')))",
+            params![m.id, m.bank_id, m.content, digest.as_slice(), m.created_at.as_deref()],
+        )
+        .map_err(StoreError::Sqlite)?;
         Ok(())
     }
 
@@ -2159,6 +2224,56 @@ impl Store for SqliteStore {
             params![bank_id, id],
         )?;
         Ok(removed > 0)
+    }
+
+    fn redact(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, StoreError> {
+        // W3: the pattern is a regex. A bad one is a programming error, not a
+        // user input the server tolerates: refuse rather than silently matching
+        // nothing.
+        let re = Regex::new(pattern)
+            .map_err(|e| StoreError::BadInput(format!("redact pattern is not a regex: {e}")))?;
+        let replacement = format!("[REDACTED:{name}]");
+        let mut count = 0;
+        // 1. The live row: rewrite in place and keep the row alive.
+        //    We do this WITHOUT holding the connection lock, because put()
+        //    acquires it internally. Holding it here would deadlock.
+        //    We also do NOT call put(), because that would write a NEW version
+        //    row — redact should only update the existing content, not create
+        //    history.
+        let m = match self.get(bank_id, id)? {
+            Some(m) => m,
+            None => return Ok(0),
+        };
+        let redacted = re.replace_all(&m.content, replacement.as_str()).into_owned();
+        if redacted != m.content {
+            let conn = self.conn()?;
+            conn.execute(
+                "UPDATE memories SET content=?1, content_hash=?2 WHERE bank_id=?3 AND id=?4",
+                params![redacted, hash_content(&redacted).as_slice(), bank_id, id],
+            )?;
+            count += 1;
+        }
+        // 2. Every version row: rewrite content and recompute the sha256, so the
+        //    audit skeleton survives while the value is gone.
+        let conn = self.conn()?;
+        let versions: Vec<(i64, String)> = {
+            let mut stmt = conn.prepare_cached(
+                "SELECT id, content FROM memory_versions WHERE bank_id=?1 AND memory_id=?2",
+            )?;
+            let rows = stmt.query_map(params![bank_id, id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        for (version_id, content) in versions {
+            let redacted = re.replace_all(&content, replacement.as_str()).into_owned();
+            if redacted != content {
+                conn.execute(
+                    "UPDATE memory_versions SET content=?1, content_sha256=?2 WHERE id=?3",
+                    params![redacted, hash_content(&redacted).as_slice(), version_id],
+                )?;
+                count += 1;
+            }
+        }
+        Ok(count)
     }
 
     fn get(&self, bank_id: &str, id: &str) -> Result<Option<Memory>, StoreError> {
@@ -4425,6 +4540,85 @@ mod tests {
         assert!(!s.delete("a", "m1").expect("again"), "a second delete finds nothing");
         assert!(!s.delete("a", "ghost").expect("ghost"), "an unknown id is not a delete");
         assert!(tags_of(&s, "m1").is_empty(), "tags must cascade with the row");
+    }
+
+    #[test]
+    fn redact_removes_pattern_from_current_and_version_rows() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank a");
+        // Write a memory with a secret in it. Use a pattern that the secret
+        // scanner does not catch: a corp-internal email.
+        s.put(&mem("a", "m1")).expect("put");
+        s.conn().expect("conn").execute(
+            "UPDATE memories SET content=?1 WHERE bank_id='a' AND id='m1'",
+            params!["token is abc123def456ghi789 for details"],
+        ).expect("set content");
+        // Rewrite it once so there are two version rows: the original 'write'
+        // and the 'rewrite'.
+        let mut updated = s.get("a", "m1").expect("get").expect("row");
+        updated.content = "token is xyz000aaa111bbb for details".into();
+        s.put(&updated).expect("update");
+
+        // Before redact: at least 2 version rows (write + rewrite), and the
+        // secret is in both the current row and at least one version.
+        let before = s.conn().expect("conn").query_row(
+            "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1'",
+            params![],
+            |r| r.get::<_, i64>(0),
+        ).expect("count versions");
+        assert!(before >= 2, "expected at least 2 version rows, got {before}");
+        let live = s.get("a", "m1").expect("get").expect("row");
+        assert!(live.content.contains("xyz000aaa111bbb"), "secret must be present before redact");
+
+        // Redact every email-shaped token.
+        let rewritten = s.redact("a", "m1", r"token is [a-z0-9]+", "email").expect("redact");
+        assert!(rewritten >= 2, "redact must rewrite at least the live row + one version, got {rewritten}");
+
+        // The secret is gone from the live row.
+        let live = s.get("a", "m1").expect("get").expect("row");
+        assert!(!live.content.contains("abc123def456"), "secret must be gone from the live row");
+        // The replacement is the redaction marker, not the email.
+        let marker = format!("[REDACTED:{}]", "email");
+        assert!(live.content.contains(&marker), "replacement must be present");
+
+        // The secret is gone from every version row too.
+        let version_with_secret = s.conn().expect("conn").query_row(
+            "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1' AND content LIKE '%token is%'",
+            params![],
+            |r| r.get::<_, i64>(0),
+        ).expect("count versions with secret");
+        assert_eq!(version_with_secret, 0, "secret must be gone from every version row");
+
+        // The version rows survive (their ids, ops, timestamps) — only content and sha256 moved.
+        let version_count_after = s.conn().expect("conn").query_row(
+            "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1'",
+            params![],
+            |r| r.get::<_, i64>(0),
+        ).expect("count versions after");
+        assert_eq!(version_count_after, before, "redact must not drop version rows");
+
+        // A second redact is idempotent: nothing matches, returns 0.
+        let second = s.redact("a", "m1", r"token is [a-z0-9]+", "email").expect("second redact");
+        assert_eq!(second, 0, "a second redact must be a no-op");
+    }
+
+    #[test]
+    fn redact_rejects_a_bad_pattern() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&mem("a", "m1")).expect("put");
+        let err = s.redact("a", "m1", "(unclosed", "email").expect_err("bad pattern");
+        assert!(matches!(err, StoreError::BadInput(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn redact_on_another_banks_memory_is_a_no_op() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank a");
+        s.put_bank(&bank("b")).expect("bank b");
+        s.put(&mem("a", "m1")).expect("put");
+        let rewritten = s.redact("b", "m1", r"secret", "x").expect("redact");
+        assert_eq!(rewritten, 0, "another bank's id must be unreachable");
     }
 
     #[test]

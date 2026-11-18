@@ -340,8 +340,8 @@ pub enum Trust {
 
 impl Trust {
     /// Parse a free-text tier. Unknown values read as "no ceiling", which the
-    /// caller expresses as `None` — see [`Trust::ceiling`].
-    fn tier(raw: &str) -> Option<Trust> {
+    /// caller expresses as `None`.
+    pub fn tier(raw: &str) -> Option<Trust> {
         match raw.to_ascii_lowercase().as_str() {
             "agent_inferred" | "agent-inferred" | "agent_inferred_only" => Some(Trust::AgentInferred),
             "human_stated" | "human-stated" | "human" => Some(Trust::HumanStated),
@@ -1137,6 +1137,19 @@ impl<S: Store> MemoryService<S> {
     pub fn delete_memory(&self, bank_id: &str, id: &str) -> Result<bool, ApiError> {
         Self::require_bank(bank_id)?;
         Ok(self.store.delete(bank_id, id)?)
+    }
+
+    /// Redact a pattern from a memory's current content and every version row.
+    /// Returns the number of rows rewritten (current + versions); `Ok(0)` when
+    /// the id is not in `bank_id`, or when the pattern no longer matches (a
+    /// second redact is a no-op).
+    ///
+    /// The audit skeleton (op, created_at, actor, row id) survives; the value
+    /// is gone from `memories` and `memory_versions`. The replacement is
+    /// `[REDACTED:<name>]` so the row is still recognizable.
+    pub fn redact_memory(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, ApiError> {
+        Self::require_bank(bank_id)?;
+        Ok(self.store.redact(bank_id, id, pattern, name)?)
     }
 
     /// Row counts and age bounds for one bank; zeroes and `None`s when empty.
