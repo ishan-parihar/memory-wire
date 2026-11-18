@@ -1540,9 +1540,14 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             ),
         ];
 
+        // Detection must not depend on what is installed on the machine running
+        // the tests (`no_path`): each fixture home carries the host's detection
+        // directory instead, so detection is a function of the fixture and this
+        // test passes on a host with no agent harnesses at all.
         for (host, files) in &cases {
             let home = tmp_home(&format!("golden-{}", host.id()));
-            let out = run(*host, exe, &home, false, Some(bank));
+            std::fs::create_dir_all(home.join(host.detect_rel())).expect("detection directory");
+            let out = apply(*host, exe, &home, false, no_path, &home.join("data"), Some(bank));
             assert!(
                 matches!(out, Outcome::Wired { .. }),
                 "{host:?}: unexpected outcome {out:?}"
@@ -1563,7 +1568,8 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         // pristine home: `~/.claude.json` belongs to the CLI and it creates it
         // itself, so the golden scenario asserts the skip, not just its note.
         let home = tmp_home("golden-claude-json");
-        let out = run(Host::ClaudeCode, exe, &home, false, Some(bank));
+        std::fs::create_dir_all(home.join(Host::ClaudeCode.detect_rel())).expect("detection directory");
+        let out = apply(Host::ClaudeCode, exe, &home, false, no_path, &home.join("data"), Some(bank));
         assert!(matches!(&out, Outcome::Wired { notes, .. } if notes
             .iter()
             .any(|n| n.contains("absent; the CLI creates it"))));

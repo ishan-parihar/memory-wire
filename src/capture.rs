@@ -289,4 +289,67 @@ mod tests {
             assert_eq!(redact_pii(clean), clean, "false positive on {clean:?}");
         }
     }
+
+    // Shapes that live inside ordinary code and prose. Every one of these should
+    // be left alone: `redact_pii` runs on every retain, so a rule that fires on a
+    // path or a SHA silently rewrites an agent's memory of its own codebase.
+    #[test]
+    fn redact_should_leave_identifiers_alone() {
+        for clean in [
+            // UUIDs, plain and namespaced.
+            "550e8400-e29b-41d4-a716-446655440000",
+            "urn:uuid:550e8400-e29b-41d4-a716-446655440000",
+            // Git SHAs: short, abbreviated and full.
+            "36bb947 fix(release): macos-13 is retired",
+            "commit 36bb947f9d2a1c4b3a2e1f0d5c6b8a9f1e2d3c4b",
+            // File paths, ordinary and dotted.
+            "see ~/Documents/github/my-projects/agentic-utility/memory/memory-wire/src/hooks.rs",
+            "edit /usr/local/bin/memory-wire and /opt/include/memory-wire/v1.h",
+            // Semver, with and without pre-release/build metadata.
+            "v0.10.0",
+            "release v0.11.0-rc.2+build.5",
+            // URLs without credentials (scheme + host + path, nothing secret).
+            "https://docs.rs/regex/1.11.1/regex/struct.Regex.html",
+            "http://127.0.0.1:8888/banks/default/memories?q=hierarchy",
+            // A bare login@host with no TLD is not an email (no dot before the
+            // closing boundary); `EMAIL_RE` requires one.
+            "ssh ishanp@devbox",
+            // A port-less host with a dot would match `user@host.tld` and is
+            // redacted by the email rule — that boundary is documented, not an
+            // accident. It is asserted so a future rule cannot silently widen it.
+        ] {
+            assert_eq!(redact_pii(clean), clean, "false positive on {clean:?}");
+        }
+    }
+
+    #[test]
+    fn redact_should_treat_login_at_a_public_host_as_an_address() {
+        // A public host carries a dot, so `user@host.tld` is indistinguishable
+        // from a real address to the email rule. Pinning the boundary so a future
+        // rule cannot silently widen it.
+        assert_eq!(
+            redact_pii("mail ishanp@example.com"),
+            "mail [REDACTED:email]"
+        );
+    }
+
+    #[test]
+    fn redact_should_leave_a_clean_url_alone() {
+        // A URL is not a credential on its own; the secret inside it is.
+        assert_eq!(
+            redact_pii("get https://example.com/path?q=1"),
+            "get https://example.com/path?q=1"
+        );
+    }
+
+    #[test]
+    fn redact_should_leave_scheme_and_path_when_userinfo_is_redacted() {
+        // What must not happen is the whole URL disappearing. The userinfo half
+        // redacts by the email rule (it terminates at the `@` and carries a dot);
+        // the scheme and the path survive.
+        assert_eq!(
+            redact_pii("get https://user:pass@example.com/path"),
+            "get https://user:[REDACTED:email]/path"
+        );
+    }
 }
