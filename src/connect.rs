@@ -264,6 +264,32 @@ impl Host {
         }
     }
 
+    /// Directory this host loads agent *skills* from, relative to the home
+    /// directory, and the file name a skill's markdown carries.
+    ///
+    /// `None` for a host with no documented skills surface. The convention is
+    /// each host's own: Claude Code scans `.claude/skills/<name>/SKILL.md`,
+    /// Codex `.codex/skills/<name>/SKILL.md`, Cursor `.cursor/skills/…`, and so
+    /// on. A host not listed here is skipped by `--with-skills` rather than
+    /// guessed at, because a skill written where nothing reads it is worse than
+    /// one not written: it reports success and never loads.
+    ///
+    /// `pub` because the skills writer is a sibling module and its tests need
+    /// the mapping without going through the full `connect` path.
+    pub fn skills_rel(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Host::ClaudeCode => Some((".claude/skills", "SKILL.md")),
+            Host::Codex => Some((".codex/skills", "SKILL.md")),
+            Host::CopilotCli => Some((".copilot/skills", "SKILL.md")),
+            Host::Cursor => Some((".cursor/skills", "SKILL.md")),
+            Host::Opencode => Some((".config/opencode/skills", "SKILL.md")),
+            // OMP, Hermes and pi load plugins/extensions, not a skills tree, so
+            // there is no directory a skill file would be read from. Naming one
+            // would be the "reports success, never loads" failure above.
+            Host::Omp | Host::Hermes | Host::Pi => None,
+        }
+    }
+
     /// Executable that proves the host is installed.
     pub fn binary(self) -> &'static str {
         match self {

@@ -183,6 +183,62 @@ JWT, `Bearer`, Slack, Google API keys, emails, phones, `<private>` blocks), not 
   on-disk paths). The actionable errors are `400 invalid bank id` (empty/whitespace id), `400 invalid
   content`, `400 invalid bank config`, `404 unknown memory`, and `404 unknown bank`.
 
+
+## The memory-wire model (v0.9+)
+
+The substrate is deterministic and embedding-free. The runtime is the reasoning layer; memory-wire is
+the store. The model has seven pieces:
+
+### W1 — dimensional metadata
+
+Every memory carries three orthogonal facets on `PutContent`:
+
+- `dimensions` — `target: <who/what this is about>`, `window: <session | durable>`. Target gates
+  recall: a target-specific query only sees that target's memories; a general query sees all.
+- `aspect` — the recall mode: `fact` (default), `preference`, `invariant`, `trap`, `map`.
+- `scope` — the sharing blast radius: `private` (default), `domain`, `policy`, `global`.
+
+`Aspect` and `Scope` are plain strings (no enums) because they are pre-release wire format.
+Strict validation is a post-stability item.
+
+### W2 — mount profiles
+
+A mount profile maps an agent role to a recall posture. The first profile is `Subagent` (private
+reads, no policy/global). Profiles ride on `bank_config` via `PUT .../config`.
+
+### W3 — redaction
+
+`memory-wire redact --bank <b> --id <id> --pattern <regex> --name <name>` rewrites the named
+pattern across the live row and every version row. Replacement is `[REDACTED:<name>]`. Idempotent.
+Bank-scoped. Bad regex is `400`. The `memory_versions` table holds the history.
+
+### W4 — hygiene report
+
+`GET .../hygiene` runs five deterministic detectors over the bank:
+
+- Near-duplicates (Jaccard similarity above threshold)
+- Contradictions (contrast markers in paired memories)
+- Relative dates ("yesterday", "last week")
+- Promotion candidates (private memories appearing as domain knowledge)
+- Bloat (oversized memories)
+
+Read-only. No auto-modify.
+
+### W5 — grounding capsule
+
+`memory-wire grounding --bank <b> --aspect <a> --limit <n>` builds a bounded set of invariant,
+preference, trap, and map memories for the subagent prompt. Budget: 40 lines / 2048 bytes.
+
+### W7a — supersede
+
+`memory_supersede` MCP tool marks one memory as replaced by another (`lifecycle='superseded'`,
+`superseded_by=<target>`). The target is not auto-created.
+
+### W7b — recall gating
+
+Raw relevance scores are never a gating signal (CLOSED.md). The runtime decides what to inject.
+memory-wire serves a deterministic ordering; the runtime is the policy layer.
+
 ## Checklist
 
 - [ ] Server up — `memory-wire daemon status` exits 0, and `curl -s "$MW/health"` returns exactly `ok`

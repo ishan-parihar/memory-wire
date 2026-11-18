@@ -9,6 +9,7 @@ mod connect_plugin;
 mod daemon;
 mod doctor;
 mod guidelines;
+mod skills;
 mod hooks;
 mod http;
 mod mcp;
@@ -127,6 +128,11 @@ enum Cmd {
         /// Write the memory-wire rules block into this project's agent files.
         #[arg(long)]
         guidelines: bool,
+        /// Also install a SKILL.md that documents the W1-W7 memory-wire
+        /// model. Defensive: a byte-identical copy is a no-op, a modified
+        /// copy is refused, and --uninstall removes only our copy.
+        #[arg(long)]
+        with_skills: bool,
         /// Report every host, whether it is on this machine and whether it is
         /// already wired, and write nothing at all.
         #[arg(long)]
@@ -276,7 +282,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Daemon { action } => {
             std::process::exit(daemon::run(action));
         }
-        Cmd::Connect { agent, uninstall, guidelines, list, bank } => {
+        Cmd::Connect { agent, uninstall, guidelines, list, bank, with_skills } => {
             // A name that is not a host is a usage error, not a wiring failure,
             // so it goes out the same way a bad flag does: the reason and this
             // subcommand's own help together, for a caller to correct in one turn.
@@ -287,7 +293,7 @@ async fn main() -> anyhow::Result<()> {
                     why,
                 )),
             };
-            if let Some(why) = connect_conflict(hosts.len(), uninstall, guidelines, list) {
+            if let Some(why) = connect_conflict(hosts.len(), uninstall, guidelines, list, with_skills) {
                 eprintln!("memory-wire: {why}");
                 std::process::exit(1);
             }
@@ -297,7 +303,17 @@ async fn main() -> anyhow::Result<()> {
                 list_hosts();
                 return Ok(());
             }
-            let failed = if guidelines {
+            let failed = if with_skills {
+                let home = match paths::home() {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!("memory-wire: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                let data = paths::data_dir(&home);
+                skills::apply_all(&hosts, &home, &data, uninstall)
+            } else if guidelines {
                 write_guidelines()
             } else {
                 wire(hosts, uninstall, bank.as_deref())
@@ -399,7 +415,11 @@ fn connect_conflict(
     uninstall: bool,
     guidelines: bool,
     list: bool,
+    with_skills: bool,
 ) -> Option<&'static str> {
+    if with_skills && (list || guidelines || uninstall) {
+        return Some("--with-skills is a standalone step; combine it with no other action");
+    }
     if uninstall && guidelines {
         return Some("cannot combine --uninstall with --guidelines");
     }
@@ -1572,15 +1592,15 @@ A third line exists so the remainder is definitely hidden."#;
     #[test]
     fn uninstall_with_guidelines_should_fail_without_writing_anything() {
         assert_eq!(
-            connect_conflict(0, true, true, false),
+            connect_conflict(0, true, true, false, false),
             Some("cannot combine --uninstall with --guidelines")
         );
-        assert_eq!(connect_conflict(0, true, false, false), None);
-        assert_eq!(connect_conflict(0, false, true, false), None);
+        assert_eq!(connect_conflict(0, true, false, false, false), None);
+        assert_eq!(connect_conflict(0, false, true, false, false), None);
         // `--list` reports and writes nothing, so it cannot stand in for a change.
-        assert_eq!(connect_conflict(0, true, false, true), Some("--list wires nothing; drop it to make a change"));
-        assert_eq!(connect_conflict(1, false, false, true), Some("--list takes no host; `memory-wire connect <host>` wires one"));
-        assert_eq!(connect_conflict(0, false, false, true), None);
+        assert_eq!(connect_conflict(0, true, false, true, false), Some("--list wires nothing; drop it to make a change"));
+        assert_eq!(connect_conflict(1, false, false, true, false), Some("--list takes no host; `memory-wire connect <host>` wires one"));
+        assert_eq!(connect_conflict(0, false, false, true, false), None);
 
         let dir = std::env::temp_dir().join(format!("mw-conflict-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
