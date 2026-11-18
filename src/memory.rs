@@ -25,7 +25,7 @@ pub struct Bank {
 /// The six this build understands are a closed list on the *read* side; a typo
 /// in a filter therefore serves zero rows rather than the whole bank, and a
 /// typo on the write side is stored verbatim and matches nothing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Scope(pub String);
 
 impl Default for Scope {
@@ -35,7 +35,7 @@ impl Default for Scope {
 }
 
 /// What the memory is *for*, as opposed to how it was captured.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Aspect(pub String);
 
 impl Default for Aspect {
