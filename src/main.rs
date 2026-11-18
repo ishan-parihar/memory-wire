@@ -131,7 +131,8 @@ enum Cmd {
         guidelines: bool,
         /// Also install a SKILL.md that documents the W1-W7 memory-wire
         /// model. Defensive: a byte-identical copy is a no-op, a modified
-        /// copy is refused, and --uninstall removes only our copy.
+        /// copy is refused by name, and `--uninstall` removes only a copy
+        /// whose bytes match this build's template.
         #[arg(long)]
         with_skills: bool,
         /// Report every host, whether it is on this machine and whether it is
@@ -358,7 +359,32 @@ async fn main() -> anyhow::Result<()> {
                     }
                 };
                 let data = paths::data_dir(&home);
-                skills::apply_all(&hosts, &home, &data, uninstall)
+                // A bare `--with-skills` must mean the same thing a bare `connect`
+                // means. It used to iterate the empty host list and exit 0 having
+                // written nothing, so the documented form of the command was a
+                // silent no-op.
+                let implicit = hosts.is_empty();
+                let selected = if implicit { connect::IMPLICIT.to_vec() } else { hosts };
+                let failed = skills::apply_all(&selected, &home, &data, uninstall);
+                if implicit {
+                    // The same sentence `wire` prints, built the same way, so the
+                    // two surfaces cannot disagree about which host was left out
+                    // or why.
+                    let skipped: Vec<&str> = connect::ALL
+                        .iter()
+                        .filter(|h| !connect::IMPLICIT.contains(h))
+                        .map(|h| h.id())
+                        .collect();
+                    if !skipped.is_empty() {
+                        println!(
+                            "note       {} not wired by a bare `--with-skills` — it takes over the single\n            \
+                             memory.provider slot. Run `memory-wire connect --with-skills {}` to install it.",
+                            skipped.join(" / "),
+                            skipped.join(",")
+                        );
+                    }
+                }
+                failed
             } else if guidelines {
                 write_guidelines()
             } else {
@@ -489,6 +515,11 @@ async fn main() -> anyhow::Result<()> {
 /// writing a rules block (or the reverse) — a state neither can be undone from.
 /// `--list` writes nothing, so pairing it with either would answer a scan where a
 /// change was asked for.
+///
+/// `--with-skills --uninstall` is **allowed** and is the teardown half of the
+/// skill install: it removes only the copies whose bytes match the embedded
+/// template. It was refused when W6 shipped, which made the one documented
+/// removal path unreachable and left `skills::remove` with no caller.
 fn connect_conflict(
     hosts: usize,
     uninstall: bool,
@@ -496,8 +527,11 @@ fn connect_conflict(
     list: bool,
     with_skills: bool,
 ) -> Option<&'static str> {
-    if with_skills && (list || guidelines || uninstall) {
-        return Some("--with-skills is a standalone step; combine it with no other action");
+    if with_skills && (list || guidelines) {
+        return Some(
+            "--with-skills is a standalone step; drop --list/--guidelines, \
+             or use --uninstall to remove the installed copy",
+        );
     }
     if uninstall && guidelines {
         return Some("cannot combine --uninstall with --guidelines");
@@ -1713,6 +1747,27 @@ A third line exists so the remainder is definitely hidden."#;
         assert_eq!(connect_conflict(1, false, false, true, false), Some("--list takes no host; `memory-wire connect <host>` wires one"));
         assert_eq!(connect_conflict(0, false, false, true, false), None);
 
+        // `--with-skills --uninstall` is the documented teardown half of the
+        // install, so it is allowed. Refusing it (as W6 did) made the one
+        // removal path unreachable and left `skills::remove` with no caller.
+        assert_eq!(connect_conflict(0, false, false, false, true), None);
+        assert_eq!(connect_conflict(0, true, false, false, true), None);
+        // It still cannot stand in for the other two actions.
+        assert_eq!(
+            connect_conflict(0, false, true, false, true),
+            Some(
+                "--with-skills is a standalone step; drop --list/--guidelines, \
+                 or use --uninstall to remove the installed copy"
+            )
+        );
+        assert_eq!(
+            connect_conflict(0, false, false, true, true),
+            Some(
+                "--with-skills is a standalone step; drop --list/--guidelines, \
+                 or use --uninstall to remove the installed copy"
+            )
+        );
+
         let dir = std::env::temp_dir().join(format!("mw-conflict-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).expect("tmp");
@@ -2221,6 +2276,58 @@ A third line exists so the remainder is definitely hidden."#;
         let live = after2.get("demo", "m1").expect("get").expect("some");
         assert!(live.content.contains("[REDACTED:openai_key]"), "{live:?}");
         assert!(!live.content.contains("sk-live123"), "{live:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // A bare `--with-skills` (no host named) must install into the implicit
+    // host set. W6 shipped it iterating an empty slice, so the documented form
+    // of the command was a silent exit-0 no-op.
+    #[test]
+    fn a_bare_with_skills_should_install_into_the_implicit_hosts() {
+        let dir = cli_scratch("bare-skills");
+        let (out, err, code) = run_cli(
+            "off",
+            &["connect".to_string(), "--with-skills".to_string()],
+            &dir,
+        );
+        assert_eq!(code, Some(0), "{out}{err}");
+
+        // Every host in IMPLICIT that has a skills tree got one. Codex is in
+        // IMPLICIT and has a tree, so its file must exist and hold the template.
+        let codex = dir.join(".codex/skills/memory-wire/SKILL.md");
+        let installed = std::fs::read_to_string(&codex).expect("the implicit install must write");
+        assert_eq!(
+            installed,
+            include_str!("../plugin/skills/memory-wire/SKILL.md"),
+            "the bytes are the embedded template"
+        );
+
+        // And the reason hermes was skipped is stated, the same sentence
+        // `wire` prints for the same reason.
+        assert!(out.contains("hermes"), "{out}");
+        assert!(out.contains("--with-skills"), "{out}");
+
+        // A second run changes nothing: byte-identical is a no-op.
+        let (again, _, again_code) = run_cli(
+            "off",
+            &["connect".to_string(), "--with-skills".to_string()],
+            &dir,
+        );
+        assert_eq!(again_code, Some(0), "{again}");
+        assert!(again.contains("unchanged"), "{again}");
+
+        // The teardown half W6 refused to run: it removes the copy it wrote.
+        let (off, _, off_code) = run_cli(
+            "off",
+            &[
+                "connect".to_string(),
+                "--with-skills".to_string(),
+                "--uninstall".to_string(),
+            ],
+            &dir,
+        );
+        assert_eq!(off_code, Some(0), "{off}");
+        assert!(!codex.exists(), "the uninstall removed our copy");
         std::fs::remove_dir_all(&dir).ok();
     }
 

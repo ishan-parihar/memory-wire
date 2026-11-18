@@ -31,7 +31,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::connect::{backup, timestamp, Host};
+use crate::connect::Host;
 use crate::paths;
 
 /// The skill, embedded at build time.
@@ -80,10 +80,16 @@ pub fn skill_path(host: Host, home: &Path) -> Option<PathBuf> {
 
 /// Install the skill into `host`'s skills directory under `home`.
 ///
-/// `data_root` is the XDG data directory, used for the backup on first write.
+/// `_data_root` is the XDG data directory. It is kept in the signature because
+/// every sibling installer (`connect::apply`, `connect_ext::apply`,
+/// `connect_opencode::apply`) takes it in this position, and a skill install
+/// needs no backup: the only state that reaches the write is an absent or empty
+/// file, so there is nothing to preserve. A future change that overwrites a
+/// populated file would use it.
+///
 /// Returns what happened; a refusal is not a failure of the whole run, so the
 /// caller can continue to the next host.
-pub fn apply(host: Host, home: &Path, data_root: &Path, uninstall: bool) -> Applied {
+pub fn apply(host: Host, home: &Path, _data_root: &Path, uninstall: bool) -> Applied {
     let Some(path) = skill_path(host, home) else {
         // A host with no skills tree. Not a failure: `--with-skills` over every
         // host should skip the ones it cannot serve rather than error.
@@ -91,7 +97,7 @@ pub fn apply(host: Host, home: &Path, data_root: &Path, uninstall: bool) -> Appl
     };
 
     if uninstall {
-        return remove(host, home, &path);
+        return remove(&path);
     }
 
     let existing = match paths::read_or_empty(&path) {
@@ -111,24 +117,27 @@ pub fn apply(host: Host, home: &Path, data_root: &Path, uninstall: bool) -> Appl
         ));
     }
 
-    // First write: preserve nothing (the file is empty or absent), then write
-    // atomically and re-read verify.
+    // First write: the file is empty or absent, so there is nothing to preserve.
+    // Write atomically and let `write_atomic` re-read-verify.
+    //
+    // Deliberately **no** `backup` call here. The only state that reaches this
+    // line is a file that was absent or empty, so backing it up would copy the
+    // bytes this function is about to write — a backup of our own output, which
+    // is not a backup of anything. The earlier version called `backup` after the
+    // write, producing exactly that: a duplicate of the template under
+    // `backups/<host>-<ts>/` on every first install.
     if let Err(why) = paths::write_atomic(&path, SKILL) {
         return Applied::Refused(format!("{}: {why}", path.display()));
-    }
-    // `backup` takes a path relative to `home`; the skill path is absolute, so
-    // strip the home prefix. A file that was empty or absent has nothing to
-    // preserve, so a strip failure here is not an error worth failing the write
-    // over — the write already landed atomically and verified.
-    if let Ok(rel) = path.strip_prefix(home) {
-        let _ = backup(data_root, home, host, &timestamp(), rel);
     }
     Applied::Created
 }
 
 /// Remove the skill file on `--uninstall`, but only if it is one this build
 /// wrote (bytes match the embedded template). A modified copy is left alone.
-fn remove(_host: Host, _home: &Path, path: &Path) -> Applied {
+///
+/// The path is the whole input: the host and home it came from are already
+/// baked into it, so taking them again would be two ways to say one thing.
+fn remove(path: &Path) -> Applied {
     let existing = match paths::read_or_empty(path) {
         Ok(s) => s,
         Err(e) => return Applied::Refused(format!("{}: {e}", path.display())),
@@ -236,6 +245,13 @@ mod tests {
 
         apply(host, &home, &data, true);
         assert!(!path.exists(), "uninstall removed our copy");
+
+        // The round trip closes: a fresh install after a removal re-creates the
+        // file with the template again, so `--with-skills --uninstall` followed
+        // by another `--with-skills` is a working pair rather than a dead end.
+        apply(host, &home, &data, false);
+        let again = std::fs::read_to_string(&path).expect("read back");
+        assert_eq!(again, SKILL, "a re-install restores the template");
     }
 
     #[test]
