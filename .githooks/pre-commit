@@ -8,6 +8,19 @@ root="$(git rev-parse --show-toplevel)"
 "$root/scripts/secret-scan.sh" --staged
 "$root/scripts/secret-scan.sh" --remotes
 
+# The plugin doors have no compiler and no type system: `trust_gate_test.sh` is
+# the only executable check that an untrusted row cannot reach a model's system
+# prompt through the two TypeScript doors, and it was wired to nothing until
+# 2026-11-19. Both bugs it now catches were found by hand (CONSISTENCY §53/§58),
+# which is the argument for running it here rather than trusting a human to
+# remember. Guarded, because a clone without node must still be able to commit;
+# it says so instead of skipping silently.
+if command -v node > /dev/null 2>&1; then
+  "$root/plugin/integrations/trust_gate_test.sh"
+else
+  echo "pre-commit: node not found, skipping the plugin door tests" >&2
+fi
+
 # core.hooksPath replaces .git/hooks, which install-docs-gate writes to. Keep
 # running that gate so enabling this hook does not silently disable it.
 managed="$(git rev-parse --git-common-dir)/hooks/pre-commit"

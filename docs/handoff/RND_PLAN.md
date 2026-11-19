@@ -1,6 +1,8 @@
 # R&D plan — hypotheses, tests, gates
 
-Status 2026-10-14. Each hypothesis has: **Status**, **Mechanism** (the argument, written
+Status 2026-11-19 (the line read 2026-10-14 until §6 was closed out; §6 had
+already been written on 2026-10-16, so the header lagged its own last section).
+Each hypothesis has: **Status**, **Mechanism** (the argument, written
 *before* any number), **Test**, **Gate**, **Record**, **Cost**. Do them in the order of
 §2. A hypothesis is not a licence to sweep: parameter values come from mechanism, and
 where a sweep is unavoidable it runs on **LoCoMo only** and is recorded as selection on
@@ -24,7 +26,7 @@ the dev set with its fittedness stated (AGENTS §6).
 - [3. Experiment protocol (copy this per hypothesis)](#3-experiment-protocol-copy-this-per-hypothesis)
 - [4. Results log (append; never rewrite)](#4-results-log-append-never-rewrite)
 - [5. Cycle 2026-10-15→ — the survey-sourced queue](#5-cycle-2026-10-15--the-survey-sourced-queue)
-- [6. Cycle 2026-10-16→ — the upcoming cycle, outlined](#6-cycle-2026-10-16--the-upcoming-cycle-outlined)
+- [6. Cycle 2026-10-16→ — closed; kept as the record](#6-cycle-2026-10-16--closed-kept-as-the-record)
 
 ## 0. The measurement setup in one paragraph
 
@@ -520,28 +522,45 @@ above, and V4 (MCP bank listing, product polish with no benchmark claim) — shi
 independently of the audit's outcome if their source mechanisms check out.
 
 
-## 6. Cycle 2026-10-16→ — the upcoming cycle, outlined
+## 6. Cycle 2026-10-16→ — closed; kept as the record
 
 Written 2026-10-16, the day the survey cycle closed out (H10 measured, H9
 shape-checked, H11 and V4 closed, v0.8.1/v0.8.2 shipped). **No ranking lever is
 open**: the six-repo audit found no incoming mechanism (`COMPETITOR_GAPS_PLAN.md`
 §6), every in-house lever is terminal (§4, `CLOSED.md`), and the shipped
-configuration survived every challenger. The upcoming cycle is therefore
-**instrument/workstream-shaped** — it builds the instruments that can gate future
-levers, runs the one registered re-test, and holds everything else for user
-decisions. Nothing here selects on LongMemEval; nothing re-litigates `CLOSED.md`.
+configuration survived every challenger. That cycle was therefore
+**instrument/workstream-shaped** — it built the instruments that can gate future
+levers, ran the one registered re-test, and held everything else for user
+decisions.
+
+**Status 2026-11-19: W1, W2 and W3 are all closed** (§47, §48, §46 respectively;
+each item below carries its own **Done** paragraph with the artifact). §6.0 was
+written in the imperative and has been left that way on purpose — it records what
+the cycle set out to do, and the Done paragraphs are the record of what it did.
+Only §6.4 (decision-gated) and §6.5 (named, not scheduled) still look forward.
+The section heading said "the upcoming cycle" from 2026-10-16 until 2026-11-19,
+which was true when written and false for a month. Nothing here selects on LongMemEval; nothing re-litigates `CLOSED.md`.
 
 ### 6.0 Order of work
 
 ```
 W1  H9 labelling project (free, ~days of authoring) → one free pool-scale
     overlap re-test — terminal either way (kept / deleted)
+      DONE 2026-10-16, §47: stream kept (not deleteable); the weight stays the
+      user's call because two dev corpora point opposite ways
 W2  frozen relevance battery (free, ~days) → D-case re-measure; precision
     levers become registrable only once the instrument exists
+      DONE 2026-10-16, §48: 21 labelled cases frozen; levers registrable, none
+      registered
 W3  H12 dated HaluMem re-measure (adapter serve-shape fix + one ~7.5 h
     free-tier run; measure-only) — pre-registered in §6.3, the one new H-item
+      DONE 2026-10-17, §46: Dynamic Update 0.2056→0.4056; 0 consultations
 —   second order, named not scheduled: PersonaMem v2 first run; OmniMemEval
     LoCoMo judged cross-check (both measure-only, free tier)
+      PARTLY DONE: PersonaMem v2 ran 2026-10-17 and was scored 2026-11-19 at
+      37.8% (1,872/4,954); its rows are gitignored (one held a pasted token), so
+      the aggregate is uncommitted pending the user's ruling — see
+      REMAINING_WORK_PLAN.md §1.1. The LoCoMo cross-check was not run.
 —   decision-gated: §6.4 — nothing there moves without the user
 ```
 
@@ -550,7 +569,7 @@ work, W3 is one short patch plus a long unattended chain (launch per the
 long-chain discipline: `setsid nohup` from a `/var/tmp` script; re-arm watchers
 on expiry).
 
-### 6.1 W1 — the BEAM labelling project (H9's unblock)
+### 6.1 W1 — the BEAM labelling project (H9's unblock) — **done 2026-10-16**
 
 H9 stays as registered in §5; this names the project, not a new hypothesis.
 
@@ -585,7 +604,7 @@ gave the fitted value +1.4pp) — two dev corpora point opposite ways on the
 weight, which stays the user's call. H9 terminal: kept, with its first
 measured justification; TODO #9 closed.
 
-### 6.2 W2 — freeze the relevance battery, then precision levers (TODO #6)
+### 6.2 W2 — freeze the relevance battery, then precision levers (TODO #6) — **done 2026-10-16**
 
 **Done 2026-10-16 (CONSISTENCY §48, artifact `eval/relevance/BATTERY-2026-10-16-frozen.txt`).**
 The battery is frozen: `eval/relevance/freeze_battery.py` pins the bank
@@ -620,7 +639,7 @@ in this cycle.
   exclusion. **No lever is registered in this cycle** — the instrument comes first.
 - **Cost:** free; days of authoring.
 
-### 6.3 W3 — H12: date-aware HaluMem re-measure (new, pre-registered, measure-only)
+### 6.3 W3 — H12: date-aware HaluMem re-measure — **done 2026-10-17**
 
 - **Status:** pre-registered 2026-10-16, not started. The defect is verified
   end-to-end at the pinned clone (`../_audit_scratch/omnimevaleval` @ `a5c8b4b`):

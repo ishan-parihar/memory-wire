@@ -69,3 +69,14 @@ jobs:
       # never compiles -- without it that code is only ever checked by review.
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      # The two TypeScript plugin doors have no compiler in this workflow and no
+      # type system anywhere: this script is the only executable check that an
+      # `untrusted_external` row cannot reach a model's system prompt through
+      # them, or that the recall cap counts emitted rows rather than scanned
+      # input. Both bugs were found by hand after the code shipped
+      # (CONSISTENCY §53/§58), which is the argument for running it here. It
+      # drives each door's real `formatRecall` in node and the hermes provider
+      # against a local HTTP stub, so it needs no network and no secrets.
+      - name: Plugin door tests
+        run: sh plugin/integrations/trust_gate_test.sh
