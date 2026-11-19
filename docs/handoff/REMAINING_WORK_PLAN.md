@@ -1,207 +1,273 @@
-# Outline plan — the remaining implementation gaps
+# Outline plan — what is left, and what each blocker needs from you
 
-Written 2026-11-19, after round-3 context-pack review closed at `98b1a36`.
-Every row below was checked against the tree or a command before it was written;
-where a register row and the code disagreed, the code won and the disagreement is
-named.
+Written 2026-11-19, after the four batches of `REMAINING_WORK_PLAN.md` closed.
+Supersedes that file's §4/§5 as the live list; `TODO.md` rows 10–13, 31 stay the
+implementation register.
 
-**This is an outline, not a run.** Nothing here has been implemented. Rows are
-ordered by (1) whether anything blocks them, (2) whether they are product work or
-research spend, (3) whether they have a proof that can fail.
-
----
-
-## 0. What the registers say, and where they are wrong
-
-Three sources claim to be the list: `TODO.md` (32 rows, 26 done), its domain docs
-(`INTEGRATION_GAPS.md`, `INTEGRATION_PLAN.md`), and `docs/handoff/RND_PLAN.md`
-§6. They disagree. Resolving that is step zero, because a plan built on a stale
-row sends work to a place that is already done.
-
-| claim | source | check | verdict |
-|---|---|---|---|
-| P2.1 open (golden-fixture tier) | `TODO.md` row 4 | `connect::tests::golden_install_shapes` exists, `src/connect.rs:1351` | **stale.** The plan's own header (2026-10-15) already says done; the TODO row was never updated |
-| P4.1 open (hermes slot research) | `TODO.md` row 4 | plan header: "P4.1 done 2026-10-15 — the slot binds by directory name per hermes' own `find_provider_dir`" | **stale**, same cause |
-| P3.1 recorder missing | `INTEGRATION_PLAN.md` P3.1 step 3 | `examples/bench_footprint.rs:69` reads `DT_NEEDED` via `readelf` | **stale.** Only the v0.5.0 byte-compare is unrun |
-| G6.8 open (no `system_prompt_block`) | `INTEGRATION_GAPS.md` "What is left" | `plugin/integrations/hermes/memory-wire/__init__.py:458` implements it | **stale.** The method exists and is documented as static-by-contract |
-| G4 open (bank opt-in) | `INTEGRATION_GAPS.md` | no `opt_in` code in `src/` | **genuinely open, and a policy decision, not a bug** |
-| TODO #31 open (door parity) | `TODO.md` row 31 | verified table in `INTEGRATION_GAPS.md` addendum | **genuinely open, and explicitly a surface decision** |
-
-**The pattern:** every stale row is one where the work landed and one of two
-registers was updated. That is the same class of defect round 3 found in
-`measure_surface.sh` — a count that stopped being maintained — one level up, in
-the plan of record itself. The fix is cheap and worth doing first.
+**Two sections, deliberately.** §1 is what can proceed without you. §2 is the
+part that cannot — each blocker stated as a decision with its cost, its
+reversible-or-not property, and my recommendation. §3 is what the last day's
+verification turned up that nobody had recorded.
 
 ---
 
-## 1. The one finding round 3 left half-closed — **DONE 2026-11-19**
+## 1. Unblocked: what I would do next without asking
 
-> **Done.** `plugin/integrations/trust_gate_test.sh` now runs all three doors
-> from one entry point, and `plugin/integrations/hermes/trust_gate_test.py`
-> drives the real `MemoryWireProvider.prefetch` against a local HTTP stub.
-> Mutation-checked per door: removing the hermes filter fails the hermes check,
-> removing the extension filter fails only its own. Record: CONSISTENCY §55.
+None of these needs a decision. All are inside this repo and inside the law
+(AGENTS §6, §8).
 
-Round 3 added the trust gate to both TypeScript plugins and left proof for them
-(`plugin/integrations/trust_gate_test.sh`). Checking the other doors:
+### 1.1 PersonaMem v2 — score the run that already finished
 
-| door | gate present | executable check |
-|---|---|---|
-| `src/hooks.rs` | yes | yes — Rust tests, incl. a full-chain test |
-| `plugin/integrations/extension/memory-wire.ts` | yes | yes — `trust_gate_test.sh` |
-| `plugin/integrations/opencode-plugin/memory-wire.ts` | yes | yes — `trust_gate_test.sh` |
-| `plugin/integrations/hermes/memory-wire/__init__.py` | **yes** (`UNTRUSTED_TIER`, line 110; filter at 516) | **no** |
+**This is not a "run the benchmark" item. The run completed on 2026-10-17 and the
+number has never been computed.** Verified just now:
 
-The hermes gate is real and correctly written — it even filters before the take,
-with the same reasoning. It is the one door with the policy and no executable
-check, and `trust_gate_test.sh` only covers the two `.ts` files because that is
-what it was written for.
-
-**Item 1 — extend the proof to the fourth door.** Small, mechanical, and it
-closes the shape round 3 identified rather than one instance of it. The
-alternative — leaving it — means the next person to touch `prefetch` finds out
-the hard way.
-
----
-
-## 2. A second real gap the review did not name — **DONE 2026-11-19**
-
-> **Done.** All three doors now prefix `[<YYYY-MM-DD>]`, all four use the same
-> rule (`len >= 10`, day precision, empty when absent), and the degradation case
-> is asserted rather than assumed. Live-verified against a server built from this
-> tree, all three doors against one recall response. Record: CONSISTENCY §56.
-
-Found while checking whether DECISIONS #1 ("serve occurrence dates in the
-surfaces") was still open. It is, and unevenly:
-
-| door | requests `format` | prefixes `[<date>]` |
-|---|---|---|
-| `src/hooks.rs` | `full` / `summary` | **yes** — `recall_section`, line ~766, with a documented H12 rationale |
-| hermes plugin | `full` | **no** — `_recall` drops `created_at` entirely, `prefetch` emits `- {content}` |
-| extension `.ts` | `full` | **no** |
-| opencode `.ts` | `full` | **no** |
-
-`src/hooks.rs` carries the reason in a comment: H12 measured +13.0pp overall on
-HaluMem from the date prefix alone, which is the largest single lever the cycle
-found. The wire has carried `created_at` on every `format: "full"` hit since
-TODO #15 shipped. So three doors are serving an instrument the Rust door already
-proved is worth serving — and each drops the field on the floor.
-
-This is **not** a ranking change and not a threshold: it is a rendering change
-downstream of ranking, byte-identical when the wire carries no date. It is the
-same class as the trust gate — one policy, four doors, unevenly enforced — and it
-is the higher-value half.
-
-**Item 2 — serve dates on the remaining three doors.** One small change per
-door, gated on `created_at` being present so an old server degrades to today's
-exact bytes. Proof: an end-to-end run per door against a live server, asserting
-the canary-free block carries `[YYYY-MM-DD]` when the wire does and does not when
-it does not.
-
----
-
-## 3. The capsule knob stops at the Rust door — **DONE 2026-11-19**
-
-> **Decided and built: honour the environment, not the config key.** All three
-> plugin surfaces read `MEMORY_WIRE_FORMAT=summary` and ask for capsules; they
-> do not read `injectionFormat`, because that would add a second HTTP request per
-> turn and the plugins already take their other settings from the environment.
-> The asymmetry is documented in README, SKILL.md and at each code site rather
-> than left silent. Live-verified on all three doors with a 293-char memory;
-> degradation to `full` asserted for unset, empty, `full`, a typo and a padded
-> value. Record: CONSISTENCY §57.
-
-DECISIONS #1 also recommended "capsules per-bank". The mechanism shipped:
-`bank_injection_format_at` reads a bank's `injectionFormat` config key, with
-`MEMORY_WIRE_FORMAT` as fallback, and `format: "summary"` serves H8 capsules.
-
-It exists in `src/hooks.rs` only. Neither hermes nor the two TS plugins read the
-key or the env, so a bank configured for capsules gets them from the Rust hook
-and full text everywhere else.
-
-**Item 3 — either honour the knob on all doors, or document it as Rust-only.**
-The first is a small patch per door. The second is a doc line and is defensible:
-the knob is young, and a surface that ignores it silently is worse than one that
-is documented not to have it. Decide before implementing — this is the one row
-here that is a product call rather than a mechanical port.
-
----
-
-## 4. What is genuinely blocked, and should stay blocked
-
-These are open in the registers and I am **not** proposing work on them. Each is
-blocked on the user, on money, or on another repo, and each says so in its own
-row.
-
-| item | why it stays |
+| | |
 |---|---|
-| TODO #10 — agent-memory-bench Claude Code arm | needs the user's agent-model budget. The only external benchmark grading task success with hooks+MCP wired |
-| TODO #11 — LLM-judged runs (AMB `rag`, OAMB LME-60, memorybench, MemBase) | same budget gate; OAMB/LME runs are test consultations |
-| TODO #12 — AMB provider writes at turn granularity | **measured and rejected on merit.** LoCoMo dev: turn-level loses to whole sessions on every aggregate (R@1 60.4% → 54.6%, n 1531); windows lose too. The row buys measurability of long corpora at a ranking cost and is explicitly not a ranking lever |
-| TODO #13 — aroute bugs B1–B4 | different repo (`proxy/artificial-route`), user's. memory-wire agents do not edit aroute |
-| TODO #31 — door parity | a surface decision. Redact on MCP is the widest gap and the honest answer may be a documented ruling that the doors stay asymmetric |
-| G4 — bank opt-in policy | a policy decision. `BANK_IDENTITY.md` already shows a fork does not collide, so the case the parents design against is covered; the residual is two remote-less dirs sharing a basename |
-| §6.4 in full — head-to-head, Track 2, paid reader, dense arm | user-gated. `DECISIONS.md` has a ranked recommendation per row |
-| R&D — any new ranking lever | **closed by law.** `CLOSED.md` is the complete list; AGENTS §8 forbids re-proposing without new evidence. The six-repo audit found no incoming mechanism |
+| run | `eval/omnimevaleval/memory-wire-mw_pmv2_dated/`, 2026-10-17 11:52 IST, `TOPK=20` |
+| completeness | 4,954 answers, 4,954 judged; search 4,989 success / 11 empty / 0 failed |
+| answers | carry `is_correct` — **no judge re-run is needed** |
+| score | **37.8% overall (1,872 / 4,954)** |
 
-The in-house retrieval queue is empty and that is a finding, not a gap to fill.
-Round 3 found no ranking lever either; it found enforcement asymmetry between
-doors, which is a different and cheaper kind of problem.
+By category: `ask_to_forget` 25.1% (n 1,039), `sensitive_info` 30.2%, `neutral_preferences`
+42.1%, `anti_stereotypical_pref` 37.6%, `therapy_background` 43.1%,
+`health_and_medical_conditions` 46.2%, `stereotypical_pref` 48.2%.
 
----
+Why it matters: DECISIONS §6 names this exact run as the preference-memory corpus
+"directly informs answerer-side work", and `TODO.md` row 18 says "PersonaMem v2
+remains named-not-scheduled". It is neither run-pending nor scheduled — it is
+**run and unread**, which is the same shape as the four stale register rows.
 
-## 5. Order of work
+**One complication, and it needs a ruling from you rather than a decision.**
+The directory is `.gitignore`d, deliberately: the run wrote memory rows verbatim
+and one held a pasted bot token. So the raw outputs cannot be committed as-is,
+and AGENTS §14 says live-bank output is not committed. Options: (a) record the
+aggregate only, with the command and the artifact path named as uncommitted, (b)
+score it and commit the score without the raw rows, (c) leave it entirely.
 
-Each item is one batch, one commit, gated the same way (`cargo test --locked`,
-clippy `-D warnings`, `cargo doc` 0 warnings, plus live proof for anything that
-changes what a model receives).
+### 1.2 Two more corrections the last pass exposed
 
-```
-1  Fix the stale register rows (§0)              docs only, ~30 min
-   -> P2.1/P4.1/P3.1/G6.8 corrected in TODO.md and INTEGRATION_GAPS.md,
-      each with the command or file:line that closes it
+- **`../_audit/` and `../_audit_scratch/` are both gone.** The pinned OmniMemEval
+  clone (commit `a5c8b4b`) no longer exists anywhere on this box. H10/H12's
+  artifacts are committed and reproducible in principle, but **re-running either
+  would mean re-cloning and re-pinning**. Anyone planning a second HaluMem run
+  (DECISIONS §2) is planning a re-clone, not a re-run.
+- **`RND_PLAN.md` §6.0 still describes W1–W3 as "upcoming"** and its header says
+  "the upcoming cycle, outlined" — all three are done (`eval/BEAM.md`, §47; the
+  battery; H12 §46). Same stale-register shape.
 
-2  Extend trust_gate_test.sh to hermes (§1)      small, closes the shape
-   -> the fourth door gets an executable check; mutation-proved
+### 1.3 The README rubric failure is 14 months old and structural
 
-3  Serve dates on hermes + both TS (§2)          the real prize
-   -> one patch per door, each degraded-safe; live proof per door
-
-4  Capsule knob: decide then act (§3)            blocked on a product call
-   -> either honour injectionFormat on all doors, or document Rust-only
-
-5  Nothing else. Blocked rows (§4) stay blocked.
-```
-
-Items 2 and 3 are independent and could run in either order; 3 is larger and
-worth more. Item 1 is first because every later item cites the register.
-
-**Not in this plan, deliberately:** any retrieval change, any new benchmark run,
-any LongMemEval consultation, any threshold. AGENTS §6 and §8 both bite, and the
-round-3 evidence is that the remaining product risk is in enforcement parity
-across doors, not in ordering.
+Not caused by this session and not fixable in a batch about plugin doors:
+`docs-check` reports `length_in_band` + `visual_proof`. README is 1,091 lines
+against a `generic`-archetype band of **100–170**. It was already failing at
+v0.10.0 (1,077 lines), v0.9.0 (1,060) and v0.8.0 (995) — the same two issues.
+Fixing it means either cutting ~900 lines or declaring the archetype honestly
+(`curated-list` fits at 400–2,700). Flagging it because a gate that has cried
+wolf for four releases is a gate nobody reads.
 
 ---
 
-## 6. How each item proves itself
+## 2. Blocked: the decisions that are yours
 
-The standard round 3 set, because it caught two things a green suite did not:
+Each row: what it costs, what it buys, whether it is reversible, and what I
+recommend. **Nothing below moves without you.**
 
-1. **Positive:** the behaviour happens, observed on a live server built from the
-   tree — not a canned response.
-2. **Negative:** remove the change, the check fails, restore, it passes. A test
-   that passes with the code deleted is not a test.
-3. **Degradation:** an old server (bare strings, no `trust`, no `created_at`)
-   produces exactly today's bytes. Every gate here is evidence-on-presence, never
-   evidence-on-absence.
-4. **Doc agreement:** the claim and the code say the same thing. Round 3 found
-   four docs that did not.
+### 2.1 Door parity (TODO row 31) — a design ruling, not a bug
 
-Two traps from this session worth carrying into any of it:
+**The actual asymmetry today**, verified against the route table and tool list:
 
-- **A hooks test that spawns the binary is only as current as the last explicit
-  `cargo build --bin memory-wire`.** `cargo test --bin` does not rebuild it.
-- **A running server may predate the code you are testing.** My first live check
-  of the trust wire showed no `trust` field at all, because the server on :8888
-  was a Nov 17 build. Start a fresh one from `target/` before believing a
-  negative result.
+| capability | HTTP | MCP | CLI | hook |
+|---|---|---|---|---|
+| redact | no route | no tool | yes | no |
+| hygiene | `GET /banks/:id/hygiene` | no | no | no |
+| supersede | no route | `memory_supersede` | no | no |
+| config get | yes | `memory_bank_config_get` | yes | yes (probe) |
+
+**Why it is not simply "add the missing doors."** `memory_redact` on MCP is
+contested on its merits, not on effort: redaction is a *custody* operation over a
+store, and exposing it to any agent that can reach the MCP port means any agent
+that can reach the port can rewrite history. Today the same limitation applies to
+HTTP `DELETE /banks/:id/memories/:mid`, which already exists — so this is a
+consistency question, not a new capability. The honest options:
+
+- **(a) Do nothing; document the asymmetry as deliberate.** Cost: one doc pass.
+  Buys: nothing changes, and a reader stops assuming parity. Reversible.
+- **(b) Add `memory_redact` to MCP.** Cost: a tool plus tests plus a doc entry.
+  Buys: an agent that retained a secret through MCP can retract it through MCP.
+  Reversible. **This is the one I'd pick** — the capability gap is real and the
+  risk profile already exists on HTTP.
+- **(c) Add hygiene to CLI/MCP, supersede to HTTP.** Cost: two more surfaces.
+  Buys: completeness that nothing has asked for. Reversible. Lower value than (b).
+
+**Recommendation: (a) + (b).** Document the ruling, close the widest gap.
+
+### 2.2 aroute (TODO row 13) — not my repo, and the fix is yours
+
+Four defects, all in `agentic-utility/proxy/artificial-route`, all handed off in
+`docs/AROUTE_BUGS.md` (202 lines, with a verification recipe at the end):
+
+| | defect | effect on us |
+|---|---|---|
+| B1 | upstream failure → HTTP 200 with `{"error"}` body, logged `outcome=ok`, no failover | every OpenAI client misreads a failure as an answer |
+| B2 | cline replies forwarded inside `{"success","data"}` envelope | clients must unwrap; the shim does |
+| B3 | cline token/cost headers read 0 | spend limits silently miss cline |
+| B4 | permanent 403 gets `cooldown_ms=0` and is retried every request | wasted calls on a dead provider |
+
+**What it costs to leave it:** `eval/llm_shim.py` exists solely to paper over
+B1/B2. Every LLM-judged run routes through it. Fixing aroute deletes the shim and
+speeds up all future judged runs.
+
+**What it costs to fix:** their repo, their service, their call — AGENTS is
+explicit that memory-wire agents do not edit aroute or restart its service.
+
+**What you'd need to do:** hand `docs/AROUTE_BUGS.md` to whoever owns aroute, then
+re-run one short shim job; the doc names the exact log fields that prove each fix
+(`attempts > 1` = B1, `enveloped: true` = B2, zero `tokens_in` = B3).
+
+**Recommendation: treat as a separate piece of work, not part of this plan.**
+Blocking on it costs nothing today; it only gates *speed* of future runs.
+
+### 2.3 agent-memory-bench (TODO row 10) — needs a model budget, and it is the highest-value one
+
+**What it is:** GiulioDER's agent-memory-bench, the only external benchmark that
+grades what this product actually does — hooks and MCP wired end-to-end, task
+success, plus a harm suite (superseded / contradictory / adjacent).
+
+**Why it is different from everything else in the battery:** every other number
+we publish measures retrieval on a corpus we injected. This one measures whether
+an agent using memory-wire through its real interface gets the task right. It is
+the answer to "does any of this help a user".
+
+**What it costs:** an adapter (`adapters/memory_wire/` in their repo, wiring
+`memory-wire connect claude-code`), plus **agent-model tokens** — a real spend, on
+your account, against a frontier model. No free tier for the agent arm.
+
+**What it buys:** the product question, and a harm-suite read that no other
+instrument provides.
+
+**Reversible?** The measurement is repeatable; the spend is not recoverable, but
+it is bounded by the number of tasks you choose to run.
+
+**Recommendation: fund it, but only after §2.1(b).** DECISIONS §4 already says
+"schedule after recommendation 1 lands so it measures the improved product, not
+the old one" — and recommendation 1 (dates in the surfaces, capsules) shipped in
+`0b518de` and `1f93bf0`. So the precondition is now met: the product it would
+measure is the improved one.
+
+**What I need from you:** the budget ceiling, and which agent model. Without a
+number I cannot even scope the adapter.
+
+### 2.4 LLM-judged runs (TODO row 11) — needs budget and touches the test set
+
+Four corpora: AMB `rag` on BEAM/PersonaMem/LifeBench, OAMB LME-60,
+memorybench ConvoMem, MemBase RealMem/MobileMem.
+
+**The split that matters, and it is a law question rather than a preference:**
+
+| run | role | consequence |
+|---|---|---|
+| AMB `rag` on BEAM / PersonaMem / LifeBench | measure-only | may report, never select |
+| **OAMB LME-60** | **test consultation** | burns a LongMemEval consultation |
+| MemBase / memorybench arms that embed LME | test consultation | same |
+
+**The consultation counter is at 5.** AGENTS §6 makes the 6th release-acceptance
+only, and DECISIONS §5 says release only when a ratified decision ships. So an
+OAMB run now would consume the release-acceptance slot before there is a release
+to accept. That is the real cost, and it is invisible in the row text.
+
+**What it buys:** OAMB's answer-visible-token axis is where a budget-trimmed
+recall should show up — the one axis none of our instruments measure. The others
+are new corpora (MemBase, memorybench) with no other evidence.
+
+**Recommendation: fund AMB `rag` + MemBase/memorybench (measure-only, no
+consultation); hold OAMB until a release is actually being cut.** That keeps the
+consultation budget intact for its stated purpose.
+
+### 2.5 TODO row 12 — turn-granularity writes: measured, and I recommend closing it
+
+The row is still `open`, but the decision it asks for has already been made by
+data:
+
+| arm | R@1 | R@5 | `recall_all@10` | n |
+|---|---|---|---|---|
+| whole sessions, `overlap 0.25` (shipped) | **60.4%** | 86.0% | 94.2% | 1,531 |
+| turns pooled (`locomo --turns`) | 54.6% | 83.0% | 92.2% | 1,531 |
+| windows W=2 | 59.3% | — | 82.6% | — |
+
+Turn-level loses on every aggregate; windows lose on `recall_all@10` badly enough
+to breach the pool ceiling. The row's own text says it "still buys measurability
+of the long corpora at a ranking cost, and is not a ranking lever."
+
+**Recommendation: strike it as rejected, keeping the row as the record.** That is
+AGENTS §8's "rejected work stays rejected" applied to an unstruck row. No new
+decision needed from you unless you want it kept open for the long-corpus
+measurability reason.
+
+### 2.6 Release (DECISIONS §5) — the one with a deadline shape
+
+**42 commits since `v0.10.0`**, including four product-visible changes:
+the trust gate reaching two doors that lacked it (`98b1a36`), recall failures
+becoming tellable apart (`81a2212`), dates on all four doors (`0b518de`), the
+capsule knob on the plugin surfaces (`1f93bf0`).
+
+DECISIONS §5 said: "a release becomes worth cutting when you ratify recommendation
+1 (dates in surfaces / capsule flag): that is the first product-visible change of
+the next cycle, and it deserves its own version." Recommendation 1 has now
+shipped twice over.
+
+**Cost of a release:** AGENTS §11 — version bump first, one unlocked `cargo
+check` to refresh `Cargo.lock`, then the `--locked` gates; two commits; a tag; the
+three-Linux asset set via `scripts/build-release.sh`, which refuses a dirty tree
+and bills no Actions minutes. CI must be disabled around the tag push
+(`ci.yml` **and** `release.yml` both trigger on `v*`).
+
+**Cost of not releasing:** the improved product is not what anyone installs. The
+dates and capsules only exist in a tree.
+
+**Recommendation: cut one release after §2.1(b), before §2.3.** It is the
+cheapest way to make the last two batches real for users, and the aroute work
+does not gate it.
+
+---
+
+## 3. Order, once you have ruled
+
+```
+now, unblocked
+  1.1  score PersonaMem v2 (needs your ruling on the gitignored raw rows)
+  1.2  re-clone note + RND_PLAN §6 header correction
+  1.3  README archetype: cut to band, or declare curated-list
+
+needs you
+  2.1  door parity: (a) document + (b) redact on MCP        <- my pick
+  2.5  strike TODO 12 as rejected                            <- cheap, do it
+  2.6  one release (bump, tag, 3-Linux assets)              <- after 2.1
+  2.4  AMB rag + MemBase (measure-only); hold OAMB
+  2.3  agent-memory-bench (needs the budget number)
+  2.2  aroute handoff (their repo)
+```
+
+**What I am not proposing, and why:** any new ranking lever (CLOSED.md is
+complete; the six-repo audit found no incoming mechanism), any LongMemEval
+consultation beyond release acceptance, any threshold (CONSISTENCY §32/§48,
+closed twice), any change to the shipped `overlap 0.25` (two dev corpora in
+tension, DECISIONS §3 — no action is the correct action).
+
+---
+
+## 4. What I could not determine
+
+Stated rather than papered over, per AGENTS §12:
+
+- **Whether the PersonaMem v2 number is comparable to anything.** H10 established
+  that no other system has run this harness with this answerer, so 37.8% is a
+  standalone reading. A second system running the same harness is the only thing
+  that makes it comparable — DECISIONS §2's head-to-head, on the dated adapter.
+- **Whether the gitignored pmv2 raw rows contain anything else sensitive.** I
+  checked the run's status files and the one known pasted-token case in the
+  `.gitignore` comment; I did not scan all 4,954 rows, and I am not going to
+  without being asked.
+- **What the README looked like when the archetype was chosen.** The rubric has
+  failed since at least v0.8.0, but I could not find the commit that made the
+  README grow past the band, so I cannot say whether the archetype is wrong or
+  the document outgrew it.
