@@ -4906,4 +4906,55 @@ honest improvement is `memory_redact` on MCP — the service method exists, the
 
 Gate unchanged: 659 tests, clippy clean, doc 0 warnings, trust gate green.
 
-Next free CONSISTENCY section: **§61**.
+
+
+## §61. Tier A of the execution plan — the plugin gate was wired to nothing (2026-11-19)
+
+`docs/plans/2026-11-19-execution-plan.md` is the plan; this is its first tranche,
+and the item worth recording is the one whose absence was structural rather than
+a wrong value.
+
+**The plugin door test was wired to nothing.** `plugin/integrations/trust_gate_test.sh`
+is cited as the proof for the trust gate in four CONSISTENCY sections
+(§53/§55/§58/§60) and in `INTEGRATION_GAPS.md` and `STATE.md`. A grep for its
+invocation found it in none of `.githooks/`, `.github/`, or `scripts/`.
+`.githooks/pre-commit` ran the secret gates and delegated to the docs gate;
+`ci.yml` ran `cargo test` and `cargo clippy`. So the only executable check on the
+two doors with no compiler and no type system was a script that ran when a human
+decided to run it.
+
+That is the same shape as the defects it exists to catch. Round 3 found the
+trust gate missing from both TS plugins; round 4 found the starvation bug in
+both. Both were found by a person running the script by hand after the code
+shipped. Neither would have been caught by the gate that exists precisely for
+them.
+
+Now wired: `.githooks/pre-commit` runs it behind a `command -v node` guard that
+prints a line rather than skipping silently, and `ci.yml` runs it as a step
+(node and python3 are preinstalled on `ubuntu-latest`, so it needs no setup).
+Mutation-checked rather than assumed — restoring `i < RECALL_ENTRIES` in one
+plugin makes the hook exit 1. The first real evidence that it works was the
+commit that added it: the hook ran all three doors during `131cffb`.
+
+**Also in this tranche, no behaviour change:**
+
+- **genome lint was red** and had been. `E003 register 4` — row 4 is `done` and
+  its evidence cell still read as an instruction to a future agent. 27 of 28
+  `done` rows carry the `→ [date] <evidence>` grammar; row 4 was corrected in
+  place on 2026-11-19 without moving the evidence column. `genome lint` is now
+  clean, which matters more than the row: a lint that reports one permanent
+  error is a lint nobody runs.
+- **`RND_PLAN.md` §6 was titled "the upcoming cycle" for a cycle that closed.**
+  W1/W2/W3 are recorded done in §47/§48/§46, but §6.0 listed them in the
+  imperative and the header said "Status 2026-10-14" on a document whose last
+  section was written 2026-10-16. Reframed as closed-and-kept: §6.0 retains its
+  original wording with the outcome appended per item.
+
+**One plan row needed no change and is recorded so it does not get "fixed".**
+`docs/BENCHMARK.md` says "4 tools" and "eight subcommands". It is inside a
+blockquote declaring §1–§4 describe `0.1.0` and are false of the current tree.
+Per AGENTS §7, a historical record that describes a dated build stays.
+
+Gate: 659 tests, genome lint clean, plugin doors green on all three.
+
+Next free CONSISTENCY section: **§62**.

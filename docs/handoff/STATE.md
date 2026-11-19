@@ -118,6 +118,27 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   the real reason thresholds stay closed is determinism (§32/§48) — plus the
   four-vs-five MCP tool count in AGENTS.md and `src/mcp.rs`.
 
+  **2026-11-19, the execution plan — Tier A landed (`131cffb`, CONSISTENCY
+  §61).** The plan is `docs/plans/2026-11-19-execution-plan.md`; it covers
+  implementation gaps, redundancy and operational upgrades, and it is ordered by
+  what is verifiable rather than by what a register says.
+
+  Its first finding is the one worth carrying forward: **`plugin/integrations/trust_gate_test.sh`
+  was wired to nothing.** It is the cited proof for the trust gate in four
+  CONSISTENCY sections, and it appeared in no hook, workflow or script.
+  `.githooks/pre-commit` ran the secret gates; `ci.yml` ran cargo test and
+  clippy. So the only executable check on the two doors with no compiler was a
+  file a human had to remember to run — which is exactly how both the round-3
+  gap and the round-4 starvation bug reached a reader. It now runs in
+  pre-commit behind a `command -v node` guard that says so instead of skipping
+  silently, and as a CI step. Mutation-checked: restoring the bad loop bound
+  makes the hook exit 1.
+
+  Also in that commit: the genome lint was red (`E003` on TODO row 4, whose
+  evidence cell still read as an instruction to a future agent) and is clean
+  again; and `RND_PLAN.md` §6 stopped calling itself "the upcoming cycle" for a
+  cycle that closed on 2026-10-17.
+
   **Still open from the same review:** AGENTS.md §3's module table lists 18 of
   32 modules and claims "22 modules / 24.8k lines" against a measured 35,298;
   `connect_*` is 6,609 lines (18.7% of `src/`) with no audit of its code-vs-test
