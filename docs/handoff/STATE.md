@@ -81,6 +81,27 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   `eval/RESULTS.md` already reports the 470 split. Verdicts in
   `research/audits/context-pack-2026-11-19-round3/VERIFICATION.md`.
 
+  **2026-11-19, the remaining-work plan — all four batches done.** The plan is
+  `docs/handoff/REMAINING_WORK_PLAN.md`; the four commits are `e0f1bb4`
+  (stale register rows), `db57850` (hermes trust-gate proof), `0b518de` (dates on
+  the three doors that dropped them), `1f93bf0` (the capsule knob). Record:
+  `CONSISTENCY.md` §54–§57, TODO row 33.
+
+  The shape behind all four: a policy enforced in four places with a check in
+  three, and a register that stopped being maintained. Batch 1 corrected four
+  open rows whose work had already landed (P2.1, P4.1, P3.1, G6.8 — each closed
+  by a file or a command). Batch 2 gave the trust gate's fourth door a hermetic
+  test. Batch 3 served `created_at` in hermes and both TypeScript plugins, which
+  requested `format: "full"` and dropped the field. Batch 4 decided the capsule
+  knob by cost: the plugin surfaces read `MEMORY_WIRE_FORMAT`, not the bank
+  config key, because the env is free and the config would add a request per
+  turn — documented at each site rather than left as a silent asymmetry.
+
+  Two claims were corrected while verifying rather than after: `README.md` said
+  every auto-injected *and MCP-recalled* memory carries its date "in-band"
+  (MCP recall serves `created_at` as a field, which is right for a structured
+  caller), and the capsule knob was described as if it worked everywhere.
+
   **A trap worth carrying forward: a hooks test that spawns the binary is only
   as current as the last explicit `cargo build --bin memory-wire`.** `hooks`
   tests resolve the binary via `main::bin()` → `target/debug/memory-wire`, and

@@ -23,8 +23,8 @@ supervisor and no lockfile.
   plugin surfaces) cut served bytes 41–43% at byte-identical ranking.
   *Which surface honours which:* the claude-code/codex/copilot/cursor hooks read the
   bank config key; the hermes and opencode/extension plugin surfaces read
-  `MEMORY_WIRE_FORMAT`. See the [Bank configuration](#bank-configuration) table.
-- Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook) · [`TODO.md`](TODO.md) (open work) · [`docs/DECISIONS/2026-11-18-w7b-recall-gating.md`](docs/DECISIONS/2026-11-18-w7b-recall-gating.md) (W7b: recall stays ungated — a raw score cut is meaningless)
+  `MEMORY_WIRE_FORMAT`. See the [Bank config](#bank-config) table.
+- Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`docs/INSTALL_FOR_AGENTS.md`](docs/INSTALL_FOR_AGENTS.md) (curl runbook) · [`TODO.md`](TODO.md) (open work) · [`docs/DECISIONS/2026-11-18-w7b-recall-gating.md`](docs/DECISIONS/2026-11-18-w7b-recall-gating.md) (W7b: recall stays ungated — a raw score cut is meaningless)
 - Agent skill: [`plugin/skills/memory-wire/SKILL.md`](plugin/skills/memory-wire/SKILL.md) — the one file here written for a model to read rather than a person. It is a standard `name`/`description`-front-matter skill: copy it into a host's skills directory (`~/.claude/skills/`, and the equivalents for codex, cursor and opencode) and the agent picks up the retain/recall workflow, the bank rules and the error contract without being told them. `connect` does **not** install it — that command wires hooks and MCP entries only, so this is a deliberate copy.
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `eval/BEAM.md` (pool-scale re-test) · `eval/relevance/` (frozen battery) · `docs/CONSISTENCY.md` (the measured record) · `docs/BENCHMARK.md`
 
