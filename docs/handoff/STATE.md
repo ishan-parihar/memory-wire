@@ -41,19 +41,35 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
     consented. The same hole is closed in the hermes plugin's `prefetch`
     (`UNTRUSTED_TIER`). **Not a relevance threshold:** a deterministic
     allow/deny on a stored tier, no fitted constant, so CONSISTENCY §32/§48 does
-    not bite. Record: `CONSISTENCY.md` §51; TODO row 18.
+    not bite. Record: `CONSISTENCY.md` §51; TODO row 30.
   - **Doc truth from the round-2 pack.** `memory.rs` now documents the four
     tiers that exist and says the plan's `manual_policy`/`human_approved`/
     `agent_verified` set was never built; `mcp.rs` says in place that
     `HISTORIAN` is a **prompt**, not a sixth tool; `mcp --help` no longer omits
     `memory_supersede`; and the doors' asymmetry is recorded with a verified
-    table in `docs/INTEGRATION_GAPS.md` (addendum) + TODO row 19.
+    table in `docs/INTEGRATION_GAPS.md` (addendum) + TODO row 31.
 
   Gate at this batch: **658 passed** (272 lib + 363 bin + 23 it), clippy
   `-D warnings` clean, `cargo doc` 0 warnings. The gate's load-bearing property
   was checked, not assumed: removing the filter from `recall_section` fails
   four tests, including a full-chain test from a real router through
   `hooks::prompt_at`.
+
+  **2026-11-19, same day — recall failures are now tellable apart (CONSISTENCY
+  §52, TODO row 32).** `recall_at_fmt` returned `None` for three different
+  reasons (connection refused, non-2xx, 200-with-an-unparseable-body) and all
+  three produced byte-identical silence. Each names itself on stderr now. Still
+  exit 0, still empty stdout, and `RUST_LOG=off` is total silence, so §9 is
+  intact; the empty-query path stays silent because it is not a failure.
+  Verified live against three real servers.
+
+  **A trap worth carrying forward: a hooks test that spawns the binary is only
+  as current as the last explicit `cargo build --bin memory-wire`.** `hooks`
+  tests resolve the binary via `main::bin()` → `target/debug/memory-wire`, and
+  `cargo test --bin memory-wire` does **not** rebuild that file. My first
+  negative check *passed with the notes deleted*, because the test ran a stale
+  binary. Run `cargo build --locked --bin memory-wire` before trusting a hooks
+  test that spawns the process.
 
   **2026-11-18 — read this first if you are picking the upgrade up.** HEAD is
   `36bb947`, **v0.10.0**, not the `c919f13`/v0.8.2 this page was written at;

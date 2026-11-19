@@ -4477,3 +4477,69 @@ field into a silent recall outage — the never-fail contract read backwards.
   writes; this change only makes its floor nameable. Untouched.
 
 Next free CONSISTENCY section: **§52**.
+
+---
+
+## §52 — Recall failures are now tellable apart on stderr (2026-11-19)
+
+**Not a retrieval measurement.** Nothing about ranking, scoring or the wire
+changed. Recorded because it closes a diagnosability defect that the round-2
+verification pass named, and the LongMemEval consultation count stays at **5**.
+
+### The defect
+
+An empty recall and a dead server looked identical from outside the process.
+`recall_at_fmt` returned `None` for three different reasons — connection
+refused, a non-2xx answer, and a 200 body this build could not parse — and all
+three produced the same silent hook: exit 0, nothing on stdout, nothing
+anywhere else. The reviewing pass had this as "empty framing violates
+AGENTS §10"; the verification pass **refuted that** and named the real defect:
+the agent and the user cannot tell "no memories matched" from "the server is
+down".
+
+§9 (never-fail) and §10 (an empty result says so) are in genuine tension here.
+The resolution is that §10 governs output that *claims to be an answer*, and a
+hook's empty stdout does not claim anything — it is §9's required silence. So
+the fix is on the channel §9 permits, which is stderr.
+
+### What changed
+
+`tracing::warn!` on each failure path in `recall_at_fmt`, naming the mode:
+
+- `recall: <endpoint> unreachable (<err>), injecting nothing`
+- `recall: <endpoint> answered HTTP <status> for bank <bank>, injecting nothing`
+- `recall: <endpoint> sent a body this build cannot parse (<err>), injecting nothing`
+
+Gated by `RUST_LOG` like every other line, written to stderr, never stdout.
+The empty-query path stays silent because it is not a failure — a hook with no
+prompt is not a broken recall.
+
+### Evidence
+
+Observed live against the debug binary, three real servers, one run each:
+
+| mode | exit | stdout | stderr |
+|---|---|---|---|
+| unreachable (`127.0.0.1:1`) | 0 | 0 B | `unreachable (Connection refused (os error 111))` |
+| HTTP 404 | 0 | 0 B | `answered HTTP 404 for bank <bank>` |
+| 200 + `{"not":"an array"}` | 0 | 0 B | `cannot parse (invalid type: map, expected a sequence …)` |
+| `RUST_LOG=off`, unreachable | 0 | 0 B | 0 B |
+
+Pinned by `hooks::tests::the_three_recall_failure_modes_are_tellable_apart_on_stderr`,
+which asserts the unreachable and unparseable lines differ from each other, that
+neither appears on stdout, and that `off` is silent.
+
+**Load-bearing check, and a trap worth recording:** the first negative check
+*passed* with the notes removed, because `hooks` tests invoke the binary through
+`main::bin()`, which resolves `target/debug/memory-wire` — and
+`cargo test --bin memory-wire` does not rebuild that file. Only after an explicit
+`cargo build --bin memory-wire` did the test fail as it should. **A hooks test
+that spawns the binary is only as current as the last explicit bin build.** Run
+`cargo build --locked --bin memory-wire` before trusting one.
+
+### Gate
+
+659 passed (272 lib + 364 bin + 23 it), clippy `-D warnings` clean, `cargo doc`
+0 warnings.
+
+Next free CONSISTENCY section: **§53**.

@@ -620,41 +620,69 @@ fn recall_at_fmt(endpoint: &str, bank: &str, query: &str, fmt: &str) -> Option<V
         "exclude_tags": EXCLUDED_TAGS
     })
     .to_string();
-    let resp = http::post_json(
+    let resp = match http::post_json(
         &format!("{endpoint}/banks/{bank}/recall"),
         &body,
         paths::IO_TIMEOUT,
-    )
-    .ok()?;
+    ) {
+        Ok(resp) => resp,
+        Err(e) => {
+            // The case the agent and the user could not tell from "nothing
+            // matched": the server never answered. Round-2 review's finding was
+            // that the two are indistinguishable from the outside, and it is
+            // right — the fix is a line on stderr, which the never-fail contract
+            // permits precisely because it never reaches the model.
+            tracing::warn!("recall: {endpoint} unreachable ({e}), injecting nothing");
+            return None;
+        }
+    };
     if !resp.ok() {
+        // A refusal, not a silence: the server answered and said no.
+        tracing::warn!(
+            "recall: {} answered HTTP {} for bank {bank}, injecting nothing",
+            endpoint,
+            resp.status
+        );
         return None;
     }
     // Unparseable is `None`, not an error: the module's contract is that no
     // failure here reaches the host. A response shape this build does not
     // recognise is indistinguishable, from in here, from a server that is down.
-    let hits: Vec<ScoredHit> = serde_json::from_str::<Vec<WireHit>>(&resp.body)
-        .ok()?
-        .into_iter()
-        .map(|hit| match hit {
-            WireHit::Scored {
-                content,
-                created_at,
-                score,
-                trust,
-            } => ScoredHit {
-                content,
-                created_at,
-                score,
-                trust,
-            },
-            WireHit::Bare(content) => ScoredHit {
-                content,
-                created_at: None,
-                score: None,
-                trust: None,
-            },
-        })
-        .collect();
+    let hits: Vec<ScoredHit> = match serde_json::from_str::<Vec<WireHit>>(&resp.body) {
+        Ok(parsed) => parsed
+            .into_iter()
+            .map(|hit| match hit {
+                WireHit::Scored {
+                    content,
+                    created_at,
+                    score,
+                    trust,
+                } => ScoredHit {
+                    content,
+                    created_at,
+                    score,
+                    trust,
+                },
+                WireHit::Bare(content) => ScoredHit {
+                    content,
+                    created_at: None,
+                    score: None,
+                    trust: None,
+                },
+            })
+            .collect(),
+        Err(e) => {
+            // The third mode, and the one a version skew produces: the server
+            // answered 200 with a shape this build cannot read. Saying so is the
+            // difference between "the bank is empty" and "the hook and the
+            // server disagree about the wire".
+            tracing::warn!(
+                "recall: {} sent a body this build cannot parse ({e}), injecting nothing",
+                endpoint
+            );
+            return None;
+        }
+    };
     // The scores, on stderr, at a level that is off by default. Nothing branches
     // on this and nothing is gated by it — it is the ranking as the server
     // measured it, which is the one thing that was unobservable before and is
@@ -1373,6 +1401,71 @@ mod tests {
                 );
             }
         }
+    }
+
+    // Round-2 review's finding, in my own words: an empty result is
+    // indistinguishable from a dead server, from the outside. The three failure
+    // modes below all return `None` (the never-fail contract, AGENTS.md §9) but
+    // must be *tellable apart* on stderr, because that is the one channel that
+    // never reaches the model. A user staring at a session that recalled nothing
+    // can then read which of the three happened.
+    #[test]
+    fn the_three_recall_failure_modes_are_tellable_apart_on_stderr() {
+        // 1. Unreachable: nothing listening on that port.
+        let dead = run_hook(
+            "prompt",
+            Some(r#"{"prompt":"auth"}"#),
+            "http://127.0.0.1:1",
+            "warn",
+        );
+        assert_eq!(dead.code, Some(0), "never-fail: {}", dead.stderr);
+        assert!(
+            dead.stderr.contains("unreachable"),
+            "an unreachable server must say so: {}",
+            dead.stderr
+        );
+
+        // 2. Unparseable: 200 with a body this build cannot read.
+        let (ep, _rx) = canned(vec![("/recall", r#"{"not":"an array"}"#)]);
+        let garbled = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), &ep, "warn");
+        assert_eq!(garbled.code, Some(0), "never-fail: {}", garbled.stderr);
+        assert!(
+            garbled.stderr.contains("cannot parse"),
+            "an unparseable body must say so: {}",
+            garbled.stderr
+        );
+        assert!(
+            !garbled.stdout.contains("memory-wire recall"),
+            "nothing injected: {}",
+            garbled.stdout
+        );
+
+        // The two are genuinely different lines, not one message reworded: a
+        // reader has to be able to tell "the server is down" from "the server
+        // and the hook disagree about the wire".
+        assert_ne!(
+            dead.stderr.trim(),
+            garbled.stderr.trim(),
+            "the two modes must not read identically"
+        );
+
+        // Neither ever reaches the host's channel.
+        assert!(!dead.stdout.contains("unreachable"), "{}", dead.stdout);
+        assert!(!garbled.stdout.contains("cannot parse"), "{}", garbled.stdout);
+
+        // With logging off, the silence is total again.
+        let quiet = run_hook(
+            "prompt",
+            Some(r#"{"prompt":"auth"}"#),
+            "http://127.0.0.1:1",
+            "off",
+        );
+        assert_eq!(quiet.code, Some(0), "never-fail: {}", quiet.stderr);
+        assert!(
+            !quiet.stderr.contains("unreachable"),
+            "off is off: {}",
+            quiet.stderr
+        );
     }
 
     // Same contract for the real stdin, and it is the whole reason the hook can
