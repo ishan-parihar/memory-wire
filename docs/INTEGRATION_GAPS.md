@@ -452,7 +452,7 @@ Verified per capability against this tree:
 
 | capability | HTTP | MCP | CLI | hook |
 |---|---|---|---|---|
-| redact (W3) | no route | no tool | **yes** (`Cmd::Redact`) | write-time only |
+| redact (W3) | no route | no tool | **yes** (`Cmd::Redact`) | no |
 | grounding (W5) | no route | no tool | **yes** (`Cmd::Grounding`) | SessionStart, default off |
 | hygiene (W4) | **yes** (`GET /banks/:id/hygiene`) | no tool | no | no |
 | recall | yes | `memory_recall` | no | yes |
@@ -487,3 +487,28 @@ six constants as six tools and concluded the README overcounted; the README's
 prose ("five tools") is right, and its table had been the thing missing
 `memory_supersede`. The `HISTORIAN` doc comment now says this in place, so the
 next count does not re-add it.
+
+### A fourth door asymmetry, found the same round: the trust gate was Rust-and-hermes only
+
+`Trust::UntrustedExternal` was added in `1f5ee17` and both `src/hooks.rs` and the
+hermes plugin gate on it. The **two TypeScript plugins did not**: both called
+`formatRecall` on everything a recall returned, so an untrusted mount's web
+content was injected verbatim into a model's system prompt. The weakest door
+decided what the bank's untrusted rows could reach, and it was the two files with
+no Rust test suite to catch it.
+
+Fixed by carrying the same gate into both plugins, with the same evidence-on-
+absence rule (a row with no `trust` field is kept, because a server old enough
+not to send one is not evidence). Proof: `plugin/integrations/trust_gate_test.sh`
+executes each file's real `formatRecall` in `node` and asserts that
+`untrusted_external` is withheld while an absent field is not; removing either
+gate makes it fail with `untrusted_external reached the block`.
+
+Why this is recorded here rather than closed silently: three doors implementing
+the same gate in three languages is already a maintenance surface, and
+`measure_surface.sh` did not count `plugin/` at all — the count this repo uses to
+describe its own surface stopped at `src/`, which is precisely how 1,622 lines
+of injection-path code stayed unexamined. `measure_surface.sh` now reports
+`plugin/` and `install/` **separately** rather than folding them into a total,
+because a TypeScript plugin is not a Rust module and one misleading sum would
+hide exactly that.

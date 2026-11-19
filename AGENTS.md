@@ -40,10 +40,14 @@ should not be eroded casually:
 
 Three properties are load-bearing and each has been paid for:
 
-- **The default build must not gain a dependency or grow materially.** It is
-  10.25 MiB at `v0.7.0` with `DT_NEEDED` = 3 (`eval/baseline/2026-10-13-v0.7.0/BENCH_FOOTPRINT.md`;
-  the 9.7 MiB this line used to state was an earlier build). Verify `ldd` after touching anything
-  that links.
+- **The default build must not gain a dependency or grow materially.** HEAD is
+  **10.63 MiB** (11,141,240 B, `target/release/memory-wire`, measured 2026-11-19)
+  with `DT_NEEDED` = 3. `v0.7.0` was 10.25 MiB
+  (`eval/baseline/2026-10-13-v0.7.0/BENCH_FOOTPRINT.md`); the 9.7 MiB this line
+  used to state was earlier still, and 10.25 was itself a year-old figure this
+  line carried until a reviewer checked it against the binary. **Do not trust a
+  size quoted here without re-running `stat`** — quote the command, not the
+  number. Verify `ldd` after touching anything that links.
 - **Retrieval reports are the record.** The competitor whose retrieval number we
   can actually compare against is agentmemory, on LongMemEval-S, and we lead it
   on the honest (unfitted) number. Do not publish a number you cannot trace to

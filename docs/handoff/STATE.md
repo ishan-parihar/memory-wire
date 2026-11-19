@@ -63,6 +63,24 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   intact; the empty-query path stays silent because it is not a failure.
   Verified live against three real servers.
 
+  **2026-11-19, third round — the trust gate was missing from two of the four
+  doors (CONSISTENCY §53).** A context-pack review found that `1f5ee17`'s trust
+  gate shipped in `src/hooks.rs` and the hermes plugin but in **neither
+  TypeScript plugin**: both `formatRecall` implementations injected every row a
+  recall returned, so an untrusted mount's web content reached a model's system
+  prompt as rules. The weakest door decided the policy, and it was the two files
+  with no test suite. Fixed in both; proof is
+  `plugin/integrations/trust_gate_test.sh`, which runs each file's real
+  `formatRecall` in `node` and fails with `untrusted_external reached the block`
+  when either gate is removed. Same review corrected four false claims in the
+  docs (ARCHITECTURE's "redaction happens on write", AGENTS' 10.25 MiB binary
+  size, C-ASK's "every number is `[LIVE]`", `measure_surface.sh` stopping at
+  `src/` and never counting the 1,622 lines under `plugin/` and `install/`) and
+  **refuted one finding of my own** — the "500/500 includes 30 gold-less
+  abstention questions" objection; all 30 carry `answer_session_ids` and
+  `eval/RESULTS.md` already reports the 470 split. Verdicts in
+  `research/audits/context-pack-2026-11-19-round3/VERIFICATION.md`.
+
   **A trap worth carrying forward: a hooks test that spawns the binary is only
   as current as the last explicit `cargo build --bin memory-wire`.** `hooks`
   tests resolve the binary via `main::bin()` → `target/debug/memory-wire`, and

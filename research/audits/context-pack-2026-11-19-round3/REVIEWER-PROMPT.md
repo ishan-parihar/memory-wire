@@ -30,8 +30,8 @@ The author's position, which you should test rather than accept:
 >
 > Meanwhile the **product** surface — what an agent can actually *do* with a
 > memory once recalled — has not been re-derived since v0.4.0. `B-DELTA` D3
-> shows the architecture document still describes a five-module, three-door
-> system when the tree has nine modules and four doors.
+> shows the architecture document still describes a system with **five
+> modules** and **three doors** when the tree has nine modules and four doors.
 
 **So: is that reading right, and where should the next cycle go?**
 
@@ -55,7 +55,7 @@ committed artefact), `[IN-SAMPLE]`, `[PRIOR]`, `[UNCONFIRMED]`.
 **Do not spend the turn on these, which are already settled by measurement and
 recorded in the pack:**
 - score thresholds or relevance cuts on auto-injection (`C-LAW`, `D-EVIDENCE`)
-- re-running any benchmark
+- re-running any benchmark again
 - matching a competitor's tool or feature count
 
 ## What I want back

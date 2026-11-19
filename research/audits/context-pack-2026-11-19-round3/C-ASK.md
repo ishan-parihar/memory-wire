@@ -55,8 +55,12 @@ specifically whether it should keep going where the last three went.
   twice by measurement** (`CLOSED.md`; `CONSISTENCY.md` §32/§48). Do not
   re-propose it; the pack carries the rejection so the reviewer does not spend
   its turn rediscovering it.
-- Whether to re-run any benchmark. Every number in this pack is `[LIVE]` and
-  traceable to an artefact.
+- Whether to re-run any benchmark. No number here is freshly measured: the pack
+  is a snapshot, and its provenance is mixed — `B-DELTA.md` and `SURFACE.md` are
+  live, `STATE.md`/`CONSISTENCY.md` are committed-at-HEAD records, `97.2%` is
+  in-sample at a fitted weight, and `≈94.4%` is derived rather than measured
+  (`EVALUATION_HYGIENE.md` §2.1). Read the provenance tag above before citing
+  any of it.
 - Whether to match a competitor's feature count. Explicitly not recommended,
   with reasons (`AGENTS.md` §8, `docs/INTEGRATION_GAPS.md` "Explicitly not
   recommended").

@@ -194,6 +194,22 @@ function lastAssistantText(messages) {
   return "";
 }
 
+/** The tier a mount that ingests web content stamps on what it stores. Rust's
+ *  `Trust::UntrustedExternal` and hermes' `UNTRUSTED_TIER` are the same tier
+ *  under two spellings, and the injection gate has to read all of them the same
+ *  way: the weakest door decides what an untrusted mount's content can reach.
+ *
+ *  Withholding is on **evidence, never absence** -- a row with no `trust` field
+ *  on the wire is kept, because a server old enough not to send one is not
+ *  evidence of anything. */
+var UNTRUSTED_TIER = "untrusted_external";
+
+/** A row a mount may not read back as instructions. Absent means keep. */
+function isUntrusted(item) {
+  if (!item || typeof item !== "object") return false;
+  return item.trust === UNTRUSTED_TIER;
+}
+
 /** The block appended to the system prompt, or `""` when there is nothing worth
  *  saying. Empty is the signal the caller uses to inject nothing at all.
  *
@@ -213,6 +229,12 @@ function formatRecall(items) {
     // are accepted so this file does not depend on which one it is talking to.
     var content = typeof item === "string" ? item : item && item.content;
     if (typeof content !== "string" || !content.trim()) continue;
+    // Filtered **before** the take: keeping the slot and dropping a trusted row
+    // would inject four memories where five were earned. It happens inside the
+    // loop rather than as a separate pass because `RECALL_ENTRIES` counts
+    // emitted lines, and a pre-pass that dropped rows would leave the count
+    // short.
+    if (isUntrusted(item)) continue;
     lines.push(lines.length + 1 + ". " + clamp(content, ENTRY_CAP_CHARS));
   }
   if (!lines.length) return "";

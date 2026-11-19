@@ -84,8 +84,13 @@ recall from returning something the caller did not ask for.
 - **Banks never mix.** A recall names its bank. There is no cross-bank fallback,
   because a memory from one project appearing in another is the failure this
   exists to prevent.
-- **Redaction happens on write, not on read.** A secret is not stored, so it
-  cannot be recalled.
+- **Redaction is an explicit operation, not a property of the write path.**
+  Nothing redacts at retain time — `hooks.rs` never calls `redact` and `put` does
+  not — so a secret in a captured transcript **is** stored, and `memory-wire
+  redact` is what removes it afterwards, rewriting every version's content and
+  recomputing each content digest. The property that holds is narrower than "a
+  secret cannot be recalled": a bank that has never been redacted can still
+  return one. Treat redaction as a thing you run, not a thing that happens to you.
 - **The daemon is a deployment, not a dependency.** No background process is
   required; `memory-wire daemon start` runs the same binary in the background
   when you want it to outlive a terminal.

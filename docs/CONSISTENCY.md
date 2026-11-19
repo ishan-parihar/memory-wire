@@ -4542,4 +4542,54 @@ that spawns the binary is only as current as the last explicit bin build.** Run
 659 passed (272 lib + 364 bin + 23 it), clippy `-D warnings` clean, `cargo doc`
 0 warnings.
 
-Next free CONSISTENCY section: **§53**.
+## §53. Round-3 context-pack review — five findings, one false alarm, and a gate that was missing from two doors
+
+**What this is.** The third context-pack review (`research/audits/
+context-pack-2026-11-19-round3/`, hydrogen model, 19,809-char reply). Every
+finding was checked against the cited line, a run, or the file itself before
+adoption; the verdicts are in that directory's `VERIFICATION.md`. No benchmark
+was run for this round, so nothing here is a retrieval number and none of it
+touched the eval set.
+
+**Adopted, with proof.**
+
+| finding | check | change |
+|---|---|---|
+| the trust gate existed in Rust and hermes but in neither TypeScript plugin | read both files: `formatRecall` never consulted `trust` | gate added to both; `plugin/integrations/trust_gate_test.sh` executes each file's real `formatRecall` in `node` |
+| `docs/ARCHITECTURE.md` said "Redaction happens on write, not on read" | `grep -c redact src/hooks.rs` = 0; `put` has no redaction call | corrected to "redaction is an explicit operation" |
+| `AGENTS.md` quoted 10.25 MiB as the current binary | `stat` = 11,141,240 B = 10.63 MiB | corrected, and the line now says re-run `stat` rather than trust the number |
+| C-ASK claimed "every number in this pack is `[LIVE]`" | mixed provenance: live, committed, in-sample, derived | corrected to name each |
+| `measure_surface.sh` counted `src/` only | `find` showed 695 TS + 927 py + 528 install lines outside the count | reports `plugin/` and `install/` separately |
+
+**The proof that matters, and its negative check.** The trust-gate fix is a
+security boundary, so it got the treatment: with the gate in place the harness
+reports `leaked=false` and withholds both `untrusted_external` rows while keeping
+both trusted ones; removing either gate produces `untrusted_external reached the
+block` and exit 1. The "absence is not evidence" rule is asserted in the same
+test, so a future narrowing that withholds unlabelled rows fails too.
+
+**One finding refuted, and it was mine.** I initially wrote that AGENTS.md §1's
+"gold in 500 of 500 LongMemEval questions" was unsupported because 30 abstention
+questions have no gold. Checked: all 30 `_abs` questions **do** carry non-empty
+`answer_session_ids` (0 of 30 empty), and `eval/RESULTS.md` already reports the
+abstention split honestly as an `overall` row at n=500 and an `abstention
+excluded` row at n=470. The objection was arithmetic that sounded right and was
+not checked. It is recorded in `VERIFICATION.md` §6a as refuted rather than
+quietly dropped.
+
+**Why the missing gate is the round's real result.** Three doors enforce one
+policy in three languages, and the two with no test suite were the two that did
+not have it. That is not a bug in a plugin; it is the shape of a policy whose
+enforcement is duplicated without a shared check. `measure_surface.sh` not
+counting `plugin/` at all is the same shape one level up: the repo's own surface
+count stopped at `src/`, so 1,622 lines of code that run inside a model's
+context were never in the number anyone quoted.
+
+### Gate
+
+Round-3 changes: 5 doc corrections, 2 plugin gates, 1 new test harness. The
+`cargo test` gate is unchanged by them (no Rust behaviour moved), and the new
+proof is `plugin/integrations/trust_gate_test.sh`, which is the only executable
+check the two TypeScript plugins have ever had.
+
+Next free CONSISTENCY section: **§54**.

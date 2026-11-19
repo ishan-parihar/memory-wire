@@ -33,6 +33,22 @@ echo "## tests/ + examples/ — the harness surface"
 wc -l tests/*.rs 2>/dev/null | tail -1
 wc -l examples/*.rs 2>/dev/null | tail -1
 
+# `plugin/` is code that runs in a model's context, and `install/` is code that
+# runs on a user's machine. Both were outside the count, which made the surface
+# look like `src/` alone — and hid exactly the two TypeScript plugins whose trust
+# gate was missing. Count them, and say they are counted separately, because a
+# TypeScript plugin is not a Rust module and the two numbers must not be added
+# into one misleading total.
+echo
+echo "## plugin/ — the injection path (TypeScript; runs in a model's context)"
+find plugin -name '*.ts' -not -path '*/node_modules/*' | xargs wc -l 2>/dev/null | tail -1
+echo "  python (hermes):"
+find plugin -name '*.py' -not -path '*/node_modules/*' | xargs wc -l 2>/dev/null | tail -1
+
+echo
+echo "## install/ — code that runs on the user's machine"
+find install -type f 2>/dev/null | xargs wc -l 2>/dev/null | tail -1
+
 echo
 echo "## Dependency count (the default build must not gain one)"
 grep -c '^\[dependencies\]' Cargo.toml >/dev/null
