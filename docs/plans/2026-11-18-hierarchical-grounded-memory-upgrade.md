@@ -464,8 +464,10 @@ and re-measured at `b4b4698`, 2026-11-19; `TODO.md` rows 21–29 closed):
 - W7b (eb95a0a) — decision doc: no raw score gate on recall_section
 
 **Gate 8 verdict, recorded (2026-11-19).** The gate says `binary ≤ 9 MiB (from 8.8)`.
-Measured at HEAD: `target/release/memory-wire` = **10,937,128 B (10.43 MiB)**,
-`DT_NEEDED` = 3 — **breached, and nothing in the tree says so.** The breach is
+Measured at HEAD, rebuilt clean from this tree: `target/release/memory-wire` =
+**11,139,120 B (10.63 MiB)**, `DT_NEEDED` = 3 — **breached, and nothing in the
+tree says so.** (An earlier build of the same tree measured 10,937,128 B; the
+size is deterministic per build, and both readings are far past the cap.) The breach is
 real and this is its record: the size floor (the 8.8 MiB shipped figure was a
 v0.10.0-era number) predates W0–W7, which add the hygiene module (645 lines),
 grounding (349), supersede (mcp) and redact (store + main). Each item passed
