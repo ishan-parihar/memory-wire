@@ -16,8 +16,9 @@ corrected against the `v0.7.0` tree. G6.4 and G6.9 closed today
 hook-liveness). G6.3 is a **recorded decision, not a gap**: refusing
 `--uninstall --guidelines` together is deliberate (`connect_conflict`,
 `src/main.rs` — the two flags write to disjoint places and disagree about
-what "installed" means), documented where the refusal is raised. G4's
-opt-in policy and G6.8 remain open.
+what "installed" means), documented where the refusal is raised. **G6.8 closed
+2026-11-19** (the hermes plugin implements `system_prompt_block`). G4's opt-in
+policy is the only item still open, and it is a decision rather than a defect.
 
 Sources: `_audit/agentmemory/` (rohitg00/agentmemory), `_audit/hindsight/`
 (vectorize-io/hindsight), and this tree at `eec026f`. Every claim below carries
@@ -329,7 +330,7 @@ Consequences a user can observe:
 | G6.5 | **Port default mismatch: `serve` binds 8899, every client defaults to 8888.** **RESOLVED** — `paths::DEFAULT_ADDR` is now the only port literal in the tree; both clap defaults (`serve`, `daemon start`) read from it; a test reads the default back out of the built clap `Command` and has teeth. Binary byte-identical. See `docs/CONSISTENCY.md` §20.2. | `src/main.rs:57`, `src/daemon.rs:175` vs `src/paths.rs` | **our bug**, fixed |
 | G6.6 | **SKILL.md is not referenced from the README.** A search for `plugin`/`SKILL`/`marketplace` in `README.md` returns nothing. | hindsight publishes 2 plugins to a marketplace (`.claude-plugin/marketplace.json:1-21`); agentmemory 5 marketplaces | our agent skill is undiscoverable |
 | G6.7 | **SKILL.md is internally inconsistent**: front matter says 8.5 MiB, body says 8.4 MiB. Fixed to 8.5 MiB; the byte count is now 8,964,464 B (8.55 MiB), not the 8,872,000 B (8.46 MiB) this row originally quoted — that was the pre-daemon build. | `plugin/skills/memory-wire/SKILL.md:3` vs `:8-9` | ships to agents; corrected |
-| G6.8 | **No `system_prompt_block` injection.** We inject at `UserPromptSubmit`; hermes wants a block in the system prompt. | `~/.hermes/plugins/agentmemory/plugin.yaml:6-12` | different mechanism, not strictly missing |
+| G6.8 | ~~**No `system_prompt_block` injection.**~~ **Closed 2026-11-19**: we inject at `UserPromptSubmit`; the hermes plugin also serves `system_prompt_block` (`__init__.py:458`). | `~/.hermes/plugins/agentmemory/plugin.yaml:6-12` | different mechanism, not strictly missing — and now implemented on the surface that has a system prompt |
 | G6.9 | **No health check in `doctor` that the *installed hook* still points at a live binary.** `doctor` checks the store and the server, not whether `~/.claude/settings.json` references an existing path. | hindsight's installer refuses to write when a foreign `hindsight` server exists (`installer.ts:1766-1775`) | would catch a moved or deleted binary |
 
 ---
@@ -405,7 +406,17 @@ What remains:
 | | gap | why it is still open |
 |---|---|---|
 | **G4** | bank opt-in | A policy decision, not a bug: should a repo have to opt in to memory? Both parents fail closed; we do not. Not bundled into the collision fix. The measurement that informs it is in `docs/BANK_IDENTITY.md`: a **fork does not collide** (different owner, different `origin`, different bank), so the case the parents design against is already covered. The residual is two remote-less local directories sharing a basename. |
-| **G6.8** | no `system_prompt_block` injection | We inject at `UserPromptSubmit`; hermes wants a block in the system prompt. Different mechanism, not strictly missing. |
+
+**Only G4 remains here, and it is a policy decision rather than a defect.** G6.8
+moved to the closed table on 2026-11-19: the hermes plugin implements
+`system_prompt_block` (`plugin/integrations/hermes/memory-wire/__init__.py:458`),
+serving the historian preamble plus the session's bound bank, static-by-contract
+because `MemoryManager.build_system_prompt` calls it inline on the session-start
+path. The audit-era row described the *mechanism difference* — we inject at
+`UserPromptSubmit`, hermes assembles a system prompt — and that difference is
+real, but "hermes wants a block in the system prompt" is now satisfied on the one
+surface that has a system prompt. The row sat open after the code landed because
+only one of the two registers was updated.
 
 Closed 2026-10-15 against the binary:
 
@@ -414,6 +425,7 @@ Closed 2026-10-15 against the binary:
 | **G6.3** | `--uninstall --guidelines` refusal | **Decision, not a defect** (`connect_conflict`, `src/main.rs`): the flags write to disjoint places and disagree about what "installed" means; the refusal fires before anything is written and is documented at the raise site. |
 | **G6.4** | no `--endpoint` on the hook path | `hook --endpoint`, outranking `MEMORY_WIRE_URL` and the daemon state file; empty reads as absent (`paths::endpoint_with`). |
 | **G6.9** | `doctor` blind to hooks pointing at a dead path | `doctor --all-hosts`: per-host detected/wired plus a finding when wired entries point at a binary that is not the running one, byte-compared like the stale-serve check (`connect::wired_exe`). |
+| **G6.8** | no `system_prompt_block` injection | **closed 2026-11-19** (verified): the hermes plugin implements it at `plugin/integrations/hermes/memory-wire/__init__.py:458` — historian preamble plus the session's bound bank, static-by-contract because `MemoryManager.build_system_prompt` calls it inline. The row described a mechanism difference (we inject at `UserPromptSubmit`), which is real, but the one surface that *has* a system prompt now gets one. |
 
 Closed since the register was first written, and previously miscounted here:
 

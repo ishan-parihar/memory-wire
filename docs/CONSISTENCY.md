@@ -4592,4 +4592,33 @@ Round-3 changes: 5 doc corrections, 2 plugin gates, 1 new test harness. The
 proof is `plugin/integrations/trust_gate_test.sh`, which is the only executable
 check the two TypeScript plugins have ever had.
 
-Next free CONSISTENCY section: **§54**.
+## §54. Batch 1 of the remaining-work plan — the registers were stale in four places
+
+**What this is.** First batch of `docs/handoff/REMAINING_WORK_PLAN.md`. No
+behaviour changed; no benchmark was run; nothing here is a retrieval number. The
+work was correcting the plan of record against the tree.
+
+**What was wrong, each checked before changing.**
+
+| claim | where | check that closed it |
+|---|---|---|
+| P2.1 open | `TODO.md` row 4 | `connect::tests::golden_install_shapes`, `src/connect.rs` — a pristine `HOME` plus one `connect` equals golden bytes for seven hosts |
+| P4.1 open | `TODO.md` row 4 | `src/connect.rs:535-541` binds the hermes slot by directory name per `find_provider_dir`; the false-positive `wired` check is fixed |
+| P3.1 recorder missing | `INTEGRATION_PLAN.md` P3.1 step 3 | `examples/bench_footprint.rs:69` records `DT_NEEDED` via `readelf -d`; only the v0.5.0 byte-compare is unrun |
+| G6.8 open | `INTEGRATION_GAPS.md` | `plugin/integrations/hermes/memory-wire/__init__.py:458` implements `system_prompt_block` |
+
+`TODO.md` row 4 also listed G6.4/G6.8/G6.9 as the open set in its header prose;
+only G4 is actually open, and G4 is a policy decision rather than a defect.
+
+**Why this is worth a batch.** Every stale row had the same shape: the work
+landed, one of two registers was updated, and the other kept the open claim. That
+is the same shape as `measure_surface.sh` stopping at `src/` (§53) — a
+maintained thing that stopped being maintained — one level up, in the plan of
+record. A fresh agent reading `TODO.md` would have been sent to build two things
+that already exist.
+
+**The generalisable rule this leaves behind:** a status row is a claim about the
+tree, and it decays the moment the tree moves. Check it against a file or a
+command before acting on it, including when the row agrees with you.
+
+Next free CONSISTENCY section: **§55**.

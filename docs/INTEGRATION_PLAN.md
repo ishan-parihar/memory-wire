@@ -204,6 +204,15 @@ document.
 drift. `DT_NEEDED` growing is the one that breaks installs on slim targets, and it is
 worth failing a build over.
 
+> **Status 2026-11-19, verified against the tree.** Steps 2 and 3 are **done**:
+> `examples/bench_footprint.rs` records size and `DT_NEEDED` (read via `readelf -d`,
+> line 69) into the baseline artifact, and `scripts/build-release.sh` picks one path
+> per target (`cargo build` where it links, `cargo zigbuild` only where it must).
+> **Step 1 is the only remainder**, and it is archaeology rather than a build fix: the
+> v0.5.0 published-asset byte-compare has never been run, so the README's historical
+> size claim for that tag is unfounded rather than wrong. It is not on any critical
+> path — every size quoted since v0.7.0 comes from a dated baseline directory.
+
 ## Phase 4 — research before touching
 
 ### P4.1 Explain the hermes slot before displacing it
