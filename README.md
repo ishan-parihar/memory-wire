@@ -1,6 +1,6 @@
 # memory-wire
 
-**Agent memory in one 8.8 MiB binary, three shared libraries, 10.7 MiB of RSS and
+**Agent memory in one 10.6 MiB binary, three shared libraries, 10.7 MiB of RSS and
 no mandatory daemons** — roughly 1% of Hindsight's documented idle floor. No
 language runtime, no database server, no install step: retain/recall/reflect with
 bank isolation, FTS5 BM25 + RRF fusion and PII redaction on write, over HTTP or as
@@ -8,7 +8,7 @@ an MCP server over stdio, and over HTTP at `/mcp` on any running server. `memory
 if you want it to outlive your terminal — one process, the same binary, no
 supervisor and no lockfile.
 
-- **10.7 MiB** idle RSS · **8.8 MiB** binary · **3.9 MiB** download · **0** background processes until you ask for one
+- **10.7 MiB** idle RSS · **10.6 MiB** binary · **4.2 MiB** download · **0** background processes until you ask for one
 - **97.2% R@5** / **83.8% R@1** LongMemEval-S · **60.0%** answer accuracy vs an
   **8.3%** closed-book floor · 100% hit-rate coding-life
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
@@ -190,7 +190,7 @@ as ranges, never as a single run.
 
 | Dimension | memory-wire (measured) | Hindsight (their install docs) | agentmemory (their SCALE.md) |
 |---|---|---|---|
-| Ship artifact | **8.8 MiB** binary — 9,261,472 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **3.9 MiB** gzipped (4,084,301 B), which is what you actually download | Python API image + PG/pg0 | Node 20 + iii-engine binary |
+| Ship artifact | **10.6 MiB** binary — 11,141,240 B (LTO, incl. the MCP SDK over stdio *and* HTTP, the daemon and the embedded hermes plugin); **4.2 MiB** gzipped (4,447,324 B), which is what you actually download. The 8.8 MiB / 3.9 MiB this row used to state was the published **v0.8.2** asset (9,261,472 B), measured before the W0–W7 upgrade; see `docs/CONSISTENCY.md` §46 and the plan's Gate 8 | Python API image + PG/pg0 | Node 20 + iii-engine binary |
 | Shared libraries it needs | **3**, on `linux-x86_64` — `libgcc_s.so.1`, `libm.so.6`, `libc.so.6`, all part of any glibc system. Dynamically linked, not static: `readelf -d` on the release binary lists exactly those three `NEEDED` entries and nothing else (a macOS build links `libSystem` instead, so the list is per-platform). The optional `--features embed` build needs **4** — it adds `ld-linux-x86-64.so.2` — `docs/CONSISTENCY.md` §16.6 | whole Python + `psycopg`/PG stack inside the image | Node's `libnode`, `libc`, `libstdc++`, `libm`, `libgcc_s`, `libdl`, `libpthread` |
 | Idle RSS | **10.7 MiB** post-retain (**10,716–11,080 kB** over 8 reads; 7-round mean 10,911 kB); 9.1 MiB before the first retain | **0.8–1.0 GB** full / ~100s MB slim | heap **6 MB** @1k obs |
 | RSS under load | **12.9 MiB** (13,084–13,360 kB, 3 rounds) — 5k retains + 200 recalls over HTTP, one process, sequential | **1.2–1.5 GB** full (models + ONNX arenas) | heap **316 MB** @50k obs |
@@ -332,13 +332,13 @@ it is marketing.
 | | **memory-wire v0.8.0** | **agentmemory** | **Hindsight** (vectorize-io) | **MemOS** (MemTensor) | **Honcho** (plastic-labs) |
 |---|---|---|---|---|---|
 | install | one static binary; a musl build with `DT_NEEDED=0` and no glibc floor | Node runtime + detached engine + worker | Python image + Postgres/pg0 + optional ONNX reranker | Python 3.11, Docker/Helm multi-service stack | Python/FastAPI server or managed service |
-| idle footprint | **~10.7 MiB RSS · 8.8 MiB binary · 3 libs** | ~6 MB heap @1k → **316 MB @50k** | **0.8–1.0 GB** | container stack (not measured by us) | server process (not measured by us) |
+| idle footprint | **~10.7 MiB RSS · 10.6 MiB binary · 3 libs** | ~6 MB heap @1k → **316 MB @50k** | **0.8–1.0 GB** | container stack (not measured by us) | server process (not measured by us) |
 | LongMemEval-S retrieval, same protocol (measured by us) | R@5 **93.0% clean unfitted** · 97.2% fitted (marked) · ≈94.4% out-of-sample est · R@1 **83.8%** | hybrid 95.2% · BM25-only 86.2% (their harness, tuning undisclosed) | **no comparable number exists** — their published figures are LLM-judged answers | — | — |
 | LoCoMo judged accuracy (AMB `rag`) | **84.1%** (n 1540) — free-tier small reader, 15.2k ctx, **26.5 ms** retrieve | — | 92.0% — Gemini-class answerer, 36k ctx, 964 ms retrieve. **Different answerer ⇒ not comparable** to ours | — | self-reported 89.9% |
 | PrecisionMemBench (LLM-free, AMB retrieval) | **19/77, precision 0.24**, recall 0.95 — no identity machinery | — | **66/77, precision 0.85**, recall 1.00 — *with* scope filters + identity-extraction LLM at ingest | — | — |
 | self-update | `memory-wire update` — sha256-verified, rollback kept, live-verified on a second box | manual | manual | container redeploy | server redeploy |
 | license | MIT | MIT | MIT | Apache-2.0 | **AGPL-3.0** — embedding cost for proprietary stacks |
-| eval evidence discipline | 4 test-set consultations, all measurement-only; every number traceable to a committed artifact | none disclosed | — | — | — |
+| eval evidence discipline | 5 test-set consultations, all measurement-only; every number traceable to a committed artifact (`docs/CONSISTENCY.md` §46) | none disclosed | — | — | — |
 
 MemOS and Honcho publish judged numbers (MemOS a "35.24% token savings" claim;
 Honcho [90.4% LongMemEval-S, 89.9% LoCoMo](https://plasticlabs.ai/blog/research/Benchmarking-Honcho))

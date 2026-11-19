@@ -16,8 +16,8 @@ binary small enough to ship as a download rather than an install.
 
 ## The parts
 
-A Rust library with five modules behind one service, plus a binary that
-exposes the same service three ways. They are separate because they fail
+A Rust library with nine modules behind one service, plus a binary that
+exposes the same service four ways. They are separate because they fail
 differently and are measured separately.
 
 | Module | What it is | Why it is its own module |
@@ -26,8 +26,16 @@ differently and are measured separately.
 | `store` | SQLite persistence, and an in-memory variant for tests and zero-setup use. | Storage is swappable by design, and the in-memory store exists so a test never touches a file on disk. |
 | `recall` | Bank-isolated retrieval: FTS5 BM25 plus reciprocal-rank fusion. | Ranking is the part that is benchmarked, so it is the part that must be measured in isolation. |
 | `capture` | What gets kept automatically while a coding agent works. | Capture and recall meet at `api` and nowhere else; coupling them would make retention policy a side effect of search. |
-| `embed` | Optional dense-vector arm — 23 MB of int8 weights, behind a cargo feature and absent from a default build. | A feature that doubles the binary has to be optional at compile time, not just at runtime. |
+| `embed` | The cargo feature that gates the optional dense-vector arm. | A feature that doubles the binary has to be optional at compile time, not just at runtime. |
+| `vector` | The dense-vector arm itself: 23 MB of int8 weights, behind `embed` and absent from a default build. | Kept apart from `embed` so the feature gate is one line and the arm is honestly attributable. |
 | `memory` | Bank model, isolation rules, and PII redaction on write. | The privacy guarantee is a boundary, and a boundary belongs where it can be audited in one place. |
+| `hygiene` | The deterministic scan that finds near-duplicates and merge candidates without destroying anything. | Non-destructive by construction, so a bug in it cannot lose a memory. |
+| `grounding` | The bounded startup capsule — what a session is told before its first turn. | A fixed character budget with a different failure mode from recall: too little is useless, too much is a wall. |
+
+The binary's own modules (`connect*`, `daemon`, `doctor`, `mcp`, `mcp_http`,
+`cli_home`, `hooks`, `paths`, `update`, …) are not in this table because they are
+not library modules: they are the doors and the plumbing, and they are described
+under "The boundaries" below.
 
 ---
 
@@ -64,8 +72,15 @@ recall from returning something the caller did not ask for.
 
 ## The boundaries
 
-- **One service, three doors.** HTTP, an MCP server over stdio, and the CLI all
-  reach the same `MemoryService`. There is no second implementation of recall.
+- **One service, four doors.** HTTP, an MCP server over stdio, a **stateless
+  MCP mount on the HTTP server** (`/mcp`, `/mcp/<bank>`), and the CLI all reach
+  the same `MemoryService`. There is no second implementation of recall.
+
+  The doors are **not** at parity, and that is deliberate rather than accidental:
+  each capability is exposed on the door that needed it, so `redact` is CLI-only,
+  `hygiene` is HTTP-only, and `memory_supersede` is MCP-only. The verified
+  per-capability table is in `docs/INTEGRATION_GAPS.md` (2026-11-19 addendum);
+  `TODO.md` row 31 tracks closing the widest gap.
 - **Banks never mix.** A recall names its bank. There is no cross-bank fallback,
   because a memory from one project appearing in another is the failure this
   exists to prevent.
