@@ -44,6 +44,7 @@ whole R&D process exists to enforce.
 | 1 | `AGENTS.md` §1, §2, §6, §7, §8, §11, §12, §13 | the rules. §6 (three-set discipline) is non-negotiable |
 | 2 | `docs/handoff/STATE.md` | the current state: releases, every headline number and where it lives |
 | 3 | `docs/handoff/RND_PLAN.md` | the register: §4 results log (every verdict to date), §5 the survey-sourced cycle (all terminal), **§6 the upcoming cycle's outline (start there for what to do next)**, each H-item with mechanism, test, gate |
+| 3b | `docs/handoff/REMAINING_WORK_PLAN.md` | the implementation gaps that are *not* R&D: door-enforcement asymmetry (dates, capsules, the trust gate's fourth door) and the register rows that are stale. Read with #6 — it corrects four rows in it |
 | 4 | `docs/handoff/RUNBOOK.md` | exact commands, environment traps, how to run the baseline and the LLM instrument |
 | 5 | `docs/handoff/CLOSED.md` | levers already measured and rejected — **the complete list**; do not re-propose without new evidence |
 | 6 | `TODO.md` | the implementation register (open rows are numbered there; treat it as authoritative, not this file) |
