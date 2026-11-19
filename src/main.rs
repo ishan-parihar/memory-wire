@@ -462,9 +462,13 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Redact { bank, id, pattern, name, db } => {
             let store = open_store(&db.unwrap_or_else(default_db_path))?;
             let svc = MemoryService::new(store);
-            // The same service call the HTTP and MCP surfaces would make, so a
-            // `readOnly` bank refuses the CLI too — the guard lives in one place
-            // and every surface inherits it.
+            // The guard lives in `redact_memory` rather than in this match arm,
+            // so the CLI does not become a way around it: a `readOnly` bank
+            // refuses the CLI exactly as it refuses every other caller. Today
+            // the CLI is also the *only* caller — `redact` has no HTTP route
+            // and no MCP tool (`docs/INTEGRATION_GAPS.md`, 2026-11-19
+            // addendum; TODO row 31). When that changes, this arm is already
+            // covered.
             let rows = svc.redact_memory(&bank, &id, &pattern, &name)?;
             println!(
                 "redacted `{name}` in bank `{bank}` memory `{id}`: {rows} row(s) rewritten"

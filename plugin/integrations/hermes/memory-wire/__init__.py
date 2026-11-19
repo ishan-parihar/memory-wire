@@ -520,12 +520,13 @@ class MemoryWireProvider(MemoryProvider):
         cost of a down server.
 
         The top ``MAX_LINES`` are injected. Each carries its fused RRF ``score``
-        — see :func:`_recall` for what it is and why nothing branches on it yet
-        — and the ranking is *relative*, so this emits the best of whatever set
+        — see :func:`_recall` for what it is and why nothing branches on it —
+        and the ranking is *relative*, so this emits the best of whatever set
         the bank offered, relevant or not. That is the defect
-        ``docs/OPEN_HOOK_RECALL_RELEVANCE.md`` records; the score now reaches
-        this function so the policy half is possible, and the policy half needs a
-        labelled dev set this repo does not have.
+        ``docs/OPEN_HOOK_RECALL_RELEVANCE.md`` records. The score reaches this
+        function, but the policy half stays closed on determinism grounds
+        (CONSISTENCY §32/§48) rather than for want of data: AGENTS §6 designates
+        ``eval/data/locomo/`` as the dev set, ~1,530 queries.
 
         One thing *is* filtered, and it is not relevance: rows marked
         :data:`UNTRUSTED_TIER` are dropped, because this function's output is

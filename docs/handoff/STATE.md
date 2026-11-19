@@ -97,6 +97,35 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   config key, because the env is free and the config would add a request per
   turn — documented at each site rather than left as a silent asymmetry.
 
+  **2026-11-19, round 4 — a cap that counted input, not output (CONSISTENCY
+  §58).** Round 4's context-pack review found a defect in the batch-3 code:
+  both TypeScript plugins bounded the recall loop with
+  `i < items.length && i < RECALL_ENTRIES`. That reads as a cap and is not one —
+  it bounds the *input scan*, so five untrusted rows at ranks 0-4 consumed the
+  whole budget and a trusted row at rank 5 was never reached. `src/hooks.rs` and
+  the hermes plugin filter first and take second; the two TS plugins took first
+  and filtered second. Fixed in both (`ed8eea4`), with the cap restated as
+  `lines.length >= RECALL_ENTRIES` on the emitted count.
+
+  The generalisable part: the three doors *looked* identical, and the trust gate
+  could not have caught it because it tested that untrusted rows are withheld,
+  never what happens when they sit **above** trusted ones. A guard for one
+  property does not check its ordering counterpart. The new test asserts both
+  directions and fails on each door when the loop bound is restored.
+
+  Same commit corrected four plugin comments claiming a score threshold had "no
+  dev set to choose one" — false, AGENTS §6 designates `eval/data/locomo/`, and
+  the real reason thresholds stay closed is determinism (§32/§48) — plus the
+  four-vs-five MCP tool count in AGENTS.md and `src/mcp.rs`.
+
+  **Still open from the same review:** AGENTS.md §3's module table lists 18 of
+  32 modules and claims "22 modules / 24.8k lines" against a measured 35,298;
+  `connect_*` is 6,609 lines (18.7% of `src/`) with no audit of its code-vs-test
+  split; and the custody asymmetry (§2.1) — MCP has `memory_supersede` but no
+  redact, HTTP has redact but no supersede — remains open. All three are recorded
+  in `research/audits/context-pack-2026-11-19-round4/`, verified but not yet
+  actioned.
+
   Two claims were corrected while verifying rather than after: `README.md` said
   every auto-injected *and MCP-recalled* memory carries its date "in-band"
   (MCP recall serves `created_at` as a field, which is right for a structured

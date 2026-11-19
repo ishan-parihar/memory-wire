@@ -4819,4 +4819,91 @@ behaviour, and are left for a dedicated pass rather than folded into a bug fix.
 
 Gate: 659 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings.
 
-Next free CONSISTENCY section: **§59**.
+
+
+## §59. The `connect_*` code-vs-test split, measured (round 4, 2026-11-19)
+
+Round 4 left this explicitly unmeasured — "how much of 6,609 is inline tests vs.
+duplicated wiring is not in evidence" — so this closes it rather than speculating.
+
+Measured by the line of `mod tests` in each file:
+
+| file | total | code | tests |
+|---|---|---|---|
+| `connect.rs` | 2,841 | 1,329 | 1,512 |
+| `connect_plugin.rs` | 1,103 | 567 | 536 |
+| `connect_ext.rs` | 830 | 292 | 538 |
+| `connect_codex.rs` | 857 | 424 | 433 |
+| `connect_opencode.rs` | 348 | 241 | 107 |
+| `connect_claude.rs` | 324 | 173 | 151 |
+| `connect_copilot.rs` | 306 | 191 | 115 |
+| **total** | **6,609** | **3,217** | **3,392** |
+
+So the figure is 49% code and 51% tests, against an `src/`-wide average of
+roughly a quarter tests. The reading that matters: the `connect_*` files are not
+six adapters of duplicated wiring that a shared abstraction would collapse — the
+duplication the review inferred from the line count is not there. `connect_ext.rs`
+is the clearest case: 292 code lines and 538 test lines, a 1:1.8 ratio. A
+`connect_*` adapter's real job is writing a host-specific config file and
+verifying the write, which is why its tests outnumber its code.
+
+The practical consequence is that "refactor 6,609 lines into a shared config
+abstraction" is not justified by the number the review itself flagged as
+unaudited, and the review's own recommendation to audit first is the right one.
+What is genuinely shared across adapters — the atomic-write-plus-reread
+discipline — is already a single helper: `paths::write_atomic`, called by
+`connect.rs:1088`, `connect_codex.rs:188` and `:421`, and `connect_ext.rs:163`,
+among others. That is the property that matters, and it is one function rather
+than six copies: a host config that fails to parse is refused, not overwritten.
+
+Not a change to behaviour, so no code moved. Recorded so a later agent does not
+re-derive it from the line count and propose the refactor again.
+
+
+
+## §60. Round 4's other findings — one refuted, four confirmed, none silently actioned
+
+Same review (`research/audits/context-pack-2026-11-19-round4/RESPONSE.md`). Each
+finding below was re-checked against the cited line before anything was decided.
+
+**Refuted — "silent fail-open black hole" in the hermes plugin.** The review
+read `is_available()` performing no network probe as the plugin hiding a dead
+server. It does no probe, and that is documented at
+`plugin/integrations/hermes/memory-wire/__init__.py:447-458`: Hermes calls this
+during agent init and inside `discover_memory_providers()`, which runs for every
+candidate plugin on the box, so a probe would put a 2s timeout in front of
+starting the agent. The answer it gives is the one it can give without the
+network, and the never-fail contract is what a hook does with the rest. The
+reviewer's own recommendation ("stay off `is_available()`, live in diagnostics")
+is what the code already does.
+
+**Confirmed and corrected in place — the "no dev set exists" claim, four
+sites.** Four plugin files said a score threshold had no dev set to choose one:
+the hermes `_recall` docstring and its `prefetch` docstring, plus
+`extension/memory-wire.ts` and `opencode-plugin/memory-wire.ts`. AGENTS §6 designates
+`eval/data/locomo/` (~1,530 queries) as exactly that set. The real reason
+thresholds stay closed is determinism (§32/§48): a cut is fitted on one corpus
+and moves when the ranking moves. Four comments were steering a maintenance
+agent at a lever §8 forbids re-litigating. Also corrected: `src/main.rs`'s
+redact arm claimed "the same service call the HTTP and MCP surfaces would make",
+which no longer describes the tree — redact has no HTTP route and no MCP tool.
+
+**Confirmed and left open — the `connect_*` split, now measured (§59).** The
+review said the code-vs-test split was "not in evidence". It is 49% code / 51%
+tests (3,217 / 3,392), which refutes the inferred duplication and makes a shared
+config abstraction unjustified by the line count the review itself flagged.
+
+**Confirmed and left open — AGENTS.md §3's module table.** Lists 18 of 32
+modules and states "22 modules / 24.8k lines" against a measured 35,298. Left
+for a dedicated pass rather than folded into a bug fix, because it needs each of
+the 14 missing modules described rather than a number edited.
+
+**Confirmed and left open — custody asymmetry (TODO row 31).** Verified: HTTP
+has `DELETE /banks/:id/memories/:mid` and hygiene, MCP has `memory_supersede`,
+and neither has both. This is a surface ruling, not a bug fix. The cheapest
+honest improvement is `memory_redact` on MCP — the service method exists, the
+`read_only` guard exists, and the tool would be additive.
+
+Gate unchanged: 659 tests, clippy clean, doc 0 warnings, trust gate green.
+
+Next free CONSISTENCY section: **§61**.
