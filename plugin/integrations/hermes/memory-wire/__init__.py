@@ -257,7 +257,8 @@ def _recall(
     query: str,
     exclude: Sequence[str] = (),
 ) -> Optional[List[Dict[str, Any]]]:
-    """Memories for *query* as ``{"content", "score"}`` dicts, or ``None`` when the
+    """Memories for *query* as ``{"content", "score", "trust", "created_at"}``
+    dicts, or ``None`` when the
     server is unreachable.
 
     ``None`` and ``[]`` mean different things on purpose: the first is "no
@@ -278,7 +279,9 @@ def _recall(
 
     ``trust`` rides along for the opposite reason: it is not a ranking input, it
     is what :attr:`MemoryProvider.prefetch` uses to refuse a row. A missing
-    ``trust`` stays ``None`` rather than becoming a guess.
+    ``trust`` stays ``None`` rather than becoming a guess. Same rule for
+    ``created_at``: present only when the wire carried it, ``None`` rather than
+    a guess, and prefetch renders it as a prefix only when it is there.
     """
     if not query.strip():
         return None
@@ -303,10 +306,19 @@ def _recall(
             continue
         score = hit.get("score") if isinstance(hit, dict) else None
         trust = hit.get("trust") if isinstance(hit, dict) else None
+        # The occurrence time, when the wire carried one. `prefetch` prefixes
+        # it, the way `src/hooks.rs::recall_section` does: H12 measured the
+        # date prefix as the single largest serving-shape lever this project
+        # has (≈+13pp on the dated HaluMem instrument), and a reader resolving
+        # "what did we decide last week" is blind without it. It is carried
+        # here and not in the content because the content is what the store
+        # stored; the date is when it happened.
+        created_at = hit.get("created_at") if isinstance(hit, dict) else None
         hits.append({
             "content": content,
             "score": score if isinstance(score, float) else None,
             "trust": trust if isinstance(trust, str) else None,
+            "created_at": created_at if isinstance(created_at, str) else None,
         })
     return hits
 
@@ -526,7 +538,14 @@ class MemoryWireProvider(MemoryProvider):
         )
         left = SECTION_CAP_CHARS
         for hit in hits[:MAX_LINES]:
-            entry = f"- {_clamp(hit['content'], ENTRY_CAP_CHARS)}\n"
+            # The date prefix renders only when the wire carried one, so a
+            # server older than the field degrades to the exact pre-2026-11-19
+            # rendering, byte for byte. Same shape as `src/hooks.rs`:
+            # `[<YYYY-MM-DD>] ` before the clamped content, day precision
+            # because that is what an occurrence time is for.
+            stamp = hit.get("created_at") or ""
+            prefix = f"[{stamp[:10]}] " if len(stamp) >= 10 else ""
+            entry = f"- {prefix}{_clamp(hit['content'], ENTRY_CAP_CHARS)}\n"
             if len(entry) > left:
                 break
             out += entry

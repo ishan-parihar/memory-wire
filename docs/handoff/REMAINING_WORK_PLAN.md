@@ -64,7 +64,12 @@ the hard way.
 
 ---
 
-## 2. A second real gap the review did not name: three doors serve dates, one does not
+## 2. A second real gap the review did not name — **DONE 2026-11-19**
+
+> **Done.** All three doors now prefix `[<YYYY-MM-DD>]`, all four use the same
+> rule (`len >= 10`, day precision, empty when absent), and the degradation case
+> is asserted rather than assumed. Live-verified against a server built from this
+> tree, all three doors against one recall response. Record: CONSISTENCY §56.
 
 Found while checking whether DECISIONS #1 ("serve occurrence dates in the
 surfaces") was still open. It is, and unevenly:

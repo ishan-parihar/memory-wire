@@ -235,7 +235,15 @@ function formatRecall(items) {
     // emitted lines, and a pre-pass that dropped rows would leave the count
     // short.
     if (isUntrusted(item)) continue;
-    lines.push(lines.length + 1 + ". " + clamp(content, ENTRY_CAP_CHARS));
+    // The occurrence time, when the wire carried one. `src/hooks.rs` prefixes
+    // it for the same reason H12 measured: a reader resolving "what did we
+    // decide last week" is blind without it. It renders only when the field is
+    // there, so a server older than it degrades to the exact pre-2026-11-19
+    // rendering, byte for byte. Day precision -- that is what an occurrence
+    // time is for.
+    var stamp = (item && item.created_at) || "";
+    var datePrefix = stamp.length >= 10 ? "[" + stamp.slice(0, 10) + "] " : "";
+    lines.push(lines.length + 1 + ". " + datePrefix + clamp(content, ENTRY_CAP_CHARS));
   }
   if (!lines.length) return "";
   var block =

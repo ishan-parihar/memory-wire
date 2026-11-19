@@ -6,7 +6,8 @@
 #
 #   * `untrusted_external` never reaches the injected block
 #   * a row with no `trust` field is KEPT (absence is not evidence)
-#   * a row below the cap that is dropped does not cost a trusted row its slot
+#   * a row with a `created_at` carries `[<YYYY-MM-DD>]`, byte-shaped like
+#     `src/hooks.rs`, and a row without it renders exactly as it did before
 #
 # Run:  python3 plugin/integrations/hermes/trust_gate_test.py
 import importlib.util
@@ -22,12 +23,21 @@ PLUGIN = os.path.join(
 
 # What the stub server will answer to /banks/<bank>/recall.
 HITS = [
-    {"id": "a", "content": "TRUSTED-ONE", "score": 0.9, "trust": "user_verified"},
-    {"id": "b", "content": "LEAK-B", "score": 0.8, "trust": "untrusted_external"},
-    {"id": "c", "content": "TRUSTED-TWO", "score": 0.7, "trust": "agent_inferred"},
-    {"id": "d", "content": "LEAK-D", "score": 0.6, "trust": "untrusted_external"},
+    {"id": "a", "content": "TRUSTED-ONE", "score": 0.9, "trust": "user_verified",
+     "created_at": "2026-11-19T09:30:00.000Z"},
+    {"id": "b", "content": "LEAK-B", "score": 0.8, "trust": "untrusted_external",
+     "created_at": "2026-11-18T09:30:00.000Z"},
+    {"id": "c", "content": "TRUSTED-TWO", "score": 0.7, "trust": "agent_inferred",
+     "created_at": "2026-11-17T09:30:00.000Z"},
+    {"id": "d", "content": "LEAK-D", "score": 0.6, "trust": "untrusted_external",
+     "created_at": "2026-11-16T09:30:00.000Z"},
 ]
 NO_TRUST = [{"id": "x", "content": "NO-TRUST-FIELD", "score": 0.5}]
+DATED = [{"id": "y", "content": "DATED-ROW", "score": 0.4,
+          "created_at": "2026-11-19T11:00:00.000Z"}]
+UNDATED = [{"id": "z", "content": "UNDATED-ROW", "score": 0.3}]
+SHORT = [{"id": "s", "content": "SHORT-STAMP-ROW", "score": 0.2,
+           "created_at": "2026"}]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -79,6 +89,24 @@ def main():
     kept = provider.prefetch("anything", session_id="test")
     if "NO-TRUST-FIELD" not in kept:
         fail.append("an absent trust field was withheld (absence must not read as evidence)")
+
+    # Dates: present when the wire carries one, absent when it does not. The
+    # "absent" half is the degradation guarantee -- a server older than the
+    # field must render the exact pre-2026-11-19 bytes.
+    Handler.payload = DATED
+    dated = provider.prefetch("anything", session_id="test")
+    if "[2026-11-19] DATED-ROW" not in dated:
+        fail.append("a dated row did not render [<YYYY-MM-DD>] content")
+
+    Handler.payload = UNDATED
+    undated = provider.prefetch("anything", session_id="test")
+    if "[None]" in undated or "- UNDATED-ROW" not in undated:
+        fail.append("a row without created_at did not render byte-identically to before")
+
+    Handler.payload = SHORT
+    short = provider.prefetch("anything", session_id="test")
+    if "- SHORT-STAMP-ROW" not in short or "[" in short:
+        fail.append("a stamp shorter than 10 chars rendered a partial bracket")
 
     srv.shutdown()
     if fail:

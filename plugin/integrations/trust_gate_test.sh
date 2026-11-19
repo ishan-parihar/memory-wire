@@ -47,10 +47,14 @@ const formatRecall = new Function(
 )(() => 'bank', (x, n) => x.slice(0, n), 5, 400, 2000);
 
 const items = [
-  { id: 'a', score: 1, content: 'TRUSTED-ONE', trust: 'user_verified' },
-  { id: 'b', score: 2, content: 'LEAK-B', trust: 'untrusted_external' },
-  { id: 'c', score: 3, content: 'TRUSTED-TWO', trust: 'agent_inferred' },
-  { id: 'd', score: 4, content: 'LEAK-D', trust: 'untrusted_external' },
+  { id: 'a', score: 1, content: 'TRUSTED-ONE', trust: 'user_verified',
+    created_at: '2026-11-19T09:30:00.000Z' },
+  { id: 'b', score: 2, content: 'LEAK-B', trust: 'untrusted_external',
+    created_at: '2026-11-18T09:30:00.000Z' },
+  { id: 'c', score: 3, content: 'TRUSTED-TWO', trust: 'agent_inferred',
+    created_at: '2026-11-17T09:30:00.000Z' },
+  { id: 'd', score: 4, content: 'LEAK-D', trust: 'untrusted_external',
+    created_at: '2026-11-16T09:30:00.000Z' },
 ];
 const out = formatRecall(items);
 const fail = [];
@@ -58,6 +62,19 @@ if (/LEAK-/.test(out)) fail.push('untrusted_external reached the block');
 if (!/TRUSTED-ONE/.test(out) || !/TRUSTED-TWO/.test(out)) fail.push('a trusted row was dropped');
 if (!/no trust field/.test(formatRecall([{ id: 'x', content: 'no trust field' }])))
   fail.push('an absent trust field was withheld (absence must not read as evidence)');
+// Dates, and the degradation guarantee: present when the wire carried one,
+// byte-identical to the pre-2026-11-19 rendering when it did not.
+if (!/\[2026-11-19\] TRUSTED-ONE/.test(out)) fail.push('a dated row did not render [<YYYY-MM-DD>] content');
+// Assert on the ENTRY line, not the block: the header legitimately contains
+// backticks and a bank name, so a whole-block search for `[` would fail on a
+// correct render.
+const entryOf = (block) => block.split('\n').filter((l) => /^[0-9]+\. /.test(l));
+const undated = entryOf(formatRecall([{ id: 'z', content: 'UNDATED-ROW' }]))[0];
+if (undated !== '1. UNDATED-ROW')
+  fail.push('a row without created_at did not render byte-identically to before');
+const short = entryOf(formatRecall([{ id: 's', content: 'SHORT-STAMP-ROW', created_at: '2026' }]))[0];
+if (short !== '1. SHORT-STAMP-ROW')
+  fail.push('a stamp shorter than 10 chars rendered a partial bracket');
 if (fail.length) { console.error(file + ': ' + fail.join('; ')); process.exit(1); }
 console.log('ok  ' + file);
 JS

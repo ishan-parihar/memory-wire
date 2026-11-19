@@ -4659,4 +4659,63 @@ plugins", so the question "which doors are covered?" was answered by reading a
 comment. The runner now enumerates the doors, so the coverage question has one
 answer in one place.
 
-Next free CONSISTENCY section: **§56**.
+## §56. Batch 3 of the remaining-work plan — occurrence dates on the three doors that dropped them
+
+**What this is.** Third batch of `docs/handoff/REMAINING_WORK_PLAN.md`. The
+change serves occurrence dates in the auto-injection path of the hermes plugin
+and both TypeScript plugins. `src/hooks.rs` already did this; the other three
+doors requested `format: "full"` — which has carried `created_at` on every hit
+since TODO #15 shipped — and then dropped the field on the floor.
+
+**Why it matters, and why it is not a ranking change.** `src/hooks.rs` carries
+the reason in a comment: H12 measured the date prefix as the single largest
+serving-shape lever this project has (≈+13pp overall on the dated HaluMem
+instrument, `CONSISTENCY.md` §46). A reader resolving "what did we decide last
+week" is blind without it. The change is downstream of ranking — it changes what
+a model reads, not which rows were selected — so no `AGENTS.md` §6 or §8 rule
+bites, and no threshold is introduced.
+
+**The three doors, now identical.** All four implement the same rule:
+
+| door | where | rule |
+|---|---|---|
+| `src/hooks.rs` | `recall_section` | `len >= 10` → `[first 10] `, else empty |
+| hermes | `prefetch` | same, `stamp[:10]` |
+| extension `.ts` | `formatRecall` | same, `slice(0, 10)` |
+| opencode `.ts` | `formatRecall` | same, `slice(0, 10)` |
+
+**Degradation is the load-bearing half.** The prefix renders *only* when the
+wire carried a stamp. A server older than `created_at` — one answering a bare
+array of content strings, which the plugins still accept — renders byte for byte
+what it rendered before this change. That is asserted, not assumed: the test
+feeds a bare-string array and requires no bracket in the output, and feeds a
+short stamp (`"2026"`) and requires the same.
+
+**One thing the live run corrected about my expectation.** I stored a row
+without `created_at` expecting an undated hit, and the server returned
+`2026-11-19T12:47:55.705Z` — a retain with no occurrence time gets the
+*ingest* time. That is correct behaviour, not a bug: the store records when it
+learned the fact when the caller does not say when it happened. It does mean
+"row without a date" cannot be produced through the current API at all, so the
+degradation guarantee is proved against an older *server*, not an older row.
+
+**Proof.** Three layers, because a unit test alone would not have caught the
+thing worth catching:
+
+1. **Unit** — the existing three-door runner (`trust_gate_test.sh`) now asserts
+   the date prefix, the undated render, and the short-stamp render per door.
+2. **Live** — a server built from this tree, rows retained with real occurrence
+   dates, and all three doors driven against the same recall response: each
+   served `[2026-09-14]` and withheld the `untrusted_external` canary.
+3. **Degradation** — a bare-string array renders with no bracket, matching the
+   pre-change bytes.
+
+**A trap this session added to the list: `initialize` binds `_base`, and `_bank`
+comes from `MEMORY_WIRE_BANK` or config, not an `initialize` kwarg.** My first
+live hermes run returned an empty block and the second served the wrong bank. A
+provider driven by hand needs both set, or every query answers `""` and looks
+like a passing negative.
+
+Gate: 659 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings.
+
+Next free CONSISTENCY section: **§57**.
