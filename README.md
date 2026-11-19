@@ -20,7 +20,7 @@ supervisor and no lockfile.
   Dynamic Update 0.2056→0.4056, `docs/CONSISTENCY.md` §46), and per-bank capsules
   (`"injectionFormat":"summary"` in bank config) cut served bytes 41–43% at
   byte-identical ranking.
-- Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook) · [`TODO.md`](TODO.md) (open work)
+- Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook) · [`TODO.md`](TODO.md) (open work) · [`docs/DECISIONS/2026-11-18-w7b-recall-gating.md`](docs/DECISIONS/2026-11-18-w7b-recall-gating.md) (W7b: recall stays ungated — a raw score cut is meaningless)
 - Agent skill: [`plugin/skills/memory-wire/SKILL.md`](plugin/skills/memory-wire/SKILL.md) — the one file here written for a model to read rather than a person. It is a standard `name`/`description`-front-matter skill: copy it into a host's skills directory (`~/.claude/skills/`, and the equivalents for codex, cursor and opencode) and the agent picks up the retain/recall workflow, the bank rules and the error contract without being told them. `connect` does **not** install it — that command wires hooks and MCP entries only, so this is a deliberate copy.
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `eval/BEAM.md` (pool-scale re-test) · `eval/relevance/` (frozen battery) · `docs/CONSISTENCY.md` (the measured record) · `docs/BENCHMARK.md`
 
@@ -425,22 +425,25 @@ API keys, emails, and phone numbers.
 
 ## CLI
 
-Nine subcommands in a default build, exactly as `--help` reports them (`help` is
-clap's own and is not one of them). An `--features embed` build has a tenth,
+Twelve subcommands in a default build, exactly as `--help` reports them (`help` is
+clap's own and is not one of them). An `--features embed` build has a thirteenth,
 `embed <text>`, which prints one 384-d vector as JSON; it is the reason the
 weights survive LTO:
 
 | Command | What it does |
 |---|---|
 | `info` | Audit + plan pointers (the default when no command is given) |
-| `daemon` | `start` / `stop` / `status` for a backgrounded server — see below |
 | `serve` | Start the HTTP server in the foreground — `--addr` (default `127.0.0.1:8888`), `--db`. Stops accepting and drains in-flight requests on SIGINT/SIGTERM |
-| `connect` | Wire the hooks into agent hosts — optional `<agent>`, `--uninstall`, `--guidelines` |
+| `daemon` | `start` / `stop` / `status` for a backgrounded server — see below |
+| `connect` | Wire the hooks into agent hosts — optional `<agent>`, `--uninstall`, `--guidelines`, `--with-skills`, `--bank`, `--list` |
 | `hook` | Lifecycle hook the hosts invoke — `session-start`, `prompt`, `stop`, `pre-compact`, `session-end` |
-| `doctor` | Endpoint, bank, store, and server health — `--db`, `--strict` |
+| `doctor` | Endpoint, bank, store, and server health — `--db`, `--strict`, `--all-hosts` |
+| `update` | Self-update the installed binary from the newest GitHub release (uses `gh`; sha256-verified before anything is touched) |
 | `mcp` | Serve MCP over stdio — `--bank`, `--db` |
 | `sweep` | Delete memories past their bank's `ttl_days` — `--dry-run`, `--db` |
 | `seed` | One-shot bank seeding from this repo's git history — `--commits <N>` (default 100, capped at 500), `--transcripts`, `--bank`, `--db` |
+| `redact` | W3 — rewrite a pattern out of a memory and its version rows, leaving the audit trail (`--bank`, `--id`, `--pattern`, `--name`, `--db`) |
+| `grounding` | W5 — build the bounded startup grounding capsule for a bank (`--bank`, `--max-lines` default 40, `--max-bytes` default 2048, `--path`, `--db`) |
 
 `--addr` defaults to loopback because there is no authentication: anything that
 can reach the port can read and delete every bank. A non-loopback address still
@@ -653,7 +656,9 @@ version opens, reads, and sweeps exactly as it was.
 
 ## MCP
 
-The same five tools are served two ways. `memory-wire mcp` is stdio —
+The same five tools are served two ways (the fifth, `memory_supersede`, is the W7a
+supersede verb — a correction path `memory_retain` does not have). `memory-wire
+mcp` is stdio —
 JSON-RPC 2.0, newline-delimited, stdout only for protocol, logs to stderr.
 `--bank` sets the default bank, falling back to `$MEMORY_WIRE_BANK` and then
 to `memory-wire`; a per-call `bank` argument overrides both.
@@ -676,11 +681,15 @@ binding beyond `127.0.0.1` is not enough on its own to expose it.
 | `memory_recall` | no | `query` (required), `bank?`, `budget?`, `tags?`, `exclude_tags?` |
 | `memory_reflect` | no | `query` (required), `bank?` |
 | `memory_bank_config_get` | no | `bank?` |
+| `memory_supersede` | yes | `memory_id` (required), `bank?`, `superseded_by?` |
 
-Every tool declares `destructiveHint: false`; `memory_retain` is the only one
-without `readOnlyHint: true` — a repeated retain of the same content in the same
-bank writes nothing and returns the id that already holds it, but a repeated
-retain of *different* content is a second memory. Each tool is a thin adapter onto
+Every tool declares `destructiveHint: false`; `memory_retain` and
+`memory_supersede` are the two without `readOnlyHint: true` — a repeated retain
+of the same content in the same bank writes nothing and returns the id that
+already holds it, but a repeated retain of *different* content is a second
+memory; a supersede marks a row superseded (the default recall excludes it, and
+`include_history` returns it with its lineage) rather than deleting it, so the
+audit trail survives. Each tool is a thin adapter onto
 the same `MemoryService` methods
 the HTTP routes call — retrieval, redaction, and budgeting are not reimplemented
 for MCP, so the two surfaces cannot drift. An unknown tool name is a JSON-RPC

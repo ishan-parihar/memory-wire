@@ -38,7 +38,10 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   The grounded replacement is **`docs/audit/2026-11-18-surface-audit.md`**
   (findings F1–F10, every one marked verified or asserted) and
   **`docs/plans/2026-11-18-hierarchical-grounded-memory-upgrade.md`** (W0–W7).
-  TODO rows 21–29 are the register. **Nothing is implemented yet.**
+  TODO rows 21–29 were the register. **All W0–W7 items shipped** (2026-11-18,
+  commits `a45ea07` → `b4b4698`): rows 21–29 are closed with their closing
+  commits, and the W7b recall-gating question is a recorded decision
+  (`docs/DECISIONS/2026-11-18-w7b-recall-gating.md`) rather than open work.
 
   **A context-pack review round has been run against that plan** (Hydrogen at
   `xhigh`, 2026-11-18): pack, prompt, reply and the mandatory verification pass
@@ -66,11 +69,10 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
     `keyword_scope` R@1 +3.0pp but gate failed; H1b `overlap_scope` multi-hop
     R@1 **−11.2pp**; H1c `bm25_magnitude` a wash; H3 recency temporal R@1
     **−33.4pp**. Do not re-propose them (AGENTS §8).
-  - **`cargo test --locked` is currently RED on this machine**, not from a
-    regression: `connect::tests::golden_install_shapes` uses the real `PATH`
-    probe and `copilot` is not installed. Verified pre-existing by stashing and
-    re-running on the pristine tree. TODO #21 fixes it; until then "the gate is
-    green" is false here.
+  - **`cargo test --locked` is green again**: W0.1 (`a45ea07`) made
+    `golden_install_shapes` hermetic — it drives `apply(..., no_path, ...)`, so
+    detection is a function of the fixture, not of what is installed on the
+    host. The pre-`a45ea07` failure (no `copilot` on PATH) is fixed and gone.
   - **No item in the new plan changes `FusionWeights::SHIPPED`**, and no item is
     selected on LongMemEval. The plan ships zero ranking changes.
 
@@ -304,21 +306,16 @@ From `amb_locomo_rag.json.gz` joined with `eval/data/locomo/queries.json`
   not a memory-wire one. The adapter now carries `MEMORY_WIRE_TOPK` to move that cut
   for measurement; H4 used it to fix the served set at k = 3/5/10.
 
-<!-- genome:zone status sha=6ccf7a72b2dd -->
+<!-- genome:zone status sha=5c0a646f8a92 -->
 | status | items |
 |---|---|
-| open | 13 |
+| open | 4 |
 | in-progress | 1 |
-| done | 15 |
+| done | 24 |
 
 - `4` [in-progress] ~~INTEGRATION_PLAN Phase 0, starting with P0.1~~ — **re-verified 2026-10-15 against the binary**; th
 - `10` [open] agent-memory-bench (GiulioDER) Claude Code arm
 - `11` [open] LLM-judged runs: AMB `rag` (BEAM/PersonaMem/LifeBench), OAMB LME-60, memorybench ConvoMem, MemBase R
 - `12` [open] AMB provider writes at the product's granularity (turn pairs, as the hooks do), not 25k-token sessio
 - `13` [open] aroute: 200-with-`{"error"}` logged `outcome=ok` with no failover (B1); cline replies forwarded insi
-- `21` [open] **W0.1 — make `golden_install_shapes` hermetic.** It calls `run()`, which uses the real `binary_on_p
-- `22` [open] **W0.2 — pin the redactor against code identifiers.** `src/capture.rs` tests cover OpenAI/GitHub/AWS
-- `23` [open] **W1 — dimensional metadata.** Add `scope` / `aspect` / `lifecycle` / `trust` / `parent_id` / `super
-- `24` [open] **W2 — mount profiles.** `read_only` and `max_trust` on `BankConfig`; writes to a `read_only` bank r
-- `25` [open] **W3 — retroactive redaction.** `memory_versions` table (append-only) + `redact(memory_id, pattern)`
 <!-- genome:end status -->

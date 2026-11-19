@@ -347,6 +347,11 @@ meaningless — the same reasoning that already killed the threshold idea in
 `CLOSED.md`. If W7b is attempted at all, it is a pre-registered hypothesis on
 the frozen relevance battery, never a constant picked off an observation.
 
+**Decision taken 2026-11-18** (deferred): the result set stays ungated, recorded in
+`docs/DECISIONS/2026-11-18-w7b-recall-gating.md` — a raw cut is an uncalibrated
+score, data-dependent, a runtime policy not a store concern, and a closed lever;
+the ranking is the honest signal.
+
 **Gate:** a supersede verb round-trips (supersede → default recall excludes it
 → `include_history` returns it with its lineage); the 4-tool count becomes 5
 with a documented reason; and if W7b is attempted, its gate is the frozen
@@ -443,17 +448,31 @@ migration; the riskiest is W4 (a new module with a new public verb, which
 
 ## 6. Resume here
 
-**All items complete.** W0–W7 shipped across 10 commits:
+**All items complete.** W0–W7 shipped across the commits named below (rebuilt
+and re-measured at `b4b4698`, 2026-11-19; `TODO.md` rows 21–29 closed):
 
 - W0 (a45ea07) — hermetic golden_install_shapes + redactor identifier tests
-- W1 (e10ba0b) — dimensional schema: scope/aspect/lifecycle/trust/parent_id/superseded_by
+- W1 (e10ba0b) — dimensional schema: scope/aspect/lifecycle/trust/parent_id/superseded_by/scope_globs
 - W2 (8eaeac3) — mount profiles: readOnly + maxTrust on BankConfig
 - W3 (052f3a6) — retroactive redaction with version audit trail
-- W4 (ad8472a) — deterministic hygiene scan module
+- W4 (ad8472a) — deterministic hygiene scan module (5th MCP tool is
+  `memory_supersede` (W7a); hygiene went to the HTTP door instead — recorded
+  deviation)
 - W5 (4540b19) — startup grounding capsule module
 - W7a (d34a0a5) — supersede verb on the MCP surface (5th tool)
 - W6 (4793326) — connect --with-skills + embedded SKILL.md
 - W7b (eb95a0a) — decision doc: no raw score gate on recall_section
+
+**Gate 8 verdict, recorded (2026-11-19).** The gate says `binary ≤ 9 MiB (from 8.8)`.
+Measured at HEAD: `target/release/memory-wire` = **10,937,128 B (10.43 MiB)**,
+`DT_NEEDED` = 3 — **breached, and nothing in the tree says so.** The breach is
+real and this is its record: the size floor (the 8.8 MiB shipped figure was a
+v0.10.0-era number) predates W0–W7, which add the hygiene module (645 lines),
+grounding (349), supersede (mcp) and redact (store + main). Each item passed
+every *other* Gate-8 check (idle RSS ≤ 12 MiB: unchanged; `DT_NEEDED` 3; `cargo
+doc` 0 warnings). Redesigning to fit 9 MiB is a **separate** plan with its own
+pre-registration, not an edit here; the honest status is that the plan is
+complete and Gate 8's size line is the one check it failed.
 
 `docs/handoff/STATE.md` is updated when a unit of work lands, per
 `AGENTS.md` §13.

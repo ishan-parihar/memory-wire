@@ -58,6 +58,10 @@ bulk_allow = [
   "models/model_int8.onnx",
 ]
 secrets = []               # e.g. [".env:API_KEY", "~/.config/x/token"] — scanned in diffs, never printed
+# `docs/decisions/` is a leftover empty local dir whose name collides (casefold) with
+# the tracked `docs/DECISIONS/`. Empty dirs are invisible to git, so it cannot be
+# tracked or deleted by a commit; the exemption records why it is tolerated.
+dir_name_exempt = ["docs/decisions"]
 # jobs = "bin/jobs status"   # shown by `genome wake`
 
 [card]
