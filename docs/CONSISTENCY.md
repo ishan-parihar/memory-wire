@@ -4773,4 +4773,50 @@ user sees a difference from.
 
 Gate: 659 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings.
 
-Next free CONSISTENCY section: **§58**.
+
+
+## §58. A cross-door cap that counts input, not output — round 4, 2026-11-19
+
+The round-4 context-pack review (hydrogen, `gemini-4-hydrogen/xhigh`) was asked
+to find bottlenecks, redundancies, fragmentations and integration gaps. It found
+one defect in code written earlier the same day, and the finding is worth
+recording because of *why* it was invisible.
+
+Both TS plugins (`extension/memory-wire.ts`, `opencode-plugin/memory-wire.ts`)
+bounded the recall loop with `i < items.length && i < RECALL_ENTRIES`. That
+reads as a cap. It is not one: it bounds the **input scan**, so five untrusted
+rows at ranks 0–4 consume the whole budget and a trusted row at rank 5 is never
+reached. `src/hooks.rs` and `plugin/integrations/hermes/memory-wire/__init__.py`
+filter first and take second; the two TS plugins took first and filtered
+second. Both are now filter-first, with the cap expressed as
+`lines.length >= RECALL_ENTRIES` on the *emitted* count.
+
+Two things about this are generalisable and neither is obvious from the code:
+
+- **The three doors looked identical and were not.** A cap and a filter that
+  both appear in the same loop body is not evidence that two files agree; the
+  disagreement is only visible when the input is adversarially ordered.
+- **It could not have been caught by the trust gate as it stood.** The existing
+  gate tested *that* untrusted rows were withheld. It did not test what happened
+  when untrusted rows sat **above** trusted ones, which is exactly the case that
+  differs between filter-first and take-first. A guard that checks one property
+  does not incidentally check its ordering counterpart.
+
+The new test asserts both directions: a trusted row below five untrusted rows
+survives, and seven trusted rows still emit five. Mutation-checked against both
+TS doors — reverting the loop bound to `i < RECALL_ENTRIES` fails on each.
+
+**Also verified from the same review, and not acted on.** The comments in all
+four plugin files say a score threshold has "no dev set to choose one"; that is
+wrong — AGENTS §6 designates `eval/data/locomo/` (~1,530 queries) as the dev
+set, and the correct statement is that score thresholds are closed on
+determinism grounds (CONSISTENCY §32/§48), not that the data does not exist.
+Separately, AGENTS.md §4 documents four MCP tools where the server exposes six
+(`memory_supersede` and the historian prompt are missing from the table), and
+§3's module table lists 18 of 32 modules against a claimed "22 modules" and
+"24.8k lines" for a current 35,298. Both are documentation drift rather than
+behaviour, and are left for a dedicated pass rather than folded into a bug fix.
+
+Gate: 659 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings.
+
+Next free CONSISTENCY section: **§59**.

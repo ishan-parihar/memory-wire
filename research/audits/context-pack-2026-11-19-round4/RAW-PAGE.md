@@ -1,0 +1,206 @@
+# RAW PAGE — the scrape as it stood at archive time
+
+## SECTION 1: the DOM extraction (complete — not capped)
+
+1. Critique of the Framing (# SECTION C-ASK)
+The framing of C-ASK is flawed in three ways, and accepting it as posed hides the system's real failure mode:
+Wrong subsystem target (connect_* vs. runtime doors and prose registers). C-ASK asks whether the 6,609 lines of connect_* ([LIVE], # SECTION B-DELTA §2) justify per-host adapters (i) or cause the N−1 defect (ii). Yet none of the five historical N−1 defects—nor the active ones uncovered in this pack—lived inside connect_*:
+Defect #1 lived in the 4 auto-injection doors (src/hooks.rs, hermes, extension, opencode-plugin), where an active N−1 bug still exists today (extension/memory-wire.ts lines 224–240).
+Defects #2–#5 and the pack's own errors live in unverified claims across scripts, docs, comments, and TODO registers.
+Meanwhile, connect_* (src/connect*.rs) is not quoted anywhere in the pack, so how much of those 6,609 lines is inline #[test] fixtures vs. duplicated capability wiring is not in evidence ([UNCONFIRMED]).
+False dichotomy between (i) and (ii). Keeping per-host config formatters separate (i) and preventing N−1 capability omissions (ii) are orthogonal axes: code organization vs. invariant enforcement. Eliminating N−1 drift does not require collapsing JSON/JSONC/TOML/plugin installers into a shared config abstraction; it requires an enumerated parity contract across targets.
+Unstable definition of "door." The repo uses "door" for three incompatible partitions:
+4 architecture doors in the prompt intro (Rust hooks, MCP, HTTP, plugin adapters);
+4 auto-injection doors in # SECTION B-DELTA §1 (hooks.rs + 3 plugins), while # SECTION C-ASK mislabels them "4 plugin doors" (there are 3 plugin files: 2 TS, 1 Python);
+4 protocol doors in # SECTION G-OPEN §2.1 (HTTP | MCP | CLI | hook), which excludes all 3 plugins completely.
+2. Pack Audit: Discrepancies & Unverified Claims
+Before relying on any figure, here is where the pack's own numbers disagree or lack evidence:
+Claim / figure	Where in pack	Status / which is wrong
+LoCoMo recall_all@10: 94.2% (sessions) vs 92.2% (turns)	# SECTION B-DELTA §3; # SECTION G-OPEN §2.5	Wrong. # SECTION A-STATE (AGENTS.md §1, [CERT]) gives sessions recall_all@10 = 83.0% vs recall_any@10 = 94.2%. # SECTION H-DECIDED (CLOSED.md, [CERT]) gives turns recall_all@10 = 80.7% (83.0→80.7%, n = 1,531) and windows W=2 as −0.4pp vs sessions (83.0 - 0.4 = 82.6%, matching 82.6% in G-OPEN §2.5). B-DELTA §3 and G-OPEN §2.5 substituted recall_any@10 into the recall_all@10 slot.
+src/: 24.8k lines / 22 modules / 18 rows / 4 MCP tools	# SECTION A2-CLAIM (AGENTS.md §3, [CERT] under audit)	Wrong (stale). # SECTION B-DELTA §2 ([LIVE]) measures 35,298 lines / 32 modules (14 absent from table). Five MCP tools appear across # SECTION G-OPEN §2.1 and # SECTION E-ENFORCE (memory_recall, memory_retain, memory_reflect, memory_supersede, memory_bank_config_get), plus 1 prompt (memory_historian, # SECTION D-SURFACE).
+connect_* family: 1 module in the table	# SECTION B-DELTA §2 ([LIVE] summary)	Wrong. # SECTION A2-CLAIM lists 3 connect* modules (connect.rs 1,263; connect_plugin.rs 1,100; connect_codex.rs 730 = 3,093 lines); the other 4 (connect_claude, connect_copilot, connect_ext, connect_opencode = 3,516 lines) are in the 14-module omission list (3 + 4 = 7 files, 6,609 lines).
+TS plugins: 98 of 741 (59% of smaller file)	# SECTION B-DELTA §2; # SECTION C-ASK	Denominator mismatch. 98 / 741 is 13.2%, not 59%. Per # SECTION D-SURFACE (measure_surface.sh lines 31–38), 59% is 98 / b_code (non-comment lines of the smaller file, b_code ≈ 166), which B-DELTA omits alongside a_code. Also comm -12 <(sort A) <(sort B) overcounts repeated syntax lines (}, return undefined;) while missing reformatted clones.
+Open TODO.md surface: "five rows" (10, 11, 12, 13, 31)	# SECTION B-DELTA §3 vs §4	Incomplete count. §4 reveals row 18 (PersonaMem v2) still reads "named-not-scheduled" in TODO.md despite completing on 2026-10-17 (37.8% = 1,872 / 4,954, [LIVE]-computed).
+Trust gate "now closed in all four doors"	# SECTION B-DELTA §1 vs # SECTION E-ENFORCE	Wrong. extension/memory-wire.ts lines 224–240 still filter untrusted_external after slicing the first RECALL_ENTRIES (i < RECALL_ENTRIES), violating its own comment.
+17 dependencies	# SECTION C-ASK (citing AGENTS.md §1); Prompt	Not in evidence ([UNCONFIRMED]). AGENTS.md §1 (# SECTION A-STATE, lines 26–67) does not mention 17, and measure_surface.sh's Cargo.toml grep output is absent from B-DELTA.
+13 CLI subcommands, 9 HTTP routes, 1,622 injection lines, ~10.7 MiB RSS at HEAD	Prompt; # SECTION C-ASK; # SECTION B-DELTA §1; # SECTION A-STATE	Not in evidence ([UNCONFIRMED]). measure_surface.sh outputs for CLI, HTTP, MCP, and .py line counts are omitted; 10.63 MiB (11,141,240 B, DT_NEEDED = 3) is [LIVE] disk size at HEAD (2026-11-19), whereas ~10.7 MiB RSS has no HEAD measurement artifact in the pack (v0.7.0 was 10.25 MiB).
+src/*.rs, connect*.rs, opencode-plugin/memory-wire.ts, trust_gate_test.sh	Absent from pack	Not in evidence ([UNCONFIRMED]).
+3. Decision on (i) vs (ii), Falsifiers, and Smallest Structural Change
+Decision: On the pack's evidence, (ii) holds for cross-surface capabilities and policy invariants (and unambiguously for the TypeScript plugins, whose duplicated lines in # SECTION E-ENFORCE are wire-protocol and filtering policy, not host format syntax), while (i) holds only for host-specific config file serialization inside connect_*.
+What would change my mind (falsifiers):
+Moving from (ii) to (i) on connect_*: inspecting src/connect*.rs shows >50% of the 6,609 lines are per-host inline #[test] fixture roundtrips and format parsers (JSON/JSONC/TOML), and a single declarative host-capability registry drives all 7 files with an automated test asserting every host wires the same hooks/MCP/env contract.
+Moving from (ii) to (i) on the TS plugins: seeing opencode-plugin/memory-wire.ts and extension/memory-wire.ts differ primarily in host event plumbing rather than sharing identical recall/retain/hygiene code (unlikely given extension lines 205–351 are ~85% generic memory-wire logic).
+Smallest structural change to make N−1 detectable (0 new Cargo.toml dependencies, 0 bytes added to target/release/memory-wire):
+Single compiled manifest + door-parity contract test (scripts/ + cargo test): Replace the hardcoded 6-host regex in # SECTION D-SURFACE (measure_surface.sh line 58, which wouldn't even catch a 7th host or pi/omp for connect_ext) and the partial trust_gate_test.sh (which # SECTION C-ASK notes checks only three doors) with a single enumerated capability matrix discovered from src/connect*.rs, plugin/integrations/*, src/hooks.rs, src/api.rs, src/mcp.rs, and src/main.rs.
+Shared adversarial behavioural fixtures (executed against all 4 auto-injection doors over a local HTTP stub): Assert ordering and non-starvation (5 untrusted_external rows at ranks 0..4 + 1 trusted row at rank 5 must still inject the trusted row), SECTION_CAP_CHARS / INJECT_CAP_CHARS budget ceiling including headers/footers, [YYYY-MM-DD] date formatting, exclude_tags, and injectionFormat parity (bank config vs MEMORY_WIRE_FORMAT). This single check would have blocked Finding 1 and Finding 3 at commit time.
+Self-checking doc/register assertions in the gate: Have measure_surface.sh (or cargo test) fail CI when AGENTS.md's module/tool counts diverge from src/ or when an eval/ output directory exists for a TODO.md row still marked "named-not-scheduled" or open past a CLOSED.md verdict.
+4. Ranked Findings
+Finding 1 — Active trust-filter starvation bug in extension/memory-wire.ts (contradicts # SECTION B-DELTA §1)
+Artefact: # SECTION E-ENFORCE, # FILE: plugin/integrations/extension/memory-wire.ts (lines 205,351) (specifically formatRecall, lines 224–240) vs. # FILE: plugin/integrations/hermes/memory-wire/__init__.py (lines 86,569) (lines 515–520) and # SECTION B-DELTA §1 (1f5ee17).
+Evidence & numbers: In extension/memory-wire.ts line 224, the loop runs for (var i = 0; i < items.length && i < RECALL_ENTRIES; i++) and executes if (isUntrusted(item)) continue; inside it. Because i indexes input items rather than emitted lines.length, RECALL_ENTRIES (5 in hermes's MAX_LINES; exact value in extension lines 1–204 [UNCONFIRMED], assumed 5 per comment "inject four memories where five were earned") caps the pre-filter slice. In contrast, hermes filters hits = [h for h in hits if h.get("trust") != UNTRUSTED_TIER] before hits[:MAX_LINES].
+What it costs an agent: A single untrusted_external memory ranked at 0..4 shrinks injected recall from 5 rows to 4; 5 top-ranked untrusted_external rows cause complete auto-injection denial-of-service ("") even when trusted memories sit at rank 5+. Whether opencode-plugin/memory-wire.ts shares this exact bug is not in evidence.
+What would have to be true to be worth doing: Already worth fixing immediately—a 1-token change (lines.length < RECALL_ENTRIES) plus adding a 5-untrusted-before-1-trusted fixture to trust_gate_test.sh. (Zero binary/dep cost; only false if formatRecall is unused dead code, contradicted by line 299.)
+Supports: (ii) — the identical policy was patched across doors in 1f5ee17, verified by a test too weak to catch post-take slicing, and silently broke in one TS file.
+Finding 2 — Real product bottlenecks are unreleased commits and the untouched 73% answerer ceiling, not G-OPEN's TODO register
+Artefact: # SECTION G-OPEN (REMAINING_WORK_PLAN.md §2.1–2.6), # SECTION H-DECIDED (RND_PLAN.md §6.4; CLOSED.md), # SECTION A-STATE (AGENTS.md §1), # SECTION B-DELTA §3–5.
+Evidence & numbers:
+Candidate retrieval is already near-saturated: 500/500 gold in pool on LongMemEval-S ([CERT], # SECTION A-STATE), recall_any@10 = 94.2%, recall_all@10 = 83.0% on LoCoMo (n = 1,531, [CERT], # SECTION A-STATE / # SECTION H-DECIDED).
+Yet 73.0% ([PRIOR]/[CERT], # SECTION H-DECIDED, RND_PLAN.md §6.4) of served-and-gold LongMemEval contexts are still answered wrong; small-reader answer_quality is 17.0% undated / 18.6% dated ([CERT], CLOSED.md); PersonaMem v2 sits at 37.8% (1,872 / 4,954, [LIVE]-computed unrecorded, # SECTION B-DELTA §4).
+The two shipped serving-shape mitigations—occurrence dates (0b518de, ≈+13pp on dated HaluMem per hermes line 277 [PRIOR]) and capsules (1f93bf0, 41% less served text per RND_PLAN.md §6.4 [CERT])—sit among 42 commits ([LIVE], # SECTION B-DELTA §5) unreleased since v0.10.0.
+Meanwhile, G-OPEN (REMAINING_WORK_PLAN.md) drops the 73% answerer-side bottleneck from TODO.md, leaves row 12 (turns) open with mislabelled recall_all@10 (94.2%/92.2% instead of 83.0%/80.7%), and omits row 18 (PersonaMem v2 stuck at "named-not-scheduled").
+What it costs an agent: Every installed user on v0.10.0 runs without dates, capsules, or the TS trust gate. Even on HEAD, end-to-end task efficacy (agent-memory-bench, row 10) remains unmeasured while attention focuses on stale eval-register items (row 12) and external proxy speedups (row 13, aroute).
+What would have to be true to be worth doing: Cutting a release (G-OPEN §2.6) is worth doing as soon as Finding 1 (and §2.1(b) if desired) lands, because 42 commits ([LIVE]) already exist in tree and incur zero ongoing runtime cost. Recording row 18 (37.8%) and striking row 12 cost zero compute (no benchmark run needed). Refocusing product work from ranking onto answerer/serving consumption is already warranted unless a frontier reader drops the 73.0% failure rate near 0% without prompt changes.
+Supports: Neither (i) nor (ii) inside connect_* — directly supports the broader critique that un-checked registers conceal what actually blocks agents.
+Finding 3 — Capsule flag (injectionFormat) and plugin boundary integration gaps (hermes & extension)
+Artefact: # SECTION E-ENFORCE (hermes/__init__.py lines 155–278, 446–569; extension/memory-wire.ts lines 247, 269–297, 341–342), # SECTION G-OPEN §2.1 & §2.6, # SECTION H-DECIDED (RND_PLAN.md §6.4).
+Evidence & numbers:
+injectionFormat split-brain: RND_PLAN.md §6.4 specifies capsules "behind a per-bank flag". Both hermes (lines 250–258) and extension (lines 284–292) explicitly document that Rust hooks probe the bank's injectionFormat (and bank wins), whereas all 3 plugin doors ignore injectionFormat and only read MEMORY_WIRE_FORMAT=summary from process env—even though hermes's _config() already reads ~/.hermes/memory-wire.json on every call without a network hop.
+URL construction bugs (hermes): Lines 206 and 263 interpolate f"/banks/{bank}/recall" without percent-encoding bank (unlike extension lines 276 & 341 using encodeURIComponent(bank())), and _endpoint() does not .rstrip("/") ({base}//banks/... on trailing slash).
+Context-cap violation & mismatch: hermes lines 525–539 initialize left = SECTION_CAP_CHARS (2000) after emitting the header and append …and N more after the loop without checking left, exceeding SECTION_CAP_CHARS despite lines 86–88 claiming parity with extension (which hard-slices mid-token at INJECT_CAP_CHARS - 1, line 247).
+Short-prompt asymmetry: extension (lines 269–272) borrows lastAnswer when prompt.length <= SHORT_PROMPT_CHARS; hermes prefetch (line 510) passes raw _strip_reminders(query) directly.
+False system_prompt_block claims (hermes lines 458–461): Tells the model "The store is local and unauthenticated" even when _valid_url accepts https:// remote endpoints, and advertises only 3 of the 5 MCP tools (memory_recall, memory_retain, memory_reflect).
+What it costs an agent: Configuring injectionFormat on a bank silently produces full prose in Hermes/OpenCode/extension; a bank id with / or spaces (e.g. org/repo) silently breaks all recall/retain in Hermes (None -> ""); short follow-ups ("Continue") inject tie-break noise on Hermes; https:// setups inject false security claims into the system prompt.
+What would have to be true to be worth doing: Worth fixing in the plugins because each is a localized bugfix adding 0 dependencies and 0 bytes to the Rust binary—worth doing whenever any agent uses non-alphanumeric bank names, per-bank injectionFormat, or Hermes short follow-ups. (To preserve the 0-extra-HTTP-per-turn constraint, injectionFormat can be returned in an optional field or read from local per-host config, or /recall can accept "format": "bank_default" server-side—which requires server support, not in evidence today.)
+Supports: (ii) — each plugin independently re-implemented HTTP, caps, and env config, creating behavioural drift (encodeURIComponent, cap math, short-prompt composition, injectionFormat).
+Finding 4 — Surface fragmentation: TS plugin duplication (59% of smaller file) is pure (ii); connect_* (6,609 lines / 18.7% of src/) is un-audited (ii) risk
+Artefact: # SECTION B-DELTA §2, # SECTION D-SURFACE (measure_surface.sh lines 29–39, 57–58), # SECTION A2-CLAIM (AGENTS.md §3), # SECTION E-ENFORCE (extension/memory-wire.ts).
+Evidence & numbers:
+src/ is 35,298 lines across 32 modules with 631 inline #[test] blocks ([LIVE], # SECTION B-DELTA §2 & §5).
+connect_* totals 6,609 lines across 7 files (18.7% of src/—nearly 2× the ~3k LOC retrieval core in # SECTION A-STATE): 3,093 lines in connect.rs (1,263), connect_plugin.rs (1,100), connect_codex.rs (730), and 3,516 lines across 4 untabled files (connect_claude, connect_copilot, connect_ext, connect_opencode). How much of 6,609 is inline tests vs. duplicated wiring is not in evidence.
+TS plugins total 741 raw lines ([LIVE]), sharing 98 verbatim non-comment lines (59% of the smaller file's ~166 non-comment lines). Inspection of extension/memory-wire.ts lines 205–351 shows the shared logic is domain rules (UNTRUSTED_TIER, formatRecall, clamp, hash, short-prompt query composition, turn-pair retain dedupe), not host config syntax.
+What it costs an agent: Every cross-cutting feature (trust, created_at, MEMORY_WIRE_FORMAT, exclude_tags) must be replicated manually across up to 7 connect_* adapters and 3 plugin files; without an enumerated parity suite, agents encounter missing flags or broken edge cases on N−1 hosts.
+What would have to be true to be worth doing:
+For TS plugins: Adding a shared single-file contract test harness (Section 3) is worth doing immediately at 0 runtime cost; deduplicating the two .ts files into a shared core.ts is only worth doing if connect_ext.rs / connect_opencode.rs can embed/concatenate it at Rust compile time (include_str!) without introducing npm/bundler runtime dependencies into the target hosts ([UNCONFIRMED]).
+For connect_*: Refactoring 6,609 lines into a shared config abstraction is not justified without first auditing the code-vs-test split in src/connect*.rs. Adding a compiled host-manifest test that discovers all connect_*.rs adapters dynamically (replacing measure_surface.sh's hardcoded 6-host regex) is immediately worth doing.
+Supports: (ii) for TS plugins (demonstrated directly in extension/memory-wire.ts) and cross-host parity checks; (i) remains plausible only for host config file serialization formats pending inspection of connect*.rs.
+Finding 5 — Agentic UX first-hit traps: silent fail-open black holes and incomplete single-door custody
+Artefact: # SECTION E-ENFORCE (hermes/__init__.py lines 155–174, 217–220, 419–431, 458–461, 485–506; extension/memory-wire.ts line 299), # SECTION G-OPEN §2.1, # SECTION H-DECIDED (CLOSED.md).
+Evidence & numbers:
+hermes is_available() performs no probe (line 428), _request() returns None on every HTTP/network/JSON failure (line 173), and prefetch() collapses None (server down) and [] (empty bank) into "" (lines 217–220, 511). extension line 299 identically exits silently on !Array.isArray(items). Meanwhile hermes's system_prompt_block() still instructs the model that the bank is served and lists memory_recall / memory_retain / memory_reflect.
+# SECTION G-OPEN §2.1 shows an agent holding only one protocol door cannot complete memory custody: redact is CLI-only (HTTP has DELETE /banks/:id/memories/:mid, MCP has neither), supersede is MCP-only (memory_supersede), and hygiene is HTTP-only (GET /banks/:id/hygiene).
+Explicit memory_recall still returns untrusted_external rows (hermes line 503), and banks are strictly isolated (CLOSED.md).
+What it costs an agent:
+First hit (silent broken state): If the daemon is stopped, URL has a trailing slash, or bank is unencoded, the agent receives empty context and falsely assumes the bank has no relevant memories—while silently losing every retain.
+Stuck mid-task (custody trap): An MCP-only agent that retains a secret—or sees stale/contradictory memories—can supersede (memory_supersede) but cannot redact/delete (no tool) or check hygiene (no tool); an HTTP/CLI agent can delete/redact but cannot supersede.
+Multi-session ceiling: Even when everything works, recall_all@10 is 83.0% ([CERT], # SECTION A-STATE) while auto-injection only emits up to MAX_LINES = 5 entries inside 2000 chars.
+What would have to be true to be worth doing: Adopting # SECTION G-OPEN §2.1(b) (memory_redact on MCP) + documenting intentional parity boundaries (§2.1(a)) is worth doing immediately—HTTP already exposes DELETE, so custody risk already exists on HTTP (REMAINING_WORK_PLAN.md §2.1), and MCP adds 0 dependencies and negligible binary size. Emitting a single non-fatal status line in system_prompt_block() or doctor when unreachable is only worth doing if an explicit session-init health probe doesn't violate hermes discover_memory_providers()'s 2s startup latency budget (lines 423–426)—so it must stay off is_available() and live in explicit MCP/CLI diagnostics or prefetch logging.
+Supports: (ii) — capabilities implemented behind one door (redact, supersede, hygiene, 81a2212 error differentiation) never systematically propagated to the other doors.
+Finding 6 — E-ENFORCE comments invite rejected score-threshold work in violation of F-LAW §6 & §8
+Artefact: # SECTION E-ENFORCE (hermes/__init__.py lines 242–246, 497–501; extension/memory-wire.ts lines 219–221) vs. # SECTION F-LAW (AGENTS.md §5, §6, §8) and # SECTION H-DECIDED (CLOSED.md).
+Evidence & numbers: Both hermes ("nothing branches on it, because a cut on this number is a fitted constant and no dev set exists to choose one... the score now reaches this function so the policy half is possible, and the policy half needs a labelled dev set this repo does not have") and extension ("no dev set exists to choose one") state two false claims: (a) # SECTION F-LAW (AGENTS.md §6) designates eval/data/locomo/ (~1530 queries, n = 1,531 in CLOSED.md [CERT]) as the labelled dev set, and (b) # SECTION H-DECIDED (CLOSED.md) closed score thresholds on auto-injection twice (CONSISTENCY.md §32 / OPEN_HOOK_RECALL_RELEVANCE.md). Both plugins also still request format: "full" (rather than a lighter wire shape when non-summary) to carry a score nothing uses.
+What it costs an agent: A maintenance agent reading plugin/ is explicitly steered into re-litigating a rejected lever (F-LAW §8) or trying to tune a cutoff on LongMemEval-S (burning the final release-acceptance consultation slot, currently at 5 of 6 per G-OPEN §2.4). Paired with AGENTS.md §3 omitting 14 of 32 Rust modules and 1 of 5 MCP tools, coding agents start with a falsified map of both code and open research.
+What would have to be true to be worth doing: Updating those comments and AGENTS.md §3 is worth doing immediately—zero runtime cost, prevents wasted agent cycles and accidental AGENTS.md §6 violations, and depends only on CLOSED.md remaining settled policy.
+Supports: Neither (i) nor (ii) inside connect_* — directly exemplifies the repo-wide claim-vs-artefact drift behind Defects #2–#5.
+
+## SECTION 2: the markdown read (may be truncated by the read tool)
+
+ExplorePlaygroundHistoryBuildNew appMy appsGalleryManageDashboardDocumentation
+
+# Auditing Memory-Wire Structural Defects
+
+65,538  tokens
+
+ User 11:52 PM
+
+# Reviewer prompt — round 4
+
+You are reviewing a Rust agent-memory service called memory-wire. You have no
+prior context on it. Everything you know is in the pack.
+
+**Treat the pack's claims as CLAIMS TO AUDIT, not as ground truth.** Where you
+cannot find support in the pack, say **not in evidence** rather than accepting
+the claim or inventing support. Where two numbers in the pack disagree, name
+which one is wrong.
+
+## What the system is
+
+A single-binary memory service: a bank-isolated SQLite store with FTS5, exposed
+over HTTP and MCP, plus hooks that capture conversation prose into it. Four
+"doors" reach the same core service: the Rust hooks, an MCP server, the HTTP
+API, and plugin adapters for agent hosts (two TypeScript, one Python).
+
+## The question
+
+Five times, the same defect shape appeared in this repo:
+
+1. A security policy (withhold untrusted_external rows from auto-injection)
+existed in 2 of 4 doors.
+1. A measurement script counted src/ and stopped, so 1,622 lines of
+injection-path code were never in any surface number.
+1. A register row said a feature was open a month after it shipped.
+1. A gaps document said a capability was missing after it was implemented.
+1. A benchmark (PersonaMem v2) ran to completion on 2026-10-17 and its score
+(37.8%) was never computed or recorded.
+
+Each was found by an external review, not by the system's own checks. Items 1–4
+are now fixed. Item 5 is not.
+
+The pack's C-ASK frames the decision as a choice between two readings of the
+same fact — that the tree is 35,298 lines across 32 modules, of which 6,609 are
+per-host connect_* adapters:
+
+- **(i)** the per-host family is the right shape, and the duplication is the
+honest cost of being correct for each host's different config format;
+- **(ii)** the per-host family is where the N−1 pattern recurs next, because
+seven files that each answer "what does this host need" are seven places a
+capability can be added to six and forgotten in one.
+
+**Decide which, on the pack's evidence, and say what would change your mind.**
+If the answer is (ii), propose the smallest structural change that would make
+the pattern detectable rather than discoverable. The pack contains one worked
+example of such a check: trust_gate_test.sh enumerates the doors and fails if
+one lacks the filter.
+
+## What to look for, in priority order
+
+1. **Bottlenecks.** What actually limits an agent using this product? Name the
+artefact. G-OPEN lists five open work items with their blockers; if a
+different item is the real bottleneck, say so and why the register is wrong.
+1. **Redundancy and fragmentation.** The measured surface is in B-DELTA §2
+and measure_surface.sh. Is the 98-of-741-line duplication between the two
+TypeScript plugins (i) or (ii)? Is 6,609 lines of connect_* justified?
+1. **Integration gaps.** F-LAW states the interface rules. Does the code the
+pack shows honour them? The pack includes the hermes provider's injection
+section and one TypeScript plugin's whole injection half.
+1. **The optimal-agentic-experience question.** An agent meets this system
+through 13 CLI subcommands, 9 HTTP routes, 5 MCP tools, 6 hosts, and 4
+plugin doors that are documented as asymmetric. What would an agent hit
+first, and where would it get stuck?
+
+## Constraints you must respect when proposing anything
+
+- **No new ranking lever.** The rejected-lever list (H-DECIDED) is complete;
+proposing one without new evidence is out of scope.
+- **No score threshold on injection.** Closed twice by measurement.
+- **The cheap-option position is load-bearing.** One static binary, ~10.7 MiB
+RSS, 3 shared libraries, 17 dependencies. A proposal that grows the default
+build materially is a proposal against the product's reason to exist.
+- **No benchmark run can be proposed as a fix.** The blockers are real and
+external (G-OPEN).
+
+## What I already know and do not need re-derived
+
+- The four batches since round 3 are done and verified (B-DELTA §1).
+- The retrieval ranking is measured and settled.
+- PersonaMem v2 at 37.8% is a single-harness reading with no comparator.
+
+## The output I want
+
+A ranked list. For each finding: **the artefact it comes from**, **what it costs
+an agent using the product**, **what would have to be true for it to be worth
+doing**, and **which of the two readings in C-ASK it supports**. Be concrete
+about file and section. If a finding depends on a number, give the number and
+its population. If you think the framing of the question itself is wrong, say
+that first — a rejected framing is worth more to me than a confident answer to
+the wrong question.
+
+--- PACK (inline) ---
+
+# CONTEXT PACK — context-pack-2026-11-19-round4
+
+## READING CONTRACT
+
+One message, one file: every input this round needs is below. Do not open repository files to re-read
+what is already quoted here — that spends your tool call
+
+**NOTE: the markdown read above is TRUNCATED** (it returned 4982 chars, at the read tool's ~5 kB cap). Section 1 is the complete extraction and is the one to re-read.

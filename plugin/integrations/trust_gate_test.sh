@@ -62,13 +62,32 @@ if (/LEAK-/.test(out)) fail.push('untrusted_external reached the block');
 if (!/TRUSTED-ONE/.test(out) || !/TRUSTED-TWO/.test(out)) fail.push('a trusted row was dropped');
 if (!/no trust field/.test(formatRecall([{ id: 'x', content: 'no trust field' }])))
   fail.push('an absent trust field was withheld (absence must not read as evidence)');
+// Assert on the ENTRY line, not the block: the header legitimately contains
+// backticks and a bank name, so a whole-block search for `[` would fail on a
+// correct render.
+const entryOf = (block) => block.split('\n').filter((l) => /^[0-9]+\. /.test(l));
+// Starvation: the cap must count EMITTED lines, not scanned input. Five
+// untrusted rows ranked above one trusted row must still inject the trusted
+// one. This is the bug round 4 found: looping on `i < RECALL_ENTRIES` bounded
+// the input scan, so five untrusted hits at ranks 0..4 silently consumed the
+// whole budget and the trusted row at rank 5 was never reached. A cap on
+// output and a cap on input look identical until the input is adversarial.
+const starve = [];
+for (let i = 0; i < 5; i++) starve.push({ id: 'u' + i, content: 'UNTRUSTED-' + i, trust: 'untrusted_external' });
+starve.push({ id: 't', content: 'TRUSTED-AT-RANK-5', trust: 'user_verified' });
+if (!/TRUSTED-AT-RANK-5/.test(formatRecall(starve)))
+  fail.push('a trusted row below five untrusted rows was starved (cap counts input, not output)');
+// ...and the cap itself must still hold: five trusted rows is five, not six.
+const cap = [];
+for (let i = 0; i < 7; i++) cap.push({ id: 'c' + i, content: 'TRUSTED-' + i, trust: 'user_verified' });
+if (entryOf(formatRecall(cap)).length !== 5)
+  fail.push('the entry cap no longer holds at RECALL_ENTRIES');
 // Dates, and the degradation guarantee: present when the wire carried one,
 // byte-identical to the pre-2026-11-19 rendering when it did not.
 if (!/\[2026-11-19\] TRUSTED-ONE/.test(out)) fail.push('a dated row did not render [<YYYY-MM-DD>] content');
 // Assert on the ENTRY line, not the block: the header legitimately contains
 // backticks and a bank name, so a whole-block search for `[` would fail on a
 // correct render.
-const entryOf = (block) => block.split('\n').filter((l) => /^[0-9]+\. /.test(l));
 const undated = entryOf(formatRecall([{ id: 'z', content: 'UNDATED-ROW' }]))[0];
 if (undated !== '1. UNDATED-ROW')
   fail.push('a row without created_at did not render byte-identically to before');

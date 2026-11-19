@@ -272,10 +272,13 @@ def _recall(
 
     ``score`` is the fused RRF value the ranking used, and it is *relative*: the
     top hit of a set that has nothing to do with the query scores well by
-    construction, because BM25 is min-max normalised per query. It is carried so
-    a relevance decision is possible; nothing branches on it, because a cut on
-    this number is a fitted constant and no dev set exists to choose one. See
-    ``docs/OPEN_HOOK_RECALL_RELEVANCE.md``.
+    construction, because BM25 is min-max normalised per query. Nothing branches
+    on it here, and it will not: a score threshold on the injection path was
+    measured and rejected twice (CONSISTENCY §32/§48), on determinism grounds.
+    The reason is not a shortage of labelled data — AGENTS §6 designates
+    ``eval/data/locomo/`` as the dev set, ~1,530 queries. A cut on this number
+    would be fitted on one corpus and would then move when the ranking moved.
+    See ``docs/OPEN_HOOK_RECALL_RELEVANCE.md``; do not re-propose it.
 
     ``trust`` rides along for the opposite reason: it is not a ranking input, it
     is what :attr:`MemoryProvider.prefetch` uses to refuse a row. A missing

@@ -187,27 +187,33 @@ function isUntrusted(item) {
  *  `items` are the server's `{id, score, content}` entries, so each carries
  *  the fused RRF score the ranking used. It is *relative* -- the top hit of an
  *  irrelevant set scores well by construction, because BM25 is min-max
- *  normalised per query -- and nothing branches on it here, because a cut on
- *  that number is a fitted constant and no dev set exists to choose one. The
- *  label line exists instead: it says what these rows are, so an irrelevant
- *  set cannot read as a verified one. The top `RECALL_ENTRIES` are injected
- *  unconditionally either way; see docs/OPEN_HOOK_RECALL_RELEVANCE.md. */
+ *  normalised per query -- and nothing branches on it here, and nothing will: a
+ *  score threshold on the injection path was measured and rejected twice
+ *  (CONSISTENCY §32/§48) on determinism grounds. The reason is not a shortage
+ *  of labelled data -- AGENTS §6 designates `eval/data/locomo/` as the dev set,
+ *  ~1,530 queries. A cut would be fitted on one corpus and would move when the
+ *  ranking moved. The label line exists instead: it says what these rows are,
+ *  so an irrelevant set cannot read as a verified one. The top
+ *  `RECALL_ENTRIES` are injected unconditionally either way; see
+ *  docs/OPEN_HOOK_RECALL_RELEVANCE.md. */
 function formatRecall(items) {
   var lines = [];
-  for (var i = 0; i < items.length && i < RECALL_ENTRIES; i++) {
+  for (var i = 0; i < items.length; i++) {
     var item = items[i];
+    // Filtered **before** the take, and the take is `lines.length` below —
+    // not `i`. Looping on `i < RECALL_ENTRIES` would bound the *input* scan,
+    // so five untrusted rows ranked above one trusted row would consume the
+    // whole budget and the trusted row would never be reached. That is a
+    // starvation bug, not a cap: `src/hooks.rs` and the hermes plugin both
+    // filter first and take second, and this file has to agree with them.
+    if (isUntrusted(item)) continue;
     // The default recall response is a bare array of content strings; a
     // `format: "full"` server answers with `{id, score, content}` instead.
     // Both are accepted so this file does not depend on which one it is
     // talking to.
     var content = typeof item === "string" ? item : item && item.content;
     if (typeof content !== "string" || !content.trim()) continue;
-    // Filtered **before** the take: keeping the slot and dropping a trusted row
-    // would inject four memories where five were earned. It happens inside the
-    // loop rather than as a separate pass because `RECALL_ENTRIES` counts
-    // emitted lines, and a pre-pass that dropped rows would leave the count
-    // short.
-    if (isUntrusted(item)) continue;
+    if (lines.length >= RECALL_ENTRIES) break;
     // The occurrence time, when the wire carried one. `src/hooks.rs` prefixes
     // it for the same reason H12 measured: a reader resolving "what did we
     // decide last week" is blind without it. It renders only when the field is

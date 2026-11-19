@@ -1104,7 +1104,7 @@ mod tests {
         });
     }
 
-    // `tools/list` over the wire: four tools, each annotated.
+    // `tools/list` over the wire: five tools, each annotated.
     #[test]
     fn tools_list_should_show_five_annotated_tools() {
         run(async {
