@@ -4621,4 +4621,42 @@ that already exist.
 tree, and it decays the moment the tree moves. Check it against a file or a
 command before acting on it, including when the row agrees with you.
 
-Next free CONSISTENCY section: **§55**.
+## §55. Batch 2 of the remaining-work plan — the trust gate's fourth door now has a check
+
+**What this is.** Second batch of `docs/handoff/REMAINING_WORK_PLAN.md`. No
+product behaviour changed: the hermes gate already existed and was correct. What
+was missing was proof.
+
+The gate was enforced in three of four doors with a check in two of them. Hermes
+filtered `untrusted_external` before the take — better than the TypeScript
+plugins did when round 3 found them, which did not filter at all — and it had no
+executable test, because nothing could run it: a Python plugin that needs a
+live hermes runtime and a live memory-wire server.
+
+**The fix.** `plugin/integrations/hermes/trust_gate_test.py` drives the real
+`MemoryWireProvider.prefetch` against a local `http.server` stub, so it exercises
+the plugin's own code path — endpoint resolution, `_recall`'s request body, the
+filter, the block assembly — with no hermes and no network. The endpoint is
+injected through `MEMORY_WIRE_URL`, the same variable the real clients read.
+
+**Why `initialize` had to be called.** The first run failed with
+`AttributeError: 'MemoryWireProvider' object has no attribute '_base'`. That is
+not a defect in the plugin, it is the test missing a step: `prefetch` reads a
+field `initialize` binds. Skipping it would have made every query return `""`,
+and the test would have passed on an empty block while proving nothing. The
+call is in the test with that comment, because the failure mode — a green test
+that exercises no path — is the one worth writing down.
+
+**Proof, mutation-checked per door.** `plugin/integrations/trust_gate_test.sh`
+now runs all three doors from one entry point. Removing the hermes filter fails
+the hermes check (`untrusted_external reached the injected block`); removing the
+extension plugin's filter fails only its own check. Each door is independently
+covered, so a future door cannot be added without a check and stay quiet.
+
+**Why one runner rather than three.** Three files each naming one door is how the
+asymmetry arose: the TypeScript runner's header said "the two TypeScript
+plugins", so the question "which doors are covered?" was answered by reading a
+comment. The runner now enumerates the doors, so the coverage question has one
+answer in one place.
+
+Next free CONSISTENCY section: **§56**.

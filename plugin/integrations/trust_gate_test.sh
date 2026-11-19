@@ -1,16 +1,25 @@
 #!/bin/sh
-# The two TypeScript plugins carry the same trust gate as `src/hooks.rs` and
-# hermes. They had none: both injected every row a recall returned, so an
-# untrusted mount's web content could reach a model's system prompt as rules.
+# All three plugin doors carry the same trust gate as `src/hooks.rs`: the two
+# TypeScript plugins and the hermes Python provider. They had none, and each
+# injected every row a recall returned, so an untrusted mount's web content
+# could reach a model's system prompt as rules. The hermes gate landed first
+# and had no executable check until 2026-11-19, which is the shape this file
+# exists to prevent: a policy enforced in N places is only enforced if every
+# place is checked.
 #
-# This executes the real `formatRecall` out of each file -- no transcription --
-# and asserts both directions: `untrusted_external` is withheld, and an absent
-# `trust` field is KEPT (a server old enough not to send one is not evidence).
+# Each check executes the door's real code -- no transcription -- and asserts
+# both directions: `untrusted_external` is withheld, and an absent `trust`
+# field is KEPT (a server old enough not to send one is not evidence).
 #
 # Run:  sh plugin/integrations/trust_gate_test.sh
 set -eu
 
 cd "$(dirname "$0")/../.."
+
+# The hermes provider is Python, so it gets its own hermetic runner: it drives
+# the real `MemoryWireProvider.prefetch` against a local HTTP stub, with no
+# hermes runtime and no network.
+python3 plugin/integrations/hermes/trust_gate_test.py
 
 for f in plugin/integrations/extension/memory-wire.ts \
          plugin/integrations/opencode-plugin/memory-wire.ts; do

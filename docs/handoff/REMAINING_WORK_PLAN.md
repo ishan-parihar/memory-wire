@@ -34,7 +34,13 @@ the plan of record itself. The fix is cheap and worth doing first.
 
 ---
 
-## 1. The one finding round 3 left half-closed
+## 1. The one finding round 3 left half-closed — **DONE 2026-11-19**
+
+> **Done.** `plugin/integrations/trust_gate_test.sh` now runs all three doors
+> from one entry point, and `plugin/integrations/hermes/trust_gate_test.py`
+> drives the real `MemoryWireProvider.prefetch` against a local HTTP stub.
+> Mutation-checked per door: removing the hermes filter fails the hermes check,
+> removing the extension filter fails only its own. Record: CONSISTENCY §55.
 
 Round 3 added the trust gate to both TypeScript plugins and left proof for them
 (`plugin/integrations/trust_gate_test.sh`). Checking the other doors:
