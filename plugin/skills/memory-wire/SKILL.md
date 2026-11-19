@@ -127,6 +127,10 @@ to restrict the search to memories carrying **any** of them (capped at 20, head 
 `injectionFormat` picks what this bank's auto-injections serve: `"full"` (default — whole memories with
 their `[YYYY-MM-DD]` date prefix) or `"summary"` (first-line capsules, 41–43% less served text, ranking
 identical); the bank beats the `MEMORY_WIRE_FORMAT` env, and an unknown value reads as unset.
+`MEMORY_WIRE_FORMAT=summary` reaches the same server behaviour from the plugin surfaces (hermes, opencode,
+extension), which do not read the bank config key — setting the env costs them no extra request, whereas
+reading the config would add one per turn. The claude-code/codex/copilot/cursor hooks read both, and the
+bank wins there.
 `memory-wire connect` installs five lifecycle hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `PreCompact`,
 `SessionEnd`) into
 every host it detects — claude-code, codex, copilot-cli, cursor, opencode. Idempotent, and it never

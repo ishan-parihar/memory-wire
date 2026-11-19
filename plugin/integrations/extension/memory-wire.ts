@@ -283,7 +283,22 @@ export default function memoryWireExtension(pi) {
       // `format: "full"` is what puts `score` on the wire; the default shape is a
       // bare array of content strings. `formatRecall` reads both, so this stays
       // compatible with a server that does not know the field.
-      { query: query, budget: RECALL_BUDGET, format: "full", exclude_tags: EXCLUDE_TAGS },
+      // `MEMORY_WIRE_FORMAT=summary` asks for H8 capsules instead of whole
+      // memories. It comes from the environment rather than the bank's
+      // `injectionFormat` config key because this file already reads
+      // `MEMORY_WIRE_URL` and `MEMORY_WIRE_BANK` from there, so it costs no
+      // extra request; reading the config key would add one per turn, which
+      // `src/hooks.rs` documents as already costing one. The Rust hook reads
+      // both and the bank wins there. Anything but "summary" reads as default.
+      {
+        query: query,
+        budget: RECALL_BUDGET,
+        format:
+          (process.env.MEMORY_WIRE_FORMAT || "").trim().toLowerCase() === "summary"
+            ? "summary"
+            : "full",
+        exclude_tags: EXCLUDE_TAGS,
+      },
       RECALL_TIMEOUT_MS
     );
     if (!Array.isArray(items)) return undefined;

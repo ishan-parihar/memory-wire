@@ -4718,4 +4718,59 @@ like a passing negative.
 
 Gate: 659 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings.
 
-Next free CONSISTENCY section: **§57**.
+## §57. Batch 4 of the remaining-work plan — the capsule knob reaches the plugin doors
+
+**What this is.** Fourth and last batch of `docs/handoff/REMAINING_WORK_PLAN.md`.
+§3 of that plan asked for a decision, not a port: honour `injectionFormat` on all
+doors, or document it as Rust-only. The decision, and what was built.
+
+**The decision: honour the environment, not the config key.** The three plugin
+surfaces now read `MEMORY_WIRE_FORMAT=summary` and ask the server for capsules.
+They do **not** read the bank's `injectionFormat` config key, and that is a
+deliberate asymmetry rather than an omission.
+
+The reasoning is a cost argument, and it is checkable in the code: the plugins
+already take `MEMORY_WIRE_URL` and `MEMORY_WIRE_BANK` from the environment, so
+reading one more variable costs nothing. Reading the config key would put a
+second HTTP request on every turn — `src/hooks.rs` already pays one config GET to
+read `injectionFormat` and says so in a comment about a session-start costing
+"exactly one config GET". Quadrupling that across four doors to buy a knob that
+is already reachable through an env var is not a trade worth making, and it
+would put a synchronous request on the injection path of every host.
+
+So: **the Rust hook reads both, the bank wins; the plugin surfaces read the env.
+Both are documented where the user will hit them.** The asymmetry is named in
+README, SKILL.md and the code comment at each site, because a silently different
+knob is exactly the failure mode §53 and §54 were about.
+
+**Proof, live.** A server from this tree, one long multi-line memory (293 chars),
+driven by all three doors:
+
+| door | `full` | `summary` | differs |
+|---|---|---|---|
+| extension `.ts` | whole memory, `[2026-06-01]` prefix | 215-char capsule, prefix intact | yes |
+| opencode `.ts` | same | same | yes |
+| hermes | same | same, `is capsule: True` | yes |
+
+Degradation, asserted in the harness rather than assumed: unset, `""`, `"full"`,
+`"SUMMARY_TYPO"` and `" capsules "` all send `format=full`. The test asserts this
+on the **request body the server received**, not on the reply, because the stub
+answers the same payload either way — a regression that stopped sending the field
+would otherwise be invisible. Mutation-checked: replacing the env read with `""`
+fails with `MEMORY_WIRE_FORMAT=summary did not send format=summary`.
+
+**Two claims corrected while deciding it.** `README.md` said every auto-injected
+*and MCP-recalled* memory carries its date "in-band". MCP recall does not prefix
+anything: `full_hit_json` serves `created_at` as a field on each hit, which is
+what a structured caller wants, and the prefix is a rendering choice for the
+injection path. And the knob was described unqualified as if it worked
+everywhere. Both now name which surface does what.
+
+**What was deliberately not done.** No change to the Rust hook (it already reads
+both), no new dependency, no new request on any injection path. The capsule
+remains off by default everywhere, so this is opt-in behaviour that no existing
+user sees a difference from.
+
+Gate: 659 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings.
+
+Next free CONSISTENCY section: **§58**.

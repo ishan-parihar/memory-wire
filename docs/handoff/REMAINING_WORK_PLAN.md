@@ -100,7 +100,16 @@ it does not.
 
 ---
 
-## 3. The capsule knob stops at the Rust door
+## 3. The capsule knob stops at the Rust door — **DONE 2026-11-19**
+
+> **Decided and built: honour the environment, not the config key.** All three
+> plugin surfaces read `MEMORY_WIRE_FORMAT=summary` and ask for capsules; they
+> do not read `injectionFormat`, because that would add a second HTTP request per
+> turn and the plugins already take their other settings from the environment.
+> The asymmetry is documented in README, SKILL.md and at each code site rather
+> than left silent. Live-verified on all three doors with a 293-char memory;
+> degradation to `full` asserted for unset, empty, `full`, a typo and a padded
+> value. Record: CONSISTENCY §57.
 
 DECISIONS #1 also recommended "capsules per-bank". The mechanism shipped:
 `bank_injection_format_at` reads a bank's `injectionFormat` config key, with

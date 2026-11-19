@@ -42,10 +42,19 @@ SHORT = [{"id": "s", "content": "SHORT-STAMP-ROW", "score": 0.2,
 
 class Handler(BaseHTTPRequestHandler):
     payload = HITS
+    # The recall request body the plugin actually sent, so the test can assert
+    # *what it asked for* and not only what came back. Without this, a
+    # `MEMORY_WIRE_FORMAT=summary` regression that stopped sending the field
+    # would be invisible: the server would answer with whatever it answers.
+    seen = None
 
     def do_POST(self):  # noqa: N802 - BaseHTTPRequestHandler's name
         length = int(self.headers.get("content-length") or 0)
-        self.rfile.read(length)
+        raw = self.rfile.read(length)
+        try:
+            Handler.seen = json.loads(raw)
+        except ValueError:
+            Handler.seen = None
         body = json.dumps(self.payload).encode()
         self.send_response(200)
         self.send_header("content-type", "application/json")
@@ -107,6 +116,29 @@ def main():
     short = provider.prefetch("anything", session_id="test")
     if "- SHORT-STAMP-ROW" not in short or "[" in short:
         fail.append("a stamp shorter than 10 chars rendered a partial bracket")
+
+    # The capsule knob, as the plugin surfaces implement it: the
+    # MEMORY_WIRE_FORMAT env selects the request body's `format`, and anything
+    # that is not exactly "summary" must read as "full". Asserted on the body
+    # the server received, not on the reply, because the stub always answers
+    # the same payload.
+    Handler.payload = HITS
+    os.environ.pop("MEMORY_WIRE_FORMAT", None)
+    provider.prefetch("anything", session_id="test")
+    if Handler.seen is None or Handler.seen.get("format") != "full":
+        fail.append("unset MEMORY_WIRE_FORMAT did not send format=full")
+
+    os.environ["MEMORY_WIRE_FORMAT"] = "summary"
+    provider.prefetch("anything", session_id="test")
+    if Handler.seen is None or Handler.seen.get("format") != "summary":
+        fail.append("MEMORY_WIRE_FORMAT=summary did not send format=summary")
+
+    for bad in ("SUMMARY_TYPO", "full", "", " capsules "):
+        os.environ["MEMORY_WIRE_FORMAT"] = bad
+        provider.prefetch("anything", session_id="test")
+        if Handler.seen is None or Handler.seen.get("format") != "full":
+            fail.append(f"MEMORY_WIRE_FORMAT={bad!r} did not degrade to format=full")
+    os.environ.pop("MEMORY_WIRE_FORMAT", None)
 
     srv.shutdown()
     if fail:

@@ -14,12 +14,16 @@ supervisor and no lockfile.
 - On retrieval we are **roughly level to slightly behind** agentmemory's hybrid once
   the fitted weight is accounted for. Both numbers are in
   [Benchmarks](#benchmarks); the reason is one sweep on one dataset.
-- **What the reader gets, served:** every auto-injected and MCP-recalled memory
-  carries its occurrence date in-band (`- [2026-09-20] the deadline moved…`) — the
-  serving shape that measured **+20.0pp on newest-value questions** (HaluMem
-  Dynamic Update 0.2056→0.4056, `docs/CONSISTENCY.md` §46), and per-bank capsules
-  (`"injectionFormat":"summary"` in bank config) cut served bytes 41–43% at
-  byte-identical ranking.
+- **What the reader gets, served:** every auto-injected memory carries its
+  occurrence date as a `- [YYYY-MM-DD] …` prefix — the serving shape that measured
+  **+20.0pp on newest-value questions** (HaluMem Dynamic Update
+  0.2056→0.4056, `docs/CONSISTENCY.md` §46) — and MCP recall carries the same date
+  as a `created_at` field on each hit. Capsules
+  (`"injectionFormat":"summary"` in bank config, or `MEMORY_WIRE_FORMAT` for the
+  plugin surfaces) cut served bytes 41–43% at byte-identical ranking.
+  *Which surface honours which:* the claude-code/codex/copilot/cursor hooks read the
+  bank config key; the hermes and opencode/extension plugin surfaces read
+  `MEMORY_WIRE_FORMAT`. See the [Bank configuration](#bank-configuration) table.
 - Docs: `docs/AUDIT.md` (competitor teardowns) · `PLAN.md` · `docs/VERSIONS.md` (pins) · [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) (curl runbook) · [`TODO.md`](TODO.md) (open work) · [`docs/DECISIONS/2026-11-18-w7b-recall-gating.md`](docs/DECISIONS/2026-11-18-w7b-recall-gating.md) (W7b: recall stays ungated — a raw score cut is meaningless)
 - Agent skill: [`plugin/skills/memory-wire/SKILL.md`](plugin/skills/memory-wire/SKILL.md) — the one file here written for a model to read rather than a person. It is a standard `name`/`description`-front-matter skill: copy it into a host's skills directory (`~/.claude/skills/`, and the equivalents for codex, cursor and opencode) and the agent picks up the retain/recall workflow, the bank rules and the error contract without being told them. `connect` does **not** install it — that command wires hooks and MCP entries only, so this is a deliberate copy.
 - Proof: `eval/RESULTS.md` · `eval/CODING_LIFE.md` · `eval/SCALE_SWEEP.md` · `eval/BENCH_*.md` · `eval/SOAK.md` · `eval/BEAM.md` (pool-scale re-test) · `eval/relevance/` (frozen battery) · `docs/CONSISTENCY.md` (the measured record) · `docs/BENCHMARK.md`

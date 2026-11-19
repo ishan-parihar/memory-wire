@@ -285,7 +285,20 @@ def _recall(
     """
     if not query.strip():
         return None
-    body: Dict[str, Any] = {"query": query, "budget": BUDGET, "format": "full"}
+    # `MEMORY_WIRE_FORMAT=summary` asks for H8 capsules instead of whole
+    # memories. It is read from the environment rather than from the bank's
+    # `injectionFormat` config key because the plugins already take
+    # `MEMORY_WIRE_URL` and `MEMORY_WIRE_BANK` from there, so this costs no
+    # extra request -- whereas reading the config key would put a second HTTP
+    # call on every turn, which `src/hooks.rs` documents as already costing one.
+    # The Rust hook reads both; the bank wins there. Anything other than
+    # "summary" reads as the default, so an unknown value is not an error.
+    fmt = os.environ.get("MEMORY_WIRE_FORMAT", "").strip().lower()
+    body: Dict[str, Any] = {
+        "query": query,
+        "budget": BUDGET,
+        "format": "summary" if fmt == "summary" else "full",
+    }
     if exclude:
         # Optional on the server: a plugin newer than its server degrades to
         # the unfiltered ranking rather than erroring.
