@@ -54,6 +54,22 @@ pub trait Ops {
 /// human-readable result; `Err` is a refusal that leaves the install as it
 /// was (nothing is swapped before the verification passes).
 pub fn orchestrate(ops: &mut dyn Ops, current: &str) -> Result<String, String> {
+    orchestrate_into(ops, current, update_root())
+}
+
+/// [`orchestrate`], with the scratch root named by the caller.
+///
+/// The root is a parameter because the default one is the developer's real data
+/// dir: a test that let `update_scratch` resolve it wrote a fake `memory-wire`
+/// into `~/.local/share/memory-wire/update-v0.8.0/`, and the next run then
+/// compared its own fresh path against a leftover *file*. That is a test that
+/// passes or fails on what happened to be in `$HOME`, which is the definition of
+/// the hermeticity rule `a45ea07` established for `golden_install_shapes`.
+fn orchestrate_into(
+    ops: &mut dyn Ops,
+    current: &str,
+    root: PathBuf,
+) -> Result<String, String> {
     let tags = ops.releases()?;
     let Some(newest) = newest(&tags, current) else {
         return Ok(format!(
@@ -64,7 +80,7 @@ pub fn orchestrate(ops: &mut dyn Ops, current: &str) -> Result<String, String> {
     if newest == current {
         return Ok(format!("up to date at {current}"));
     }
-    let dir = update_scratch(&newest);
+    let dir = scratch_in(&root, &newest);
     let assets = ops.download(&newest, &dir)?;
     let Some(archive) = assets.iter().find(|p| {
         p.extension().is_some_and(|e| e == "gz")
@@ -133,12 +149,21 @@ fn parse_tag(tag: &str) -> Option<Vec<u64>> {
     (parts.len() == 3).then_some(parts)
 }
 
-/// The scratch dir for one tag's download, under the data dir `update/` uses.
-/// `v0.7.0` → `.../memory-wire/update-v0.7.0/`.
-fn update_scratch(tag: &str) -> PathBuf {
-    let root = paths::data_dir(
-        &crate::paths::home().unwrap_or_else(|_| PathBuf::from(".")),
-    );
+/// The root under which every tag's scratch dir lives: the data dir `update/`
+/// uses, so a download lands beside the store it will replace.
+///
+/// Split out from the scratch-dir helper so a test can name its own root. The
+/// first version of the update tests called the real one, which wrote a fake
+/// `memory-wire` into `~/.local/share/memory-wire/update-v0.8.0/`; the next run
+/// then failed on that leftover file. A test whose verdict depends on what is in
+/// `$HOME` is not a test, so the root is a parameter now.
+fn update_root() -> PathBuf {
+    paths::data_dir(&crate::paths::home().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+/// One tag's scratch dir under `root` — `v0.7.0` → `<root>/update-v0.7.0/` —
+/// created if absent.
+fn scratch_in(root: &Path, tag: &str) -> PathBuf {
     let dir = root.join(format!("update-{tag}"));
     std::fs::create_dir_all(&dir).ok();
     dir
@@ -504,12 +529,20 @@ mod tests {
     }
 
     /// The success path with a live daemon: every step in the safe order.
+    ///
+    /// The scratch root is a temp dir, not `update_root()`. Letting the real one
+    /// resolve made this test write a fake `memory-wire` into the developer's
+    /// data dir, where the next run found it and failed on a leftover file — a
+    /// pass/fail decided by `$HOME`, not by the code under test.
     #[test]
     fn orchestrate_runs_the_full_order_when_live() {
+        let root = std::env::temp_dir().join(format!("mw-update-root-{}", std::process::id()));
+        std::fs::remove_dir_all(&root).ok();
         let mut f = Fake { live: true, ..Fake::ok() };
-        let report = orchestrate(&mut f, "v0.7.0").expect("update");
+        let report = orchestrate_into(&mut f, "v0.7.0", root.clone()).expect("update");
         assert!(report.contains("v0.7.0"), "{report}");
         assert!(report.contains("v0.8.0"), "{report}");
+        let bin = scratch_in(&root, "v0.8.0").join("memory-wire");
         assert_eq!(
             f.log,
             vec![
@@ -518,11 +551,12 @@ mod tests {
                 "extract".to_string(),
                 "probe".to_string(),
                 "stop".to_string(),
-                format!("swap {}", update_scratch("v0.8.0").join("memory-wire").display()),
-                format!("start {}", update_scratch("v0.8.0").join("memory-wire").display()),
-                format!("connect {}", update_scratch("v0.8.0").join("memory-wire").display()),
+                format!("swap {}", bin.display()),
+                format!("start {}", bin.display()),
+                format!("connect {}", bin.display()),
             ]
         );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     /// The real extractor against a real tarball: `tar` is a build
@@ -554,8 +588,11 @@ mod tests {
     /// Up to date: no download, no probe, nothing touched.
     #[test]
     fn orchestrate_short_circuits_when_current_is_newest() {
+        // No scratch dir is reached on this path, but the root is named anyway
+        // so no test in this module resolves the real data dir.
+        let root = std::env::temp_dir().join(format!("mw-update-root-{}-cur", std::process::id()));
         let mut f = Fake { live: true, ..Fake::ok() };
-        let report = orchestrate(&mut f, "v0.8.0").expect("report");
+        let report = orchestrate_into(&mut f, "v0.8.0", root).expect("report");
         assert!(report.contains("up to date"), "{report}");
         assert_eq!(f.log, vec!["releases".to_string()]);
     }
@@ -598,9 +635,13 @@ mod tests {
             }
         }
         let mut t = Tampered(Fake::ok());
-        let err = orchestrate(&mut t, "v0.7.0").expect_err("tampered archive must refuse");
+        let root = std::env::temp_dir().join(format!("mw-update-root-{}-tamper", std::process::id()));
+        std::fs::remove_dir_all(&root).ok();
+        let err = orchestrate_into(&mut t, "v0.7.0", root.clone())
+            .expect_err("tampered archive must refuse");
         assert!(err.contains("checksum mismatch"), "{err}");
         assert_eq!(t.0.log, vec!["releases".to_string(), "download v0.8.0".to_string()]);
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

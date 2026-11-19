@@ -24,6 +24,37 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
+  **2026-11-19 — round-2 follow-ups landed (uncommitted at the time of
+  writing; this entry names the batch).** Two things, one of which was a
+  real defect rather than a follow-up:
+
+  - **The `trust` column had no bottom rung.** W2's schema table and
+    `memory.rs` both list `untrusted_external` as a tier a memory may hold, but
+    `Trust::tier` accepted three tiers and mapped everything else — including
+    `untrusted_external` — to `agent_inferred`. The tier the auto-injection
+    gate refuses therefore could not be *written*, so a gate built on it would
+    have been dead code with every test green. Fixed: `UntrustedExternal` added
+    below `AgentInferred` (the ceiling's `downgrade` now bottoms out there),
+    `trust` carried on the `full`/`summary` recall wire, and
+    `hooks::recall_section` drops that tier **before** the `MAX_LINES` take. An
+    explicit `memory_recall` still returns those rows — a reader who asked
+    consented. The same hole is closed in the hermes plugin's `prefetch`
+    (`UNTRUSTED_TIER`). **Not a relevance threshold:** a deterministic
+    allow/deny on a stored tier, no fitted constant, so CONSISTENCY §32/§48 does
+    not bite. Record: `CONSISTENCY.md` §51; TODO row 18.
+  - **Doc truth from the round-2 pack.** `memory.rs` now documents the four
+    tiers that exist and says the plan's `manual_policy`/`human_approved`/
+    `agent_verified` set was never built; `mcp.rs` says in place that
+    `HISTORIAN` is a **prompt**, not a sixth tool; `mcp --help` no longer omits
+    `memory_supersede`; and the doors' asymmetry is recorded with a verified
+    table in `docs/INTEGRATION_GAPS.md` (addendum) + TODO row 19.
+
+  Gate at this batch: **658 passed** (272 lib + 363 bin + 23 it), clippy
+  `-D warnings` clean, `cargo doc` 0 warnings. The gate's load-bearing property
+  was checked, not assumed: removing the filter from `recall_section` fails
+  four tests, including a full-chain test from a real router through
+  `hooks::prompt_at`.
+
   **2026-11-18 — read this first if you are picking the upgrade up.** HEAD is
   `36bb947`, **v0.10.0**, not the `c919f13`/v0.8.2 this page was written at;
   the tree has moved a long way since. Three external upgrade proposals arrived

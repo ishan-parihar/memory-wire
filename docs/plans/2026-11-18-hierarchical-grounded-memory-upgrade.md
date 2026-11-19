@@ -476,8 +476,29 @@ doc` 0 warnings). Redesigning to fit 9 MiB is a **separate** plan with its own
 pre-registration, not an edit here; the honest status is that the plan is
 complete and Gate 8's size line is the one check it failed.
 
-`docs/handoff/STATE.md` is updated when a unit of work lands, per
-`AGENTS.md` §13.
+**Round-2 follow-ups (2026-11-19, after the round-2 audit).** One real defect
+found while implementing the round-2 trust gate, recorded here because the plan
+is where the tiers were first named:
+
+- **The `trust` column had no bottom rung.** W2 §"Guard 2" and the schema table
+  at §129 both list `untrusted_external` as a tier a memory may hold. The shipped
+  parser (`Trust::tier`, `src/api.rs`) accepted **three** tiers and mapped every
+  other value to `agent_inferred` — including `untrusted_external`. So the tier
+  the auto-injection gate refuses could never be *written*, and a gate built on
+  it would have been dead code that every test still passed. Fixed: `Trust`
+  gained `UntrustedExternal` below `AgentInferred`, and the tier round-trips
+  through retain and `format: "full"` recall. The gate itself
+  (`hooks::recall_section`) drops that tier from the injected block only; an
+  explicit `memory_recall` still returns it, because a reader who asked has
+  consented to the row. Regression coverage: `hooks::tests::the_gate_*`,
+  `tests::an_untrusted_external_claim_round_trips_…`, and a full-chain test
+  from a real router through `hooks::prompt_at`. Removing the gate fails four
+  of them, which is the evidence they are load-bearing.
+- **Naming correction.** The plan's `manual_policy` | `human_approved` |
+  `agent_verified` names were never implemented; the shipped tiers are
+  `untrusted_external` | `agent_inferred` | `human_stated` | `verified`. `memory.rs`
+  now documents the four that exist and says the plan's set was not built.
+
 
 ### 6.1 What the 2026-11-18 external review changed (round 1)
 

@@ -200,15 +200,21 @@ pub fn parse_created_at(raw: Option<&str>) -> Result<Option<String>, ApiError> {
 }
 
 /// One recall hit in the `format: "full"` citing shape, shared by the HTTP and
-/// MCP adapters so the two cannot drift: `{id, score, created_at, content}`.
-/// `created_at` is the memory's stored time — a caller-stated occurrence time if
-/// retain was given one — so a reader can order or date what it was served.
+/// MCP adapters so the two cannot drift: `{id, score, created_at, content}`. The
+/// `trust` tier rides along because the auto-injection path is the one caller
+/// that must be able to refuse a row: a memory ingested from a web page lands as
+/// `untrusted_external`, and injecting it verbatim into a system prompt is the
+/// prompt-injection hole W2's write-time ceiling cannot close — the ceiling only
+/// bounds what a write may *claim*, so the row still lands and still ranks.
+/// `trust` is therefore on the wire, not just in the row: a hook that cannot see
+/// it cannot honour it.
 pub fn full_hit_json(hit: &ScoredMemory) -> serde_json::Value {
     serde_json::json!({
         "id": hit.memory.id,
         "score": hit.score,
         "created_at": hit.memory.created_at,
-        "content": hit.memory.content
+        "content": hit.memory.content,
+        "trust": hit.memory.meta.trust.0
     })
 }
 
@@ -221,7 +227,8 @@ pub fn summary_hit_json(hit: &ScoredMemory, bank: &str) -> serde_json::Value {
         "id": hit.memory.id,
         "score": hit.score,
         "created_at": hit.memory.created_at,
-        "content": summary_content(&hit.memory, bank)
+        "content": summary_content(&hit.memory, bank),
+        "trust": hit.memory.meta.trust.0
     })
 }
 
@@ -330,6 +337,15 @@ struct RecallSynonyms {
 /// a typo in a hand-written config must not take writes down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Trust {
+    /// Read from an external source this build has no reason to trust: a web
+    /// page, a PR comment, an email body. Below `AgentInferred` so a ceiling
+    /// can be set *above* it and still exclude it, which is what makes
+    /// `maxTrust: "agent_inferred"` mean "no untrusted content lands here".
+    ///
+    /// The auto-injection gate in `hooks.rs` refuses this tier outright: an
+    /// explicit `memory_recall` still returns the row, because a reader who
+    /// asked is not the same as a turn that would have been injected.
+    UntrustedExternal,
     /// Inferred by an agent with no further verification.
     AgentInferred,
     /// Stated by a named person in an authorised channel.
@@ -343,6 +359,9 @@ impl Trust {
     /// caller expresses as `None`.
     pub fn tier(raw: &str) -> Option<Trust> {
         match raw.to_ascii_lowercase().as_str() {
+            "untrusted_external" | "untrusted-external" | "untrusted" => {
+                Some(Trust::UntrustedExternal)
+            }
             "agent_inferred" | "agent-inferred" | "agent_inferred_only" => Some(Trust::AgentInferred),
             "human_stated" | "human-stated" | "human" => Some(Trust::HumanStated),
             "verified" => Some(Trust::Verified),
@@ -352,12 +371,13 @@ impl Trust {
 
     /// One tier down from `self`, or `self` when already at the floor. A
     /// downgrade at the floor is a no-op: there is nothing below
-    /// `AgentInferred` to fall to, and the write must still land.
+    /// `UntrustedExternal` to fall to, and the write must still land.
     fn downgrade(self) -> Trust {
         match self {
             Trust::Verified => Trust::HumanStated,
             Trust::HumanStated => Trust::AgentInferred,
-            Trust::AgentInferred => Trust::AgentInferred,
+            Trust::AgentInferred => Trust::UntrustedExternal,
+            Trust::UntrustedExternal => Trust::UntrustedExternal,
         }
     }
 
@@ -367,6 +387,7 @@ impl Trust {
     /// byte-stable: parse -> store -> read -> parse returns the same variant.
     pub fn as_str(self) -> &'static str {
         match self {
+            Trust::UntrustedExternal => "untrusted_external",
             Trust::AgentInferred => "agent_inferred",
             Trust::HumanStated => "human_stated",
             Trust::Verified => "verified",

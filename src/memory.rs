@@ -91,9 +91,15 @@ pub struct MemoryMeta {
     /// Lifecycle stage, e.g. `candidate` | `active` | `quarantined` |
     /// `superseded` | `archived`.
     pub lifecycle: Lifecycle,
-    /// How much confidence the memory deserves, e.g. `manual_policy` |
-    /// `human_approved` | `agent_verified` | `agent_inferred` |
-    /// `untrusted_external`.
+    /// How much confidence the memory deserves. Stored as free text; the tiers
+    /// this build's ceiling understands are `untrusted_external` |
+    /// `agent_inferred` | `human_stated` | `verified`, lowest to highest — see
+    /// [`crate::api::Trust`].
+    ///
+    /// The design plan (W2) sketched a second set of names (`manual_policy`,
+    /// `human_approved`, `agent_verified`); the shipped surface implemented the
+    /// four above. The plan's names are not accepted, which is why this doc says
+    /// the four that are.
     pub trust: Trust,
     /// The row this memory was derived from, if any. Not a foreign key: a
     /// dangling pointer must not fail a write.

@@ -102,6 +102,15 @@ pub const MEMORY_SCHEME: &str = "memory://";
 const MEMORY_MIME: &str = "text/plain";
 
 /// The one prompt this server exposes: the historian framing.
+///
+/// **A prompt, not a tool.** The name carries the `memory_` prefix every tool
+/// name carries, which makes it look like a sixth tool to anything that counts
+/// `pub const …: &str = "memory_…"` in this file. It is not: it is advertised
+/// through `prompts/list` and served by `prompts/get`, and [`tools`] does not
+/// register it. The server exposes **five** tools and **one** prompt, so a
+/// count of constants in this file is one too high by construction. Round-2
+/// review read it as a sixth tool; this paragraph is the correction, left here
+/// so the next counter does not re-add it.
 pub const HISTORIAN: &str = "memory_historian";
 
 /// What [`HISTORIAN`] is for, in the host's own words.

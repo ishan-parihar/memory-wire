@@ -440,3 +440,50 @@ override is missed, and `on_memory_write` is refused rather than implemented.
 - **A container or Helm chart.** Both competitors ship them; both also ship a
   daemonless path. Ours is one binary and a SQLite file — adding an orchestrator
   would cost the property that makes us worth using.
+
+---
+
+## Addendum 2026-11-19 — the doors are asymmetric, and that is the honest state
+
+Recorded because round-2 review read "one service, three doors" as a promise of
+parity. It is not. It is a claim about `MemoryService`: there is **one**
+implementation, reached through doors that each expose a **different subset**.
+Verified per capability against this tree:
+
+| capability | HTTP | MCP | CLI | hook |
+|---|---|---|---|---|
+| redact (W3) | no route | no tool | **yes** (`Cmd::Redact`) | write-time only |
+| grounding (W5) | no route | no tool | **yes** (`Cmd::Grounding`) | SessionStart, default off |
+| hygiene (W4) | **yes** (`GET /banks/:id/hygiene`) | no tool | no | no |
+| recall | yes | `memory_recall` | no | yes |
+| supersede (W7a) | no route | **yes** (5th tool) | no | no |
+
+This is not a defect in any one door; it is what happens when each capability
+was added through the door its own item needed. It is recorded here rather than
+fixed because closing it is a surface decision, not a bug fix:
+
+- **redact on MCP and HTTP is the widest gap.** Redacting a secret is a custody
+  operation, and today the only way to reach it is the CLI on the machine that
+  holds the store. An agent that retained a credential through MCP cannot
+  retract it through MCP.
+- **hygiene has no MCP or CLI door at all**, which the W4 record already notes
+  as a deviation from the plan (`memory_hygiene` was the planned 5th tool;
+  `memory_supersede` shipped instead).
+- **supersede has no HTTP route**, so a non-MCP, non-local caller cannot retract
+  a row.
+
+None of these is silently broken. Each door that does not implement a capability
+is simply absent, and the CLI's `--help` lists what the CLI can do. The risk is
+a reader assuming a capability is reachable everywhere because the service is
+shared.
+
+### A related count, corrected
+
+`src/mcp.rs` has six `pub const …: &str = "memory_…"` constants, but only
+**five** are tools: `HISTORIAN` (`memory_historian`) is a **prompt**, advertised
+through `prompts/list` and served by `prompts/get`, and `tools()` does not
+register it. The server exposes five tools and one prompt. Round-2 review read
+six constants as six tools and concluded the README overcounted; the README's
+prose ("five tools") is right, and its table had been the thing missing
+`memory_supersede`. The `HISTORIAN` doc comment now says this in place, so the
+next count does not re-add it.

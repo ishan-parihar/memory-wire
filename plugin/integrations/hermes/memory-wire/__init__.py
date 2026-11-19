@@ -90,6 +90,25 @@ MAX_LINES = 5
 ENTRY_CAP_CHARS = 400
 SECTION_CAP_CHARS = 2000
 
+# The one trust tier the auto-injection path refuses.
+#
+# A memory ingested from a web page, a PR comment or an email body lands as
+# ``untrusted_external``. Ranking it is not the problem: fetched text can be
+# shaped to rank first, which is what makes it a prompt-injection vector. The
+# problem is that this function's output reaches a model *without anyone asking
+# for it*, so this is the boundary where the row must be stopped.
+#
+# This is not a relevance threshold and must not become one. A cut on the score
+# is a fitted constant (docs/OPEN_HOOK_RECALL_RELEVANCE.md, and CONSISTENCY
+# §32/§48: no score threshold, ever); this is a deterministic allow/deny on a
+# stored tier, with no number to fit. The string is the server's canonical form
+# for ``Trust.UntrustedExternal`` (``src/api.rs``).
+#
+# Only a positive match drops a row. A missing ``trust`` is the bare wire shape
+# or a server too old to send it, and dropping on unknown would turn a missing
+# field into a silent recall outage.
+UNTRUSTED_TIER = "untrusted_external"
+
 # An answer shorter than this is an "OK", not a turn worth remembering — the
 # same rule the omp/pi extension applies (audit GAP-6, and the 943
 # prompt-pair rows a bank filled with before it).
@@ -256,6 +275,10 @@ def _recall(
     a relevance decision is possible; nothing branches on it, because a cut on
     this number is a fitted constant and no dev set exists to choose one. See
     ``docs/OPEN_HOOK_RECALL_RELEVANCE.md``.
+
+    ``trust`` rides along for the opposite reason: it is not a ranking input, it
+    is what :attr:`MemoryProvider.prefetch` uses to refuse a row. A missing
+    ``trust`` stays ``None`` rather than becoming a guess.
     """
     if not query.strip():
         return None
@@ -279,7 +302,12 @@ def _recall(
         if not isinstance(content, str) or not content.strip():
             continue
         score = hit.get("score") if isinstance(hit, dict) else None
-        hits.append({"content": content, "score": score if isinstance(score, float) else None})
+        trust = hit.get("trust") if isinstance(hit, dict) else None
+        hits.append({
+            "content": content,
+            "score": score if isinstance(score, float) else None,
+            "trust": trust if isinstance(trust, str) else None,
+        })
     return hits
 
 
@@ -463,17 +491,29 @@ class MemoryWireProvider(MemoryProvider):
         deadline and logs a warning if we exceed it, so one TIMEOUT is the whole
         cost of a down server.
 
-        The top ``MAX_LINES`` are injected unconditionally. Each carries its
-        fused RRF ``score`` — see :func:`_recall` for what it is and why nothing
-        branches on it yet — and the ranking is *relative*, so this emits the best
-        of whatever set the bank offered, relevant or not. That is the defect
+        The top ``MAX_LINES`` are injected. Each carries its fused RRF ``score``
+        — see :func:`_recall` for what it is and why nothing branches on it yet
+        — and the ranking is *relative*, so this emits the best of whatever set
+        the bank offered, relevant or not. That is the defect
         ``docs/OPEN_HOOK_RECALL_RELEVANCE.md`` records; the score now reaches
         this function so the policy half is possible, and the policy half needs a
         labelled dev set this repo does not have.
+
+        One thing *is* filtered, and it is not relevance: rows marked
+        :data:`UNTRUSTED_TIER` are dropped, because this function's output is
+        how a recalled memory reaches a model without anyone asking for it. An
+        explicit ``memory_recall`` still returns those rows. See
+        :data:`UNTRUSTED_TIER` for why this is a boundary and not a ranking rule.
         """
         if not _valid_url(self._base):
             return ""
         hits = _recall(self._base, self._bank, _strip_reminders(query), EXCLUDE_TAGS)
+        if not hits:
+            return ""
+        # Before the take, not after: a poisoned row at rank 0 must not consume
+        # a slot a trusted row would have filled. Ranking untrusted text first
+        # is exactly the adversarial case this exists for.
+        hits = [h for h in hits if h.get("trust") != UNTRUSTED_TIER]
         if not hits:
             return ""
         # The shape every auto-injection surface emits (audit GAP-1): the bank

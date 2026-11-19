@@ -40,6 +40,15 @@ const MAX_LINES: usize = 5;
 /// 4.8 KB transcript row take a whole system prompt (audit case E).
 const ENTRY_CAP_CHARS: usize = 400;
 
+/// The one trust tier the auto-injection block refuses. Named once so the gate,
+/// its test, and the doc comment that motivates it cannot drift apart.
+///
+/// The string is [`crate::api::Trust::UntrustedExternal`]'s canonical form. It
+/// is matched as text rather than by importing the enum because `hooks.rs` is
+/// deliberately server-shape-only: it must compile and run against a wire it did
+/// not produce, and a tier it does not recognise is a tier it does not drop.
+const UNTRUSTED_TIER: &str = "untrusted_external";
+
 /// Hard ceiling on the whole recall section, so a large bank cannot grow the
 /// injected block without bound.
 const SECTION_CAP_CHARS: usize = 2000;
@@ -504,6 +513,14 @@ struct ScoredHit {
     /// Fused RRF score, or `None` when the server answered with the default bare
     /// shape. Both are the same ranking; only the reporting differs.
     score: Option<f64>,
+    /// The memory's trust tier, when the wire carried it. **The field the
+    /// auto-injection gate reads.**
+    ///
+    /// `None` on the bare shape and on any server old enough not to send it,
+    /// which must read as "not known to be untrusted" and keep the row — the
+    /// alternative turns a missing field into a silent recall outage.
+    #[serde(default)]
+    trust: Option<String>,
 }
 
 /// One entry of a recall response, in either of the two shapes the server serves.
@@ -517,12 +534,16 @@ struct ScoredHit {
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 enum WireHit {
-    /// `format: "full"`/`"summary"`: `{id, score, created_at, content}`.
+    /// `format: "full"`/`"summary"`: `{id, score, created_at, content, trust}`.
+    /// `trust` is optional in the shape because a hook may be newer than the
+    /// server it talks to.
     Scored {
         content: String,
         #[serde(default)]
         created_at: Option<String>,
         score: Option<f64>,
+        #[serde(default)]
+        trust: Option<String>,
     },
     /// The default: a bare content string, unscored.
     Bare(String),
@@ -619,15 +640,18 @@ fn recall_at_fmt(endpoint: &str, bank: &str, query: &str, fmt: &str) -> Option<V
                 content,
                 created_at,
                 score,
+                trust,
             } => ScoredHit {
                 content,
                 created_at,
                 score,
+                trust,
             },
             WireHit::Bare(content) => ScoredHit {
                 content,
                 created_at: None,
                 score: None,
+                trust: None,
             },
         })
         .collect();
@@ -673,11 +697,33 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> 
 
 /// Recalled memories as plain text, in the shape every auto-injection surface
 /// emits: the bank header, the provenance label (a best-of-irrelevant set must
-/// not read as a verified one), at most [`MAX_LINES`] entries clamped to
+/// not read as a verified one), and at most [`MAX_LINES`] entries.
+///
+/// Bounds, both learned from audit case C: each entry is clamped to
 /// [`ENTRY_CAP_CHARS`], and the whole section under [`SECTION_CAP_CHARS`] so a
 /// bank cannot grow a system prompt without bound. The measured before: a
-/// bare "Continue" injected 4848 bytes through this path (audit case C).
+/// bare "Continue" injected 4848 bytes through this path. Returns an empty
+/// string when nothing survived the gate, which every caller treats as "inject
+/// no memory block".
+///
+/// **The trust gate lives here.** Rows whose tier is `untrusted_external` are
+/// dropped before rendering, because this function's output is the only path by
+/// which a recalled memory reaches a model without a reader asking for it.
+///
+/// The ordering matters: filtering happens before the [`MAX_LINES`] take, so an
+/// untrusted row does not consume a slot that a trusted row would have filled. A
+/// gate applied after the take would silently *reduce* recall to fewer than
+/// `MAX_LINES` trusted rows whenever the ranking put untrusted rows on top —
+/// which is exactly the adversarial case the gate exists for, where fetched text
+/// is shaped to rank first.
 fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
+    let hits: Vec<&ScoredHit> = hits
+        .iter()
+        .filter(|h| !is_untrusted(h.trust.as_deref()))
+        .collect();
+    if hits.is_empty() {
+        return String::new();
+    }
     let mut out = format!(
         "\n### memory-wire recall — `{bank}`\n(recalled by relevance, unverified)\n\n"
     );
@@ -705,6 +751,16 @@ fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
         out.push_str(&format!("- …and {} more\n", hits.len() - MAX_LINES));
     }
     out
+}
+
+/// Whether a tier string names the one tier the injection block refuses.
+///
+/// Only a positive match drops a row. `None` (the bare wire shape, or a server
+/// too old to send the field) keeps it, and so does any tier this build does not
+/// recognise — including one a *newer* server invents. Both are the same
+/// judgement: a row is withheld on evidence, never on the absence of evidence.
+fn is_untrusted(trust: Option<&str>) -> bool {
+    trust == Some(UNTRUSTED_TIER)
 }
 
 #[cfg(test)]
@@ -1330,11 +1386,87 @@ mod tests {
     #[test]
     fn recall_section_should_cap_lines() {
         let hits: Vec<ScoredHit> = (0..MAX_LINES + 3)
-            .map(|i| ScoredHit { content: format!("hit {i}"), created_at: None, score: Some(0.0) })
+            .map(|i| ScoredHit { content: format!("hit {i}"), created_at: None, score: Some(0.0), trust: None })
             .collect();
         let out = recall_section("b", &hits);
         assert!(out.contains(&format!("- hit {}", MAX_LINES - 1)));
         assert!(out.contains("…and 3 more"), "{out}");
+    }
+
+    // The trust gate. A memory ingested from a web page lands as
+    // `untrusted_external`; injecting it verbatim into a system prompt is the
+    // prompt-injection hole that no ranking rule closes, because the fetched text
+    // can be shaped to rank first. This is the boundary it must not cross.
+
+    fn hit(content: &str, trust: Option<&str>) -> ScoredHit {
+        ScoredHit {
+            content: content.to_string(),
+            created_at: None,
+            score: Some(0.9),
+            trust: trust.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_gate_drops_an_untrusted_row_from_the_injected_block() {
+        let out = recall_section(
+            "b",
+            &[
+                hit("fetched page text", Some("untrusted_external")),
+                hit("a real note", Some("human_stated")),
+            ],
+        );
+        assert!(!out.contains("fetched page text"), "untrusted row injected: {out}");
+        assert!(out.contains("a real note"), "the trusted row must survive: {out}");
+    }
+
+    #[test]
+    fn the_gate_withholds_on_evidence_not_on_its_absence() {
+        // `None` is the bare wire shape and any server too old to send `trust`.
+        // Dropping those would turn a missing field into a silent recall
+        // outage, which is the never-fail rule read backwards.
+        let out = recall_section("b", &[hit("an old server's row", None)]);
+        assert!(out.contains("an old server's row"), "a missing tier is not a refusal: {out}");
+
+        // A tier a newer server invented is likewise not this build's to judge.
+        let out = recall_section("b", &[hit("a tier from the future", Some("moon_protocol"))]);
+        assert!(out.contains("a tier from the future"), "unknown tiers are kept: {out}");
+
+        // Every tier this build defines except the one is kept.
+        for tier in ["agent_inferred", "human_stated", "verified"] {
+            let out = recall_section("b", &[hit("row", Some(tier))]);
+            assert!(out.contains("- row"), "{tier} must not be gated: {out}");
+        }
+        assert!(is_untrusted(Some(UNTRUSTED_TIER)));
+        assert!(!is_untrusted(Some("untrusted-external")), "the match is exact, not a prefix");
+    }
+
+    #[test]
+    fn the_gate_runs_before_the_line_cap_so_it_does_not_cost_recall() {
+        // The ordering is the whole point. Filtered after the take, an untrusted
+        // row at rank 0 would consume a slot and leave fewer than MAX_LINES
+        // trusted rows - and untrusted rows on top is exactly the adversarial
+        // case the gate exists for.
+        let mut hits = vec![hit("poison", Some("untrusted_external"))];
+        for i in 0..MAX_LINES {
+            hits.push(hit(&format!("good {i}"), Some("agent_inferred")));
+        }
+        let out = recall_section("b", &hits);
+        assert!(!out.contains("poison"), "{out}");
+        let rendered = out.matches("- good ").count();
+        assert_eq!(rendered, MAX_LINES, "the cap counts trusted rows only: {out}");
+    }
+
+    #[test]
+    fn the_gate_can_empty_the_block_and_callers_survive_that() {
+        let out = recall_section("b", &[hit("only poison", Some("untrusted_external"))]);
+        assert!(out.is_empty(), "an all-untrusted recall renders nothing: {out}");
+        // `prompt_at` must return "" rather than a header with no rows under it.
+        let (ep, _rx) = canned(vec![(
+            "/recall",
+            r#"[{"id":"a","score":0.9,"content":"only poison","trust":"untrusted_external"}]"#,
+        )]);
+        assert_eq!(prompt_at(&ep, "demo", &json!({ "prompt": "auth" })), "");
     }
 
     // GAP-2: harness reminder envelopes are the host talking to the model, not
@@ -1437,7 +1569,7 @@ mod tests {
     fn one_entry_cannot_take_the_whole_section() {
         let out = recall_section(
             "b",
-            &[ScoredHit { content: "x".repeat(5000), created_at: None, score: Some(0.0) }],
+            &[ScoredHit { content: "x".repeat(5000), created_at: None, score: Some(0.0), trust: None }],
         );
         assert!(out.chars().count() < 500, "{} chars", out.chars().count());
         assert!(out.trim_end().ends_with('…'), "a cut entry is marked: {out}");
@@ -1447,7 +1579,7 @@ mod tests {
     #[test]
     fn the_section_has_a_hard_ceiling() {
         let hits: Vec<ScoredHit> = (0..MAX_LINES)
-            .map(|_| ScoredHit { content: "y".repeat(ENTRY_CAP_CHARS * 2), created_at: None, score: None })
+            .map(|_| ScoredHit { content: "y".repeat(ENTRY_CAP_CHARS * 2), created_at: None, score: None, trust: None })
             .collect();
         let out = recall_section("b", &hits);
         assert!(
@@ -1534,8 +1666,8 @@ mod tests {
         let scored = recall_section(
             "demo",
             &[
-                ScoredHit { content: "one".into(), created_at: None, score: Some(0.016) },
-                ScoredHit { content: "two".into(), created_at: None, score: Some(0.014) },
+                ScoredHit { content: "one".into(), created_at: None, score: Some(0.016), trust: None },
+                ScoredHit { content: "two".into(), created_at: None, score: Some(0.014), trust: None },
             ],
         );
         assert_eq!(bare, scored);
@@ -1546,7 +1678,7 @@ mod tests {
     }
 
     fn plain(content: &str) -> ScoredHit {
-        ScoredHit { content: content.to_string(), created_at: None, score: None }
+        ScoredHit { content: content.to_string(), created_at: None, score: None, trust: None }
     }
 
     /// The H12 serving shape, at the product surface: a hit that carried its
@@ -1559,6 +1691,7 @@ mod tests {
             content: "moved the deadline to the 15th".into(),
             created_at: Some("2026-09-20T09:30:00.000Z".into()),
             score: Some(0.02),
+            trust: None,
         };
         let out = recall_section("b", &[dated]);
         assert!(
@@ -1569,8 +1702,8 @@ mod tests {
         // The degrade paths: no wire time, and a wire time too short to hold a
         // date, both render the pre-2026-10-17 shape.
         for hit in [
-            ScoredHit { content: "bare".into(), created_at: None, score: None },
-            ScoredHit { content: "short stamp".into(), created_at: Some("2026".into()), score: None },
+            ScoredHit { content: "bare".into(), created_at: None, score: None, trust: None },
+            ScoredHit { content: "short stamp".into(), created_at: Some("2026".into()), score: None, trust: None },
         ] {
             let out = recall_section("b", std::slice::from_ref(&hit));
             assert!(out.contains(&format!("- {}\n", hit.content)), "{out}");

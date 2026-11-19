@@ -4407,3 +4407,73 @@ commits; those references are mapped there.
   consultation count stays at **5**.
 
 Next free CONSISTENCY section: **§51**.
+
+---
+
+## §51 — Trust tier made storable; the auto-injection gate (2026-11-19)
+
+**Not a retrieval measurement.** No ranking parameter, weight or threshold
+changed, and LongMemEval was not consulted. Recorded here because it is a
+correctness change on the write and inject paths and the consultation count
+stays at **5** (the last consultation remains the v0.7.0 baseline's 2, plus
+§35's 0).
+
+### What was wrong
+
+`Trust::tier` (`src/api.rs`) — the only parser the retain path consults —
+accepted three tiers: `agent_inferred`, `human_stated`, `verified`. Every other
+value, **including `untrusted_external`**, resolved to `None` and was stored as
+`agent_inferred`. The plan's own schema table
+(`docs/plans/2026-11-18-hierarchical-grounded-memory-upgrade.md` §129) and
+`src/memory.rs` both name `untrusted_external` as a tier a memory may hold, so
+the store's own documentation described a value the store could not carry.
+
+The consequence was not cosmetic: a trust gate on the auto-injection path
+refuses exactly that tier. Built against the three-tier parser it would have
+been **dead code** — no row could hold the marker, so the filter had nothing to
+match, and every test would have passed.
+
+### What changed
+
+- `Trust` gained `UntrustedExternal` at the bottom of the ladder, below
+  `AgentInferred`. The ceiling's `downgrade` now bottoms out there instead of at
+  `AgentInferred`, so a bank with `maxTrust: "agent_inferred"` excludes
+  untrusted content rather than silently re-levelling it.
+- `trust` is on the recall wire (`full_hit_json`, `summary_hit_json`) so a hook
+  can see the tier it must honour.
+- `hooks::recall_section` drops `untrusted_external` rows **before** the
+  `MAX_LINES` take, so a poisoned top-ranked row cannot cost a trusted row its
+  slot. An explicit `memory_recall` / MCP read still returns those rows: a
+  reader who asked has consented, and a tool that silently drops results is
+  worse than the risk.
+
+### The rule the gate follows
+
+A row is withheld **on evidence, never on the absence of evidence.** `None`
+(the bare wire shape, or a server too old to send `trust`) is kept, and so is
+any tier this build does not recognise. Dropping on unknown would turn a missing
+field into a silent recall outage — the never-fail contract read backwards.
+
+### Evidence
+
+- `cargo test --locked`: **658 passed, 0 failed** (272 lib + 363 bin + 23 it).
+- `cargo clippy --all-targets --all-features --locked -- -D warnings`: clean.
+- `cargo doc --no-deps --all-features --locked`: 0 warnings.
+- **Load-bearing proof:** with the filter removed from `recall_section`, four
+  tests fail (`the_gate_drops_an_untrusted_row_…`,
+  `the_gate_runs_before_the_line_cap_…`, `the_gate_can_empty_the_block_…`,
+  `the_gate_survives_the_whole_chain_…`). With it restored, all pass. The tests
+  fail for the right reason — the poisoning row appears in the injected block.
+- Coverage includes a full-chain test through the real router, a real store and
+  `hooks::prompt_at` on a real endpoint, not a canned response.
+
+### Deliberately not done
+
+- **No relevance or score threshold on the injection path.** Two prior
+  rejections stand (W7b `eb95a0a`; CONSISTENCY §32/§48: no score threshold,
+  ever). The trust filter is a deterministic allow/deny on a stored tier with no
+  fitted constant, which is why it is a different thing.
+- **`maxTrust` enforcement was not extended.** The ceiling already downgraded
+  writes; this change only makes its floor nameable. Untouched.
+
+Next free CONSISTENCY section: **§52**.
