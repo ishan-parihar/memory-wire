@@ -5281,3 +5281,44 @@ documented recovery is one command — recorded, not run, for the same reason as
 above.
 
 Next free CONSISTENCY section: **§68**.
+
+## §68. 2026-11-20 — release readiness, measured, not cut
+
+AGENTS §11: "Do not tag, publish, or cut a release unless asked." This is the
+measurement the plan's C4 asked for, with the decision left where it belongs.
+
+**Footprint, the load-bearing property.** `target/release/memory-wire` at
+`6a2a125`:
+
+| | this build | v0.7.0 baseline (§1) |
+|---|---|---|
+| size | 11,166,048 B = **10.64 MiB** | 10.25 MiB |
+| `DT_NEEDED` | **3** (`libgcc_s`, `libm`, `libc`) | 3 |
+
+No dependency was added, and the three entries are the same three. The
+competitive position in AGENTS §1 holds: one static binary, three shared
+libraries, no daemon required.
+
+**Distance.** `v0.10.0-54-g6a2a125` — 54 commits past the tag, all of them
+reviewed and gated: Tier A (three gates wired or corrected), the opencode v2
+port (§62, a door that had never loaded on its named host), the connect helper
+extraction (§64), `memory_redact` on MCP (§65), and the doctor bank breakdown
+(§66).
+
+**What is not in this build and should be decided before a tag:**
+
+- C3, PersonaMem v2 at 37.8% (1,872/4,954). The run is finished and its output
+  directory is `.gitignore`d deliberately, because it wrote memory rows verbatim
+  and one held a pasted token (§14). Recording the aggregate with the artifact
+  path named as uncommitted is the cheapest honest option, and it is the
+  *user's* ruling, not mine.
+- The stale installed binary: 0.9.0 from Oct 20, 54 commits behind. A release
+  does not fix that by itself; `install/get-memory-wire.sh` or a manual
+  `update` does.
+- `serve.json` naming a dead pid while a real server listens (§67).
+
+**Not done here, deliberately:** the tag, the three-Linux asset build, the
+`gh` publish, and the CI disable/re-enable pair that `scripts/build-release.sh`
+requires. Those are the user's call and cost nothing until made.
+
+Next free CONSISTENCY section: **§69**.
