@@ -31,9 +31,9 @@
 //!
 //! # Tools are for actions, resources are for browsing
 //!
-//! The four tools above are the only way this surface used to be read, which
-//! meant an agent that wanted to see *what it already knew* had to run a
-//! semantic search — the one question a semantic search cannot answer exactly.
+//! The tools were the only way this surface used to be read, which meant an
+//! agent that wanted to see *what it already knew* had to run a semantic
+//! search — the one question a semantic search cannot answer exactly.
 //! So each stored memory is also addressable as a resource, and one page of
 //! them is listed at a time ([`RESOURCE_PAGE`]).
 //!
@@ -86,6 +86,15 @@ pub const CONFIG_GET: &str = "memory_bank_config_get";
 /// column. This is the 5th tool, justified: it is a verb no existing tool
 /// expresses, not a second way to spell `retain`.
 pub const SUPERSEDE: &str = "memory_supersede";
+/// `memory_redact` — rewrite a pattern out of a memory's current content and
+/// every `memory_versions` row, leaving the audit skeleton. The 6th tool, and
+/// the only one that reaches a capability no other door means to leave out: an
+/// agent that retained a secret through MCP can retract it through MCP rather
+/// than having to drop to the CLI or HTTP surface it may not have.
+///
+/// Distinct from `memory_supersede`, which moves a row out of recall and keeps
+/// its bytes. `redact` deletes the bytes and keeps the row.
+pub const REDACT: &str = "memory_redact";
 
 /// URI scheme for one addressable stored memory: `memory://{bank}/{id}`.
 ///
@@ -104,13 +113,15 @@ const MEMORY_MIME: &str = "text/plain";
 /// The one prompt this server exposes: the historian framing.
 ///
 /// **A prompt, not a tool.** The name carries the `memory_` prefix every tool
-/// name carries, which makes it look like a sixth tool to anything that counts
+/// name carries, which makes it look like one more tool to anything that counts
 /// `pub const …: &str = "memory_…"` in this file. It is not: it is advertised
 /// through `prompts/list` and served by `prompts/get`, and [`tools`] does not
-/// register it. The server exposes **five** tools and **one** prompt, so a
+/// register it. The server exposes **six** tools and **one** prompt, so a
 /// count of constants in this file is one too high by construction. Round-2
-/// review read it as a sixth tool; this paragraph is the correction, left here
-/// so the next counter does not re-add it.
+/// review read the count as six tools and concluded the README overcounted; the
+/// paragraph is the correction, left here so the next counter does not re-add
+/// it. (`memory_redact`, added 2026-11-20, made the tools six and the constants
+/// seven; the offset is unchanged.)
 pub const HISTORIAN: &str = "memory_historian";
 
 /// What [`HISTORIAN`] is for, in the host's own words.
@@ -408,6 +419,28 @@ impl<S: Store> Server<S> {
             // Not `readOnly`: a supersede removes the row from default recall and
             // appends an audit row. See `annotations`.
             .with_annotations(annotations(false)),
+            Tool::new(
+                REDACT,
+                "Rewrite a regex match out of a memory's current content and every \
+                 version row, leaving the audit skeleton. The value is gone from \
+                 both tables and the row is still recognisable.",
+                schema(json!({
+                    "type": "object",
+                    "properties": {
+                        "bank": { "type": "string", "description": "Bank id; defaults to the server's bank." },
+                        "id": { "type": "string", "description": "The id of the memory to redact." },
+                        "pattern": { "type": "string", "description": "Regex to remove. Required; an invalid regex is refused rather than matching nothing." },
+                        "name": { "type": "string", "description": "What the redacted value is called in the replacement marker. Defaults to SECRET." }
+                    },
+                    "required": ["id", "pattern"]
+                })),
+            )
+            // Not `readOnly`, and the closest a tool gets to `destructive`: it
+            // permanently rewrites stored bytes. `destructive_hint` stays false
+            // because the action is the *removal* of a secret, so a client
+            // prompting for confirmation would be prompting to leave a
+            // credential in place.
+            .with_annotations(annotations(false)),
         ]
         .into_iter()
         .collect()
@@ -651,6 +684,17 @@ impl<S: Store> Server<S> {
                 let superseded_by = arg_str(args, "superseded_by");
                 let changed = self.svc.supersede_memory(&bank, id, superseded_by.as_deref())?;
                 Ok(json!({ "superseded": changed, "id": id }))
+            }
+            REDACT => {
+                let id = required_str(args, "id")?;
+                let pattern = required_str(args, "pattern")?;
+                let name = arg_str(args, "name").unwrap_or_else(|| "SECRET".to_string());
+                let rows = self.svc.redact_memory(&bank, id, pattern, &name)?;
+                // `rows` counts current + version rows rewritten, so 0 is a real
+                // answer, not a failure: either the id is not in this bank or the
+                // pattern matched nothing (a second redact is a no-op). Say which
+                // lookup produced it rather than returning a bare 0 — AGENTS §10.
+                Ok(json!({ "redacted_rows": rows, "id": id, "pattern": pattern }))
             }
             other => Err(CallError::UnknownTool(other.to_string())),
         }
@@ -1104,28 +1148,33 @@ mod tests {
         });
     }
 
-    // `tools/list` over the wire: five tools, each annotated.
+    // `tools/list` over the wire: six tools, each annotated.
     #[test]
-    fn tools_list_should_show_five_annotated_tools() {
+    fn tools_list_should_show_six_annotated_tools() {
         run(async {
             let (mut c, _running) = session(server());
             let reply = c.request(2, "tools/list", json!({})).await;
             let tools = reply["result"]["tools"].as_array().unwrap_or_else(|| panic!("{reply}"));
-            assert_eq!(tools.len(), 5, "{reply}");
+            assert_eq!(tools.len(), 6, "{reply}");
 
             let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-            assert_eq!(names, vec![RETAIN, RECALL, REFLECT, CONFIG_GET, SUPERSEDE], "{names:?}");
+            assert_eq!(
+                names,
+                vec![RETAIN, RECALL, REFLECT, CONFIG_GET, SUPERSEDE, REDACT],
+                "{names:?}"
+            );
 
             for tool in tools {
                 let name = tool["name"].as_str().unwrap_or_default();
                 let ann = &tool["annotations"];
                 assert_eq!(ann["destructiveHint"], json!(false), "{name} must not be destructive");
-                // Only the read paths and retain-minus-supersede are read-only.
-                // The rule is not "retain writes, the rest read": `SUPERSEDE`
-                // mutates too — it sets `lifecycle='superseded'` and appends an
-                // audit row — so marking it read-only would tell a host it can
-                // run it without a confirmation prompt. Two tools write.
-                let expected = name != RETAIN && name != SUPERSEDE;
+                // Only the read paths and retain are read-only. The rule is not
+                // "retain writes, the rest read": `SUPERSEDE` sets
+                // `lifecycle='superseded'` and appends an audit row, and `REDACT`
+                // rewrites stored bytes in place — both mutate, so marking either
+                // read-only would tell a host it can run it without a
+                // confirmation prompt. Three tools write.
+                let expected = name != RETAIN && name != SUPERSEDE && name != REDACT;
                 assert_eq!(ann["readOnlyHint"], json!(expected), "{name}");
                 assert_eq!(
                     tool["inputSchema"]["type"], json!("object"),
@@ -1180,6 +1229,124 @@ mod tests {
             // stamped now, so the prefix is today's date.
             assert!(hits[0].starts_with("[20"), "occurrence date in-band: {hits:?}");
             assert!(hits[0].contains("] auth uses jose middleware"), "{hits:?}");
+        });
+    }
+
+    // The whole point of this tool: an agent that retained a secret through MCP
+    // can retract it through MCP.
+    //
+    // The content deliberately survives the retain-side PII redactor, because
+    // the realistic case is the one the redactor does *not* cover -- a value it
+    // looks nothing like, or one added to a row after ingest. `sk-live-deadbeef`
+    // would be redacted at retain time by the OpenAI rule (`sk-[A-Za-z0-9_-]{8,}`),
+    // so a test written against it would pass a tool that never had to work.
+    // `redact` exists for the second pass, not merely for what the first missed.
+    #[test]
+    fn redact_over_the_wire_removes_a_secret_and_keeps_the_row() {
+        run(async {
+            let (mut c, _running) = session(server());
+            // Plain prose: nothing the redactor catches, so it reaches the store.
+            let secret = "the vault word is p4ntaloon";
+            let kept = c
+                .request(70, "tools/call", json!({
+                    "name": RETAIN,
+                    "arguments": { "content": secret }
+                }))
+                .await;
+            assert_ne!(kept["result"]["isError"], json!(true), "{kept}");
+            // The retain reply is `{"id": ...}` and nothing else, so the content
+            // is confirmed by reading it back rather than from the write.
+            let text = kept["result"]["content"][0]["text"].as_str().unwrap().to_string();
+            let id = text.split('"').nth(3).expect("an id in the retain reply").to_string();
+            let seeded = c
+                .request(74, "tools/call", json!({
+                    "name": RECALL,
+                    "arguments": { "query": "vault word", "format": "full" }
+                }))
+                .await;
+            let seeded_text = seeded["result"]["content"][0]["text"].as_str().unwrap().to_string();
+            assert!(
+                seeded_text.contains(secret),
+                "the content reached the store intact, so the redact has work: {seeded_text}"
+            );
+
+            // First redact rewrites: current + versions.
+            let done = c
+                .request(71, "tools/call", json!({
+                    "name": REDACT,
+                    "arguments": { "id": id, "pattern": "p4ntaloon", "name": "TOKEN" }
+                }))
+                .await;
+            assert_ne!(done["result"]["isError"], json!(true), "{done}");
+            let body: Value =
+                serde_json::from_str(done["result"]["content"][0]["text"].as_str().unwrap())
+                    .expect("a JSON body");
+            assert!(
+                body["redacted_rows"].as_u64().unwrap_or(0) >= 1,
+                "at least the current row: {body}"
+            );
+
+            // Second redact is a no-op and says so, rather than a bare 0.
+            // `redacted_rows` is 0 with the row still present, which is the
+            // difference between "nothing matched" and failure -- AGENTS §10.
+            let again = c
+                .request(72, "tools/call", json!({
+                    "name": REDACT,
+                    "arguments": { "id": id, "pattern": "p4ntaloon" }
+                }))
+                .await;
+            let body2: Value =
+                serde_json::from_str(again["result"]["content"][0]["text"].as_str().unwrap())
+                    .expect("a JSON body");
+            assert_eq!(body2["redacted_rows"], json!(0), "a second redact is a no-op");
+
+            // The bytes are gone from the served content, and the row is still
+            // there: the audit skeleton survives, the value does not.
+            let recall = c
+                .request(73, "tools/call", json!({
+                    "name": RECALL,
+                    "arguments": { "query": "vault word", "format": "full" }
+                }))
+                .await;
+            let text = recall["result"]["content"][0]["text"].as_str().unwrap().to_string();
+            assert!(!text.contains("p4ntaloon"), "the secret is gone: {text}");
+            assert!(text.contains("[REDACTED:TOKEN]"), "the row is recognisable: {text}");
+            let rows: Vec<Value> = serde_json::from_str(&text).expect("a JSON array");
+            assert_eq!(rows.len(), 1, "the row survived the redact: {rows:?}");
+            assert_eq!(rows[0]["id"], json!(id), "same id, rewritten bytes: {rows:?}");
+        });
+    }
+
+    // The refusal an MCP client would actually see, not just the service's.
+    // The service-level guard is pinned in `api.rs`
+    // (`a_read_only_bank_should_refuse_every_write_at_every_surface`); this
+    // asks the narrower question of whether the tool surfaces it as an error
+    // rather than a success, which is the failure that matters: a caller who
+    // asked for redaction and got `{redacted_rows: 0}` would believe a
+    // credential was gone.
+    #[test]
+    fn redact_on_a_read_only_bank_is_an_error_the_client_reads() {
+        run(async {
+            let store = SqliteStore::open_in_memory().expect("open");
+            let svc = MemoryService::new(store);
+            // Seed before the flag goes on, as the api-level test does.
+            let id = svc
+                .retain("agent", "a secret lives here", None)
+                .expect("seed before read-only");
+            svc.set_bank_config("agent", r#"{"readOnly":true}"#)
+                .expect("set read-only");
+            let server = Server { svc: Arc::new(svc), bank: "agent".to_string() };
+            let (mut c, _running) = session(server);
+
+            let done = c
+                .request(75, "tools/call", json!({
+                    "name": REDACT,
+                    "arguments": { "id": id, "pattern": "a secret" }
+                }))
+                .await;
+            assert_eq!(done["result"]["isError"], json!(true), "{done}");
+            let text = done["result"]["content"][0]["text"].as_str().unwrap();
+            assert!(text.contains("read-only"), "the reason is named: {text}");
         });
     }
 
@@ -1439,10 +1606,11 @@ mod tests {
     // Resources, prompts, completion.
     //
     // Everything below is the *other* half of the surface: what an agent can
-    // read without asking a search engine. The four tools above are untouched by
+    // read without asking a search engine. The tools above are untouched by
     // all of it — no test here edits one of theirs, because their names, schemas
     // and annotations are a verified contract with cursor, opencode, codex and
-    // the bundled hermes plugin.
+    // the bundled hermes plugin. Their count is six; the doc comment on
+    // `HISTORIAN` explains why a count of `memory_` constants finds seven.
     // ---------------------------------------------------------------------
 
     /// `jsonrpc` error code for a `McpError`, which serializes as a bare number.

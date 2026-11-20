@@ -876,7 +876,7 @@ fn exposure_warning(addr: &str) -> Option<String> {
     Some(format!(
         "serving on {addr} is reachable from outside this machine and memory-wire has no \
          authentication: anything that can reach the port can read and delete these banks, and \
-         can drive the same four tools over /mcp"
+         can drive the same six tools over /mcp"
     ))
 }
 

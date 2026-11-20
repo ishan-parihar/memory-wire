@@ -660,8 +660,9 @@ version opens, reads, and sweeps exactly as it was.
 
 ## MCP
 
-The same five tools are served two ways (the fifth, `memory_supersede`, is the W7a
-supersede verb — a correction path `memory_retain` does not have). `memory-wire
+The same six tools are served two ways (`memory_supersede` is the W7a supersede
+verb, `memory_redact` the 2026-11-20 credential-retraction verb — two correction
+paths `memory_retain` does not have). `memory-wire
 mcp` is stdio —
 JSON-RPC 2.0, newline-delimited, stdout only for protocol, logs to stderr.
 `--bank` sets the default bank, falling back to `$MEMORY_WIRE_BANK` and then
@@ -756,7 +757,7 @@ Library in `0.3.0`: `src/{api,store,recall,capture,embed,lib,memory}.rs` —
 `sweep`) live in
 `src/main.rs`; the HTTP surface is eight route groups (`/health`, and
 `/{retain,recall,reflect,config,memories,memories/:mid,stats}` under `/banks/:id`)
-plus four MCP tools.
+plus six MCP tools.
 
 There is no consolidation ladder in this build, and no vector stream in a
 **default** build. What a default build ships is FTS5 BM25 plus token-overlap,
@@ -1034,7 +1035,7 @@ Agent-facing runbook with per-step assertions: `INSTALL_FOR_AGENTS.md`.
 Shipped: `GET`/`PUT /banks/:id/config` (merged into the `serve` router) · the
 `connect [HOSTS]...` / `hook` / `doctor` / `seed` / `update` CLI subcommands ·
 `doctor --all-hosts` with per-host wiring and hook-liveness findings · the MCP stdio
-server (`rmcp`, 5 tools, +1.6 MB binary) · tag filtering on retain and recall ·
+server (`rmcp`, 6 tools, +1.6 MB binary) · tag filtering on retain and recall ·
 the lifecycle routes (`GET .../memories`, `GET`/`DELETE .../memories/:mid`,
 `GET .../stats`) with `created_at` on every served memory · `format: "full"` on
 recall · `document_id` upsert on retain (replace works; a repeated `append` is a

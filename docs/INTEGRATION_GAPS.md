@@ -291,13 +291,15 @@ read and write your memory by having the same directory name.
 > entry, so Codex can finally call the tools; previously it got hooks and no tool
 > access at all. Zero new dependencies. Cost: **+1,084,720 B (+12.0%)**, 8.6 → 9.7
 > MiB, download 3.5 → 3.9 MiB, `DT_NEEDED` still 3. Full detail, including why
-> the tool count is still four, in `docs/CONSISTENCY.md` §21.
+> **2026-11-20: redact landed on MCP** (`memory_redact`, CONSISTENCY §65), so
+> this table is now six tools against their 8/39/54 — still below three of the
+> four, and the row is kept as the record of what the gap looked like.
 >
-> Still open: four tools against their 8/39/54, and rmcp's default loopback-only
+> Still open: six tools against their 8/39/54, and rmcp's default loopback-only
 > `Host` allowlist, which is a good default but is not authentication.
 
 Our surface: `memory_retain`, `memory_recall`, `memory_reflect`,
-`memory_bank_config_get` (`src/mcp.rs:105-176`). Transport is stdio only
+`memory_bank_config_get`, `memory_supersede`, `memory_redact` (`src/mcp.rs`). Transport is stdio only
 (`src/mcp.rs:297`); `INSTALL_FOR_AGENTS.md:448` states plainly that
 `/mcp/:bank` URL scoping "is not built."
 
@@ -491,14 +493,16 @@ shared.
 
 ### A related count, corrected
 
-`src/mcp.rs` has six `pub const …: &str = "memory_…"` constants, but only
-**five** are tools: `HISTORIAN` (`memory_historian`) is a **prompt**, advertised
+`src/mcp.rs` has seven `pub const …: &str = "memory_…"` constants, but only
+**six** are tools: `HISTORIAN` (`memory_historian`) is a **prompt**, advertised
 through `prompts/list` and served by `prompts/get`, and `tools()` does not
-register it. The server exposes five tools and one prompt. Round-2 review read
+register it. The server exposes six tools and one prompt. Round-2 review read
 six constants as six tools and concluded the README overcounted; the README's
-prose ("five tools") is right, and its table had been the thing missing
-`memory_supersede`. The `HISTORIAN` doc comment now says this in place, so the
-next count does not re-add it.
+prose ("five tools") was right at the time, and its table had been the thing
+missing `memory_supersede`. `memory_redact` arrived 2026-11-20 (CONSISTENCY
+§65), so the constants/tools offset is unchanged at one: the next count will
+find seven constants and six tools, which is correct. The `HISTORIAN` doc
+comment says this in place, so the next count does not re-add it.
 
 ### A fourth door asymmetry, found the same round: the trust gate was Rust-and-hermes only
 

@@ -102,7 +102,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 ## 3. Where things live
 
-`src/`, 33 modules, 35,412 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 35,580 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
@@ -114,7 +114,7 @@ stale count is a red gate rather than a claim nobody checks.
 | `connect.rs` | 2844 | agent-host detection and config writing |
 | `recall.rs` | 2429 | RRF fusion, candidate pool, budget trim, scoring |
 | `hooks.rs` | 1890 | the five lifecycle events; the never-fail hook contract |
-| `mcp.rs` | 1882 | MCP server: 5 tools + resources + prompts + completion |
+| `mcp.rs` | 2050 | MCP server: 6 tools + resources + prompts + completion |
 | `daemon.rs` | 1132 | `daemon start/stop/status`, pidfile, start-time identity |
 | `doctor.rs` | 1123 | the health report (`doctor`, `doctor --all-hosts`) |
 | `connect_plugin.rs` | 1092 | the hermes `MemoryProvider` plugin |
@@ -175,18 +175,19 @@ the wrong one is how claims drift.
 | the original audit this all came from | `docs/AUDIT.md` |
 | a credential reached a commit, a tag, or a message; or history must be rewritten | **`docs/SECRETS.md`** — the layers, the response order, and the incident log with its commit map |
 
-**The MCP surface.** Five tools — `memory_retain`, `memory_recall`,
-`memory_reflect`, `memory_bank_config_get`, `memory_supersede` (the last is
-W7a; `src/mcp.rs` pins the list in
-`tools_list_should_show_five_annotated_tools`)
+**The MCP surface.** Six tools — `memory_retain`, `memory_recall`,
+`memory_reflect`, `memory_bank_config_get`, `memory_supersede` (W7a), and
+`memory_redact` (2026-11-20, TODO #34: an agent that retained a secret through
+MCP can retract it through MCP rather than dropping to the CLI).
+`src/mcp.rs` pins the list in `tools_list_should_show_six_annotated_tools`.
 — plus resources (`memory://{bank}/{id}`), one prompt (the historian preamble,
-served through the prompt surface, not as a sixth tool), and argument
+served through the prompt surface, not as a tool), and argument
 completion. Deliberately **not** advertised: `subscribe`, the three
 `listChanged` flags, and `logging`, because this server never sends those
 notifications. Advertising a capability that never arrives is worse than
 advertising nothing, and a test pins the exact set. This line said "four tools"
-until 2026-11-19; the table row for `mcp.rs` said four for the same reason, and
-both lagged W7a by a release.
+until 2026-11-19 and "five" until 2026-11-20; it lagged W7a by a release and
+`memory_redact` by one.
 
 The transport is **stateless** (rmcp 3.5, MCP spec `2026-07-28`): no
 `initialize` handshake, no `Mcp-Session-Id`. A legacy client that still

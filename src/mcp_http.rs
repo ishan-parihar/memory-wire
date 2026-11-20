@@ -343,7 +343,7 @@ mod tests {
             assert!(reply.get("result").is_some(), "{method} produced no result: {reply}");
             assert!(reply.get("error").is_none(), "{method} failed: {reply}");
         }
-        // And the tools are the contract four, not a subset or a superset.
+        // And the tools are the contract six, not a subset or a superset.
         let (_, reply) = post(
             &addr,
             "/mcp",
@@ -358,7 +358,7 @@ mod tests {
             .iter()
             .filter_map(|t| t["name"].as_str())
             .collect();
-        assert_eq!(names.len(), 5, "{names:?}");
+        assert_eq!(names.len(), 6, "{names:?}");
     }
 
     // The decision `Server::resolve_bank` makes, over the wire: an argument that

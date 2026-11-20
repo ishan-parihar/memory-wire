@@ -5112,3 +5112,52 @@ Gate: 665 tests (272 + 370 + the integration binaries), clippy 0, doc 0
 warnings, trust gate green on all three doors.
 
 Next free CONSISTENCY section: **§65**.
+
+## §65. 2026-11-20 — `memory_redact` on MCP: the door-parity gap with a consequence
+
+TODO #34, the row the round-4 review produced and this session narrowed. The
+general claim was "one service, three doors, every door exposes a different
+subset"; the sharpest instance was that `redact` was reachable from the CLI and
+HTTP but not MCP, so **an agent that retained a secret through MCP could not
+retract it through MCP**. That is the one asymmetry that is a lockout rather
+than an absence: hygiene's missing CLI and supersede's missing HTTP route are
+gaps a user can route around, while a credential only ever seen through MCP had
+no retraction path at the surface it arrived on.
+
+`MemoryService::redact_memory` already existed and the `read_only` guard already
+covered it (`af3a0a5` wired the custody writes). The work was a tool
+registration, a dispatch arm, and three tests.
+
+**What the tests caught in the tests.** The first version of the end-to-end test
+asserted a secret survived to storage and was redacted by pattern
+`sk-live-deadbeef`. It failed with `redacted_rows: 0`, and the reason is
+worth more than the fix: **`redact_pii` runs at retain time**, and its OpenAI
+rule (`sk-[A-Za-z0-9_-]{8,}`) eats that string before it ever reaches the
+store. A test built on it would have been testing a tool against content it
+never had to touch. The realistic case for `memory_redact` is precisely the
+second pass — a value the first redactor does not recognise, or one added to a
+row after ingest — so the test now seeds plain prose that survives the
+retain-time redactor, asserts that it is really there by reading it back, and
+only then redacts. The comment in the test says this in place.
+
+Second: the tool's `pattern` argument is a **regex**, not a literal (the store
+compiles it and refuses an invalid one). The first version of the schema
+described it as "literal text", which was simply wrong about the interface a
+client would build against. Both the schema description and the test now say
+regex.
+
+**Mutation-checked.** Replacing the dispatch body with `let rows = 1;` (a
+success with no write) fails the end-to-end test, so the test is load-bearing
+rather than decorative.
+
+**Count corrections, because the number is a contract.** Nine places stated the
+tool count and all said five or four: `AGENTS.md` §3 table row and §4 prose,
+`README.md` ×3, `src/main.rs` (the unauthenticated-port warning), `src/mcp.rs`
+(the `HISTORIAN` doc and two "the four tools above" comments), `src/mcp_http.rs`
+(the tools/list length assertion, which is what the gate actually caught), and
+`docs/INTEGRATION_GAPS.md` ×2. The constants-vs-tools offset stays at one: seven
+`memory_`-prefixed constants, six tools, because `HISTORIAN` is a prompt.
+
+Gate: 667 tests, clippy 0, doc 0 warnings.
+
+Next free CONSISTENCY section: **§66**.
