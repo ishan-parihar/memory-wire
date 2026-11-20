@@ -21,6 +21,13 @@ else
   echo "pre-commit: node not found, skipping the plugin door tests" >&2
 fi
 
+# AGENTS.md §3 is the map a fresh agent reads before touching anything, so a
+# stale table is believed rather than ignored. It claimed "22 modules / 24.8k
+# lines" against a real 32 / 35,373 for months and nothing checked, so this
+# compares the table's module set and per-module counts to the tree. It cannot
+# grade a role line's prose; that is still a human's job.
+"$root/scripts/module_table_check.sh"
+
 # core.hooksPath replaces .git/hooks, which install-docs-gate writes to. Keep
 # running that gate so enabling this hook does not silently disable it.
 managed="$(git rev-parse --git-common-dir)/hooks/pre-commit"

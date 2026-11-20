@@ -5026,3 +5026,40 @@ Gate: 660 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings, trust gate
 green on all three doors, genome lint clean. Commit `3376b5c`.
 
 Next free CONSISTENCY section: **§63**.
+
+## §63. 2026-11-20 — AGENTS.md §3, three files missing a trailing newline, and a stale table that nothing checked
+
+**The stale table.** §3's module table listed 18 of the tree's 32 modules and
+claimed "24.8k lines across 22 modules". The real figure was 35,373. It had been
+wrong for months and nothing checked it, which is the whole problem: §3 is the
+map a fresh agent reads *before* touching anything, so a table that drifts is
+believed rather than ignored. Fourteen modules were absent outright, five of them
+whole features (W3 redact, W4 hygiene, W5 grounding, the skills door, the update
+path).
+
+The table is now generated from the tree, and `scripts/module_table_check.sh`
+grades it in `.githooks/pre-commit`: every `src/*.rs` must appear, every row must
+name a file that exists, each per-module count must equal `wc -l`, the row count
+must equal the module count, and the headline's two numbers must agree. It does
+**not** grade a role line's prose; that is a judgement and still a human's job.
+
+Mutation-checked both ways it can fail — delete a row (`MISSING: sweep.rs`), and
+change a count (`COUNT: store.rs is 5127 lines, AGENTS.md says 5000`) — and the
+gate exits 1 on each.
+
+**Three files had no trailing newline.** `hygiene.rs`, `grounding.rs`,
+`skills.rs`. Two separate consequences, both found rather than theorized:
+
+1. `wc -l` counts newlines, so it reported each one line *under* its true
+   count. That is why the first pass of the new table disagreed with itself:
+   the generator read Python line counts (646/350/279) and `wc -l` said 645/349/
+   278. The fix is a newline, not a number change.
+2. It is a quiet violation of the POSIX text-file convention, and the reason a
+   `wc -l`-based gate would have been wrong to "correct" the numbers instead.
+
+**Nothing was measured for the number.** AGENTS §7 forbids a hand-edited prose
+figure that exists in no artifact; this is the inverse — the figure existed only
+in prose and disagreed with the artifact (the tree). The generator is the fix,
+and the gate is what keeps the next edit honest.
+
+Next free CONSISTENCY section: **§64**.
