@@ -24,6 +24,30 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
+  **2026-11-20 — execution plan closed and round 5 of the context-pack review
+  landed.** Two batches, both committed and both gated.
+
+  - **Tiers A/B/C of `docs/plans/2026-11-19-execution-plan.md`**
+    (`131cffb`..`b8ef4c4`, then `5285ea3`). A: a nightly check that
+    `.skills_to_install/` still matches `src/skills.rs` (it had silently drifted
+    to ~4 months); a doctor block that names *which bank* holds the memories
+    when the resolved bank is empty (it printed `bank: <resolved>` next to
+    `memories: 0` and left the reader to join them); a `doctor banks` row per
+    bank. B: `connect_common.rs` (six byte-identical helpers, net -138 lines);
+    `scripts/module_table_check.sh` wired into the pre-commit hook, with the
+    §3 table regenerated 18 -> 33 rows; a narrow per-door redact fix. C:
+    `memory_redact` as the 6th MCP tool; the banks list.
+  - **Round 5 of the fresh-context review** (`research/audits/context-pack-2026-11-20-round5/`,
+    Hydrogen at `xhigh`). Two real defects in code from the previous batch:
+    **opencode `injectedQuery` cached an empty block across a failed recall**
+    (a transient outage froze recall until the user retyped), and the
+    **"…and N more" footer understated the dropped count** in Rust and hermes
+    when the character cap broke the loop before the line cap. Both fixed, both
+    mutation-checked, and two new checks added to the trust gate (5 -> 7).
+    The reviewer's headline is adopted: **verification is the bottleneck** — four
+    of the five recent high-severity defects came from a check that ran nowhere
+    or verified the wrong thing.
+
   **2026-11-19 — round-2 follow-ups landed (uncommitted at the time of
   writing; this entry names the batch).** Two things, one of which was a
   real defect rather than a follow-up:
