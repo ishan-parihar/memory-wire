@@ -1717,8 +1717,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             panic!("{out:?}");
         };
         assert!(events.iter().any(|e| e == "mcp"), "MCP entry still written: {events:?}");
+        // The opencode plugin is a directory now (`plugins/memory-wire/index.ts`),
+        // because 2.x only discovers local plugins as directories. The event
+        // names the file that was written, so it ends in `index.ts`.
         assert!(
-            events.iter().any(|e| e.contains("memory-wire.ts")),
+            events.iter().any(|e| e.contains("memory-wire/index.ts")),
             "plugin written too: {events:?}"
         );
         let plugin = std::fs::read_to_string(

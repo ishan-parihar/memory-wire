@@ -1,16 +1,27 @@
-//! opencode's second install surface: a plugin file it auto-loads from
+//! opencode's second install surface: a plugin it auto-loads from
 //! `~/.config/opencode/plugins/`, mirroring what [`crate::connect_ext`] does
 //! for omp and pi.
 //!
-//! A flat `*.ts` file in that directory is the registration — the loader is not
-//! config-driven. Verified against opencode 1.18.34 by a live probe
-//! (2026-10-07): a flat file in that directory loaded with no config entry,
-//! `experimental.chat.system.transform` fired per request, and a string pushed
-//! onto its `system` array reached the model. The MCP entry `connect` already
-//! writes is the tools the model may call; this file is the recall it does not
-//! have to ask for — on a continuation prompt it never looks, which is exactly
-//! why the injection has to exist (a forked-session test showed the model
-//! making zero recall calls across the turn).
+//! **The layout changed with OpenCode 2.x, and the old one was silently dead.**
+//! 1.x auto-loaded a flat `plugins/*.ts`, verified against 1.18.34 by a live
+//! probe (2026-10-07). 2.x discovers local plugins as *directories* and reads
+//! `<dir>/index.ts`; a flat file is skipped with no error and no log line at
+//! all (verified live on 2.3.2). So an opencode upgraded to 2.x kept reporting
+//! `wired` from `doctor`, kept its config, and quietly had no memory plugin --
+//! the failure mode this file is most careful about everywhere else.
+//!
+//! The port that goes with the layout is in the plugin itself: 2.x also
+//! changed the module contract from a bare `async (input) => hooks` function to
+//! `{ id, setup(ctx) }` (see `plugin/integrations/opencode-plugin/memory-wire.ts`
+//! and `opencode.ai/docs/build/plugins/migrate-v1`). Both halves move together
+//! -- the right file at the wrong path does not load, and the right path with a
+//! v1 export fails the v2 loader's schema.
+//!
+//! The MCP entry `connect` already writes is the tools the model may call; the
+//! plugin is the recall it does not have to ask for -- on a continuation prompt
+//! it never looks, which is exactly why the injection has to exist (a
+//! forked-session test showed the model making zero recall calls across the
+//! turn).
 //!
 //! The three properties are inherited from `connect_ext` rather than
 //! reinvented, and each is shaped by the surface being a file rather than a
@@ -76,9 +87,27 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     let probe = baked(bank);
     let current = version(&probe).unwrap_or("?");
 
+    // The 1.x layout. Removed on the way in as well as out: a flat
+    // `plugins/MEMORY_WIRE_OPENCODE_PLUGIN.ts` left beside the new directory
+    // is not merely dead, it is a user-visible answer to "is memory-wire
+    // installed here" that is wrong.
+    let legacy_path = home.join(LEGACY_PLUGIN_REL);
+    let mut removed_legacy = false;
+    if legacy_path.is_file() && std::fs::remove_file(&legacy_path).is_ok() {
+        removed_legacy = true;
+    }
+
     if uninstall {
         if !path.is_file() {
-            return Outcome::Skipped("no memory-wire plugin to remove".to_string());
+            return if removed_legacy {
+                Outcome::Unwired {
+                    backup: None,
+                    events: vec![LEGACY_PLUGIN_REL.to_string()],
+                    notes: vec!["removed the pre-v2 flat plugin".to_string()],
+                }
+            } else {
+                Outcome::Skipped("no memory-wire plugin to remove".to_string())
+            };
         }
         if !is_ours(&path) {
             return Outcome::Failed(format!(
@@ -141,6 +170,9 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     }
 
     let mut notes = Vec::new();
+    if removed_legacy {
+        notes.push("removed the pre-v2 flat plugin".to_string());
+    }
     // A file carrying a different version of ours is still ours, so it is
     // replaced rather than refused — and both versions are named, because that
     // is the only moment a user can tell a real upgrade from a no-op.
@@ -154,22 +186,40 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     }
 }
 
-/// Where opencode's plugin file goes, home-relative, or `None` for a host that
-/// has no plugin surface.
+/// Where opencode's plugin goes, home-relative, or `None` for a host that has
+/// no plugin surface.
 ///
-/// A flat file there loads with no config entry — the file is the
-/// registration, so the path is the whole install.
+/// **A directory, not a file, and that is a v2 requirement rather than a
+/// preference.** OpenCode 1.x auto-loaded a flat `plugins/*.ts`; 2.x discovers
+/// local plugins as directories and reads `<dir>/index.ts`. A flat file is
+/// skipped entirely (verified live on 2.3.2: it never appears in
+/// `msg="loading plugin"`), which is the second half of the same break as the
+/// plugin-API port in `memory-wire.ts`. `connect` writes no config entry, so
+/// the directory is the whole registration.
+///
+/// The old flat path is [`LEGACY_PLUGIN_REL`] and is removed on upgrade or
+/// uninstall, because a stale `plugins/MEMORY_WIRE_OPENCODE_PLUGIN.ts` beside
+/// the new directory is dead weight that a user cannot tell from a live
+/// install.
 pub fn plugin_rel(host: Host) -> Option<PathBuf> {
     match host {
         Host::Opencode => Some(
             PathBuf::from(".config")
                 .join("opencode")
                 .join("plugins")
-                .join(format!("{MARKER}.ts")),
+                .join(MARKER)
+                .join("index.ts"),
         ),
         _ => None,
     }
 }
+
+/// The pre-v2 layout, kept only so an upgrade can remove it.
+///
+/// 1.x wrote `plugins/MEMORY_WIRE_OPENCODE_PLUGIN.ts`. Nothing loads that
+/// shape on 2.x, so leaving it behind would leave a file that looks installed
+/// and does nothing.
+const LEGACY_PLUGIN_REL: &str = ".config/opencode/plugins/MEMORY_WIRE_OPENCODE_PLUGIN.ts";
 
 /// Does this host carry our plugin file? Reads, and never writes.
 ///
@@ -268,12 +318,30 @@ mod tests {
     }
 
     #[test]
-    fn install_places_a_flat_plugin_file_in_opencodes_plugins_dir() {
+    fn install_places_a_plugin_directory_with_index_ts() {
         let home = tmp_home("install");
         let out = apply(Host::Opencode, &home, false, &home.join("data"), None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         assert_eq!(read_plugin(&home), SOURCE);
         assert!(installed(Host::Opencode, &home));
+        // The file is at `plugins/memory-wire/index.ts`, and opencode 2.x reads
+        // a directory's index rather than a flat file: the old shape is
+        // skipped silently, which is the failure this layout exists to fix.
+        let rel = plugin_rel(Host::Opencode).expect("rel");
+        assert_eq!(rel.file_name().and_then(|n| n.to_str()), Some("index.ts"), "{rel:?}");
+        assert_eq!(rel.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()), Some(MARKER));
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn an_upgrade_removes_the_pre_v2_flat_plugin() {
+        let home = tmp_home("legacy");
+        // What 1.x wrote: a flat file no 2.x loader reads.
+        std::fs::create_dir_all(home.join(LEGACY_PLUGIN_REL).parent().expect("parent")).expect("mkdir");
+        std::fs::write(home.join(LEGACY_PLUGIN_REL), "// memory-wire\n").expect("seed");
+        let out = apply(Host::Opencode, &home, false, &home.join("data"), None);
+        assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
+        assert!(!home.join(LEGACY_PLUGIN_REL).exists(), "the stale flat file is gone");
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -298,7 +366,7 @@ mod tests {
         assert!(file.contains(VERSION_MARKER));
         // And a reconnect without a bank is only ever a re-render: the file
         // stays ours, and the version still parses.
-        assert_eq!(version(&file), Some("2"));
+        assert_eq!(version(&file), Some("3"));
         std::fs::remove_dir_all(&home).ok();
     }
 

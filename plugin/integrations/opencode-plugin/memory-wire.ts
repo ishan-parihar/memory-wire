@@ -1,5 +1,5 @@
 // memory-wire native memory plugin for opencode.
-// MEMORY_WIRE_OPENCODE_PLUGIN_VERSION 2
+// MEMORY_WIRE_OPENCODE_PLUGIN_VERSION 3
 //
 // Installed by `memory-wire connect opencode`, as
 // ~/.config/opencode/plugins/memory-wire.ts -- opencode loads flat *.ts files
@@ -232,33 +232,39 @@ function formatRecall(items) {
   return block.length <= INJECT_CAP_CHARS ? block : block.slice(0, INJECT_CAP_CHARS - 1) + "…";
 }
 
-/** The newest assistant text of the session, via the client the harness
- *  hands the plugin -- the one handle guaranteed to reach the server in both
- *  modes. `opencode serve` listens on the `serverUrl` the payload also
- *  carries, but a headless `opencode run` boots an in-process server that
- *  `serverUrl` does not name, and a plain fetch to the reported URL is
- *  refused (verified live); only the client is pointed at the real one.
- *  Bounded by a race, because the generated client takes no request signal.
- *  `""` whenever any of it is missing, refused, or slow. */
-async function lastAssistantTextFor(client, sessionID) {
-  if (
-    !client || !client.session || typeof client.session.messages !== "function" || !sessionID
-  ) {
+/** The newest assistant text of the session, via `ctx.session.context`.
+ *
+ *  In v2 the context *is* the client (`docs/build/plugins/server`), so there
+ *  is no separate `client.session.messages` to reach for -- the v1 code called
+ *  that and it no longer exists. `context()` takes `{ sessionID }` and returns
+ *  the session's messages, verified live against 2.3.2 (it schema-validates
+ *  the id before doing any work).
+ *
+ *  `""` whenever any of it is missing, refused, or slow: a retain that cannot
+ *  read the answer is skipped, and the turn is simply not remembered. Nothing
+ *  here may throw into the agent.
+ *
+ *  @param {{ context?: Function }} session the v2 session domain */
+async function lastAssistantTextFor(session, sessionID) {
+  if (!session || typeof session.context !== "function" || !sessionID) {
     return "";
   }
-  var data;
+  var list;
   try {
     var bounded = Promise.withResolvers();
-    setTimeout(bounded.resolve, RETAIN_TIMEOUT_MS);
-    var res = await Promise.race([
-      client.session.messages({ path: { id: sessionID } }),
-      bounded.promise,
-    ]);
-    data = res && typeof res === "object" && "data" in res ? res.data : undefined;
+    var timer = setTimeout(bounded.resolve, RETAIN_TIMEOUT_MS);
+    try {
+      var res = await Promise.race([session.context({ sessionID: sessionID }), bounded.promise]);
+      // The v2 client answers `{ data }`; a bare array is accepted too, so a
+      // shape change costs nothing.
+      list = Array.isArray(res) ? res : res && typeof res === "object" ? res.data : undefined;
+    } finally {
+      clearTimeout(timer);
+    }
   } catch {
     return "";
   }
-  var list = Array.isArray(data) ? data : [];
+  if (!Array.isArray(list)) return "";
   for (var i = list.length - 1; i >= 0; i--) {
     var entry = list[i];
     var info = entry && typeof entry === "object" ? entry.info : undefined;
@@ -272,42 +278,76 @@ async function lastAssistantTextFor(client, sessionID) {
 /** memory-wire's memory plugin: recall injected before each turn, the turn
  *  retained after it.
  *
- *  The state lives in the return closure of the default export, the one
- *  pattern valid in both omp and pi and in opencode's `Plugin = (input) =>
- *  Hooks` contract, and therefore in every loader this file will ever see.
- *  State is per-process per-harness: prompt and answer accumulate for the
- *  life of the harness process, in whatever interleaving the harness drives.
+ *  **OpenCode v2, not v1.** Until 2026-11-20 this file exported the v1 shape --
+ *  `export default async (input) => ({...hooks})` -- and opencode 2.x refuses it
+ *  at load with `PluginModule.LoadError: Plugin must export a default
+ *  definition with an id and an effect or setup function`. The door was
+ *  therefore *silently dead* on every 2.x install: the file is copied to disk,
+ *  `connect` reports `wired`, and nothing runs it. The plugin is not listed by
+ *  `opencode plugin list`, and its memory injection never happens.
+ *
+ *  The v2 contract (`opencode.ai/docs/build/plugins/migrate-v1`): a default
+ *  object with `id` and `setup(ctx)`, hooks registered through `ctx` rather
+ *  than returned as a string map. Local plugins must live in a **directory**,
+ *  so the install path is `plugins/memory-wire/index.ts` -- a bare file now
+ *  only loads if configured, and `connect` writes no such entry (see
+ *  `src/connect_opencode.rs`).
+ *
+ *  The three hook ports that matter:
+ *    `chat.message`                                    -> `session.hook("prompt")`
+ *    `experimental.chat.system.transform`              -> `session.hook("context")`
+ *    `event` + `session.idle`                          -> `ctx.event.subscribe()`
+ *  In v2 the callbacks take **one mutable event**, not `(input, output)`, and
+ *  `ctx.session` replaces the old `client.session`. Everything below the host
+ *  boundary -- the caps, `post`, `formatRecall`, the trust gate -- is the same
+ *  code as the extension door, unchanged.
+ *
+ *  The `id` is not cosmetic: plugin storage is scoped by it and diagnostics
+ *  name it, so it has to stay stable across versions or a user's stored
+ *  plugin state stops being reached.
  *  @param {{
- *    project: unknown,
- *    directory: unknown,
- *    worktree: unknown,
- *    client: unknown
- *  }} input */
-export default async function memoryWireOpencodePlugin(input) {
-  var client = input && typeof input === "object" && "client" in input ? input.client : undefined;
+ *    session: { hook: Function, messages: Function },
+ *    event: { subscribe: Function },
+ *    location: object,
+ *    options: object,
+ *    storage: object
+ *  }} ctx the v2 plugin context */
+export default { id: "memory-wire", setup: setup };
+
+function setup(ctx) {
+  var session;
+  var event;
+  var subscribe;
+  // v2 groups these on the context; v1 put them on a `client` argument. Guarded
+  // rather than destructured, because a plugin that throws inside `setup`
+  // fails to load rather than failing to recall -- the door would be dead
+  // again, which is the bug this port exists to undo.
+  session = ctx && typeof ctx === "object" ? ctx.session : undefined;
+  event = ctx && typeof ctx === "object" ? ctx.event : undefined;
+  subscribe = event && typeof event.subscribe === "function" ? event.subscribe : undefined;
   var lastPrompt = "";
   var lastAnswer = "";
   var lastRetained = "";
-  // A multi-step turn calls the transform once per step; one recall per
-  // distinct query keeps step N from paying (or duplicating) step 1's recall.
+  // A multi-step turn calls the hook once per step; one recall per distinct
+  // query keeps step N from paying (or duplicating) step 1's recall.
   var injectedQuery = "";
   var injectedBlock = "";
 
-  return {
-    /** The user message text for the turn in flight. The hook hands over the
-     *  message parts; reading them is the whole capture -- no fetch needed for
-     *  what arrives in the event. */
-    "chat.message": async function (_input, output) {
+  if (session && typeof session.hook === "function") {
+    // The user message text for the turn in flight. The hook hands over the
+    // event; reading its parts is the whole capture -- no fetch needed for
+    // what arrives in the event.
+    session.hook("prompt", function (ev) {
       var parts =
-        output && typeof output === "object" && Array.isArray(output.parts) ? output.parts : [];
+        ev && typeof ev === "object" && Array.isArray(ev.parts) ? ev.parts : [];
       var text = stripReminders(textOf(parts));
       if (text) lastPrompt = text;
-    },
+    });
 
-    /** The injection point. Appending to `output.system` is verified to reach
-     *  the model as system content. */
-    "experimental.chat.system.transform": async function (_input, output) {
-      if (!(output && typeof output === "object" && Array.isArray(output.system))) return;
+    // The injection point. Pushing onto `ev.system` reaches the model as
+    // system content.
+    session.hook("context", async function (ev) {
+      if (!(ev && typeof ev === "object" && Array.isArray(ev.system))) return;
       var prompt = lastPrompt;
       if (!prompt) return;
 
@@ -323,7 +363,7 @@ export default async function memoryWireOpencodePlugin(input) {
       }
 
       if (query === injectedQuery) {
-        if (injectedBlock) output.system.push(injectedBlock);
+        if (injectedBlock) ev.system.push(injectedBlock);
         return;
       }
       var items = await post(
@@ -352,45 +392,71 @@ export default async function memoryWireOpencodePlugin(input) {
       var block = Array.isArray(items) ? formatRecall(items) : "";
       injectedQuery = query;
       injectedBlock = block;
-      if (block) output.system.push(block);
-    },
+      if (block) ev.system.push(block);
+    });
+  }
 
-    /** Turn end -- `session.idle` fires once per completed turn -- is where
-     *  the retain happens, because only then does the answer exist. */
-    event: async function (arg) {
-      var ev = arg && typeof arg === "object" ? arg.event : undefined;
-      if (!(ev && typeof ev === "object" && ev.type === "session.idle")) return;
-      var props = ev.properties && typeof ev.properties === "object" ? ev.properties : {};
-      var sessionID = typeof props.sessionID === "string" ? props.sessionID : "";
-      var prompt = lastPrompt;
-      // Cleared before the await: a turn that starts before this one finishes
-      // must not have its prompt consumed by the earlier retain.
-      lastPrompt = "";
-      var answer = await lastAssistantTextFor(client, sessionID);
-      // The next turn's short-prompt query composition borrows this answer.
-      lastAnswer = answer;
-      // An unanswered or bare-acknowledgement turn is a question with no
-      // knowledge in it: retaining prompt-only rows is how the bank fills with
-      // duplicate question texts that recall then injects as if they were
-      // memory. The pair is the memory.
-      if (!prompt || !answer || answer.length < MIN_ANSWER_CHARS) return;
+  if (subscribe) {
+    var controller = new AbortController();
+    void (async () => {
+      try {
+        for await (var ev of subscribe({ signal: controller.signal })) {
+          // Turn end. `session.idle` still exists in 2.3.2 and still carries
+          // `{sessionID}`, but it does NOT fire under `opencode run` --
+          // measured, over a real turn, 31 other event types delivered and
+          // idle not among them. `session.execution.succeeded` does, and it
+          // is the narrower claim anyway: the execution completed rather
+          // than the UI going quiet. Verified live as
+          // `{"type":"session.execution.succeeded", ...}` with the
+          // `sessionID` on the event, not in `properties`.
+          if (!(ev && typeof ev === "object" && ev.type === "session.execution.succeeded")) {
+            continue;
+          }
+          var sessionID = typeof ev.sessionID === "string" ? ev.sessionID : "";
+          var prompt = lastPrompt;
+          // Cleared before the await: a turn that starts before this one
+          // finishes must not have its prompt consumed by the earlier
+          // retain.
+          lastPrompt = "";
+          var answer = await lastAssistantTextFor(session, sessionID);
+          // The next turn's short-prompt query composition borrows this
+          // answer.
+          lastAnswer = answer;
+          // An unanswered or bare-acknowledgement turn is a question with no
+          // knowledge in it: retaining prompt-only rows is how the bank fills
+          // with duplicate question texts that recall then injects as if they
+          // were memory. The pair is the memory.
+          if (!prompt || !answer || answer.length < MIN_ANSWER_CHARS) continue;
 
-      var content = [
-        "asked: " + clamp(prompt, RETAIN_PART_CAP_CHARS),
-        "answered: " + clamp(answer, RETAIN_PART_CAP_CHARS),
-      ].join("\n");
-      // An auto-retry re-submits the same turn; the server dedupes identical
-      // content anyway -- but not before paying for the write.
-      if (!content || content === lastRetained) return;
+          var content = [
+            "asked: " + clamp(prompt, RETAIN_PART_CAP_CHARS),
+            "answered: " + clamp(answer, RETAIN_PART_CAP_CHARS),
+          ].join("\n");
+          // An auto-retry re-submits the same turn; the server dedupes
+          // identical content anyway -- but not before paying for the write.
+          if (!content || content === lastRetained) continue;
 
-      // `document_id` keyed on the prompt makes a repeated ask replace its row
-      // (the server's default update mode) rather than add a twin.
-      var stored = await post(
-        "/banks/" + encodeURIComponent(bank()) + "/retain",
-        { content: content, document_id: "turn-" + hash(prompt) },
-        RETAIN_TIMEOUT_MS
-      );
-      if (stored !== null) lastRetained = content;
-    },
+          // `document_id` keyed on the prompt makes a repeated ask replace
+          // its row (the server's default update mode) rather than add a
+          // twin.
+          var stored = await post(
+            "/banks/" + encodeURIComponent(bank()) + "/retain",
+            { content: content, document_id: "turn-" + hash(prompt) },
+            RETAIN_TIMEOUT_MS
+          );
+          if (stored !== null) lastRetained = content;
+        }
+      } catch (_e) {
+        // The connection closing is the harness going away, not a memory
+        // fault. Never break the agent: nothing here propagates.
+      }
+    })();
+  }
+
+  // v2 replaces the v1 `dispose()` hook with whatever `setup` returns. Only
+  // what this plugin owns -- the event subscription -- needs undoing; the two
+  // session hooks are scoped and unloaded with the plugin.
+  return function cleanup() {
+    if (controller) controller.abort();
   };
 }
