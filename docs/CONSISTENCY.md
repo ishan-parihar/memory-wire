@@ -5220,3 +5220,64 @@ Gate: 668 tests, clippy 0, doc 0 warnings. `docs/BANK_IDENTITY.md` documents the
 new block next to the warning it complements.
 
 Next free CONSISTENCY section: **§67**.
+
+## §67. 2026-11-20 — C2(b) is not a defect on this box, and the part that is real is a release
+
+The plan's C2 said two live operational defects, both observed. (a) was the
+empty resolved bank, and it was real — §66's output is it. **(b) does not
+reproduce as described, and the reason matters more than the correction.**
+
+The claim was "wired hosts point at the installed binary, not the running one",
+with `doctor --all-hosts` printing a finding. What it actually prints here:
+
+```
+copilot-cli  detected=yes wired=yes
+  finding  entries point at `/home/ishanp/.local/bin/memory-wire` but this
+  binary is `.../target/debug/memory-wire`.
+cursor       detected=yes wired=yes
+  finding  ... same ...
+```
+
+Every word of that is true, and the conclusion "re-run `connect`" is wrong. The
+hosts point at `~/.local/bin/memory-wire` — **the installed binary**, which is
+the correct thing to point at. The "wrong" binary in the message is the one
+`doctor` was *run from*: a `target/debug` dev build. `connect` uses the running
+executable as the source of truth, so running it from `target/debug` would
+rewrite every host to a debug path that a `cargo clean` deletes. The finding is
+G6.9 working exactly as designed — it compares what is wired against what is
+running, and the operator chose to run a dev build.
+
+**The correct action is to run `connect` from the *installed* binary**, not from
+the tree. On this box that is:
+
+```bash
+~/.local/bin/memory-wire connect
+```
+
+I did not run it. It rewrites `~/.claude.json`, `~/.copilot/`, `~/.cursor/`,
+`~/.config/opencode/` and `~/.hermes/config.yaml` — five of the user's live
+agent configs, outside this repository, and the plan's own instruction was that
+this is the user's call. Recording the command and the reason is the honest
+handoff; running it unasked is not.
+
+**What is genuinely out of date: the installed binary.** Measured:
+
+| | version | size | DT_NEEDED |
+|---|---|---|---|
+| `~/.local/bin/memory-wire` | **0.9.0** (Oct 20) | 9,265,408 | — |
+| `target/release/memory-wire` | 0.10.0 at `6a2a125` | 11,166,048 (10.64 MiB) | 3 |
+
+The installed build predates 54 commits and the `v0.10.0` tag. It also predates
+`memory_redact` (§65) and the new doctor block (§66), so the hosts wired to it
+cannot use either. Closing that gap is the release action in §68/C4, not a
+`connect` re-run.
+
+**The stale `serve.json` is a third, smaller thing.** `daemon status` reports
+`pid 1371296 (no such process)` and calls the state file stale, while a real
+server is listening on 8888 as pid 1295. The `daemon` subcommand and the
+running server disagree about which pid owns the port, because pid 1295 was
+started outside `daemon start`. `daemon start` clears the stale file, so the
+documented recovery is one command — recorded, not run, for the same reason as
+above.
+
+Next free CONSISTENCY section: **§68**.
