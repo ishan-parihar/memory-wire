@@ -98,3 +98,62 @@ if (fail.length) { console.error(file + ': ' + fail.join('; ')); process.exit(1)
 console.log('ok  ' + file);
 JS
 done
+
+# ---------------------------------------------------------------------------
+# The export-shape check. Added 2026-11-20 after the opencode door was found
+# silently dead on 2.x (CONSISTENCY §62): the plugin content was fine, the file
+# was correct for the host it was written against, and the host had changed.
+#
+# This is deliberately a *shape* check rather than a load test, because a load
+# test needs the host binary and this gate has to run where none is installed.
+# What it catches is the class that actually bit: an export the host's loader
+# will reject. It cannot catch a host that stops calling a hook -- nothing
+# static can -- and that limit is stated rather than papered over.
+#
+# Rule per door, each taken from the host's own documented contract:
+#   opencode 2.x  -> default export is an OBJECT with `id` and `setup`
+#                    (opencode.ai/docs/build/plugins/migrate-v1)
+#   omp / pi      -> default export is a FUNCTION taking the harness object
+#
+# A bare `export default async function` where an object is required is exactly
+# the v1 shape 2.x refuses, so it fails here at commit time instead of silently
+# in a user's editor.
+if command -v node > /dev/null 2>&1; then
+  for spec in \
+    "plugin/integrations/opencode-plugin/memory-wire.ts:object:opencode 2.x requires { id, setup }" \
+    "plugin/integrations/extension/memory-wire.ts:function:omp/pi requires a factory function"
+  do
+    file=$(printf '%s' "$spec" | cut -d: -f1)
+    want=$(printf '%s' "$spec" | cut -d: -f2)
+    why=$(printf '%s' "$spec" | cut -d: -f3-)
+    node - "$file" "$want" "$why" <<'JS'
+const fs = require('fs');
+const [file, want, why] = process.argv.slice(2);
+const src = fs.readFileSync(file, 'utf8');
+// Anchored to the start of a line on purpose. A doc comment that quotes the
+// old v1 shape (`export default async (input) => ({...hooks})`) would otherwise
+// match first and report the shape the file *left*, which is how the first
+// version of this check failed on a correct file.
+const m = src.match(/^export\s+default\s+([^\n;]*)/m);
+if (!m) { console.error(file + ': no default export'); process.exit(1); }
+const decl = m[1].trim();
+const isObject = /^\{/.test(decl);
+const looksLikeFn = /^(?:async\s+)?function\b|^(?:async\s*)?\(/.test(decl);
+if (want === 'object' && !isObject) {
+  console.error(file + ': default export is ' + (looksLikeFn ? 'a function' : JSON.stringify(decl)) +
+    ' but ' + why);
+  process.exit(1);
+}
+if (want === 'function' && isObject) {
+  console.error(file + ': default export is an object but ' + why);
+  process.exit(1);
+}
+// An object export that forgets `setup` fails the same loader, one step later.
+if (want === 'object' && !/\bsetup\s*:/.test(src)) {
+  console.error(file + ': object export has no `setup` -- ' + why);
+  process.exit(1);
+}
+console.log('ok  ' + file + ' (export shape: ' + want + ')');
+JS
+  done
+fi

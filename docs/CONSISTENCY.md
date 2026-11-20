@@ -4957,4 +4957,72 @@ Per AGENTS §7, a historical record that describes a dated build stays.
 
 Gate: 659 tests, genome lint clean, plugin doors green on all three.
 
-Next free CONSISTENCY section: **§62**.
+
+
+## §62. The opencode door was dead on 2.x — found by the probe meant to justify a refactor (2026-11-20)
+
+The B2 plan item was a consolidation question: 101 of the two TypeScript
+plugins' code lines are identical, so should they share one core? The probe
+that was supposed to decide *how* found something worse, and the refactor is now
+the smaller half of the work.
+
+**Both halves of the opencode door were broken, and neither was visible from
+this repo.** OpenCode 2.x changed the plugin contract twice over:
+
+- the export shape: v1 was `export default async (input) => ({...hooks})`, v2
+  requires `{ id, setup(ctx) }`. The v1 shape fails the v2 loader's schema with
+  `PluginModule.LoadError: Plugin must export a default definition with an id
+  and an effect or setup function`.
+- the install layout: 1.x auto-loaded a flat `plugins/*.ts`, 2.x discovers
+  local plugins as *directories* and reads `<dir>/index.ts`. A flat file is
+  skipped with no error and no log line at all.
+
+So an opencode upgraded to 2.x kept `wired` from `connect`, kept its config,
+kept its MCP entry, and had no memory plugin. `doctor` could not see it,
+because `doctor` asks whether the file is ours, not whether the host loads it.
+
+**Verified live on 2.3.2, the version installed on this box**, not inferred
+from release notes: the shipped file at the path `connect` writes fails with
+that exact message, and the flat path never appears in
+`msg="loading plugin"`.
+
+**What makes this generalisable.** Every previous cross-door bug in this
+project was a *policy* difference: one door had the trust gate and another did
+not (§53), one capped by input and another by output (§58). Those are visible
+by reading two files side by side. This one is not: the file was correct for
+the host it was written against, and the host changed underneath it. A
+plugin-door test that asserts *our* invariants (trust, cap, dates) passes
+happily on a file the host rejects at load. The trust gate cannot catch it
+because the trust gate never loads the plugin.
+
+**So the test that would have caught it is a load test, not a content test**,
+and that is the shape B2 should adopt: for each host, install into a scratch
+HOME and ask the *host* whether it loaded us. That is what was done by hand
+here (a real `connect` into a temp HOME, then a real `opencode run` against
+it), and it is the only check that would have failed.
+
+**The port, verified rather than transcribed.** Hook names came from
+`opencode.ai/docs/build/plugins/migrate-v1` and were confirmed against the
+2.3.2 binary (`session.hook("prompt"|"context"|"compaction"|...)` is present;
+the old `experimental.chat.system.transform` string is not). One v1 assumption
+did not survive contact: `session.idle` still exists in 2.3.2 and still carries
+`{sessionID}`, but it does not fire under `opencode run` — 31 other event types
+arrived over a real turn and idle was not among them. The retain path uses
+`session.execution.succeeded`, which does fire and is the narrower claim.
+
+**What was verified, and how.** The hooks were proven to fire, not assumed:
+`session.hook("prompt")` and `session.hook("context")` both fire on a real
+turn; the plugin loads at the new directory path with no failure; driven
+through a stub ctx the context hook recalls and pushes
+`## memory-wire long-term memory` onto `ev.system`; and the retain path wrote an
+`asked:/answered:` row to a live server. Round trip, not just load.
+
+Installer: `plugin_rel` is `plugins/memory-wire/index.ts`, the version marker
+goes 2 → 3, and both install and uninstall remove the pre-v2 flat file. The
+legacy removal is not tidiness — a stale flat file beside the new directory is
+a user-visible "is memory-wire installed here" that is wrong.
+
+Gate: 660 tests, clippy `-D warnings` clean, `cargo doc` 0 warnings, trust gate
+green on all three doors, genome lint clean. Commit `3376b5c`.
+
+Next free CONSISTENCY section: **§63**.
