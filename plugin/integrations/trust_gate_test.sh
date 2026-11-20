@@ -95,9 +95,93 @@ const short = entryOf(formatRecall([{ id: 's', content: 'SHORT-STAMP-ROW', creat
 if (short !== '1. SHORT-STAMP-ROW')
   fail.push('a stamp shorter than 10 chars rendered a partial bracket');
 if (fail.length) { console.error(file + ': ' + fail.join('; ')); process.exit(1); }
-console.log('ok  ' + file);
+console.log('ok  ' + file + ' (trust gate, executed)');
 JS
 done
+
+# ---------------------------------------------------------------------------
+# The two TypeScript doors must agree on BEHAVIOUR, not on text.
+#
+# Added 2026-11-20 on the rulings review's R1 finding, which corrected the
+# first attempt at this. That attempt (door_core_check.mjs) compared the shared
+# declarations as bytes, and it was wrong twice over: the two `formatRecall`
+# doc comments already differed, so it was red on day one until a comment was
+# reflowed to satisfy it -- the source bent to the check rather than the check
+# measuring the source. And a text diff cannot see the thing that matters,
+# which is whether the two functions produce the same block for the same input.
+#
+# So this executes each door's real `formatRecall` and compares the outputs.
+# Both are extracted from the shipped file and run with identical arguments; a
+# difference is a real behavioural divergence, and a difference in a comment is
+# invisible to it.
+#
+# What it does NOT cover: anything outside `formatRecall`. The two doors' glue
+# (lastAssistantText vs lastAssistantTextFor, setup, the retain path) is host
+# code and is supposed to differ.
+if command -v node > /dev/null 2>&1; then
+  node - <<'JS'
+const fs = require('fs');
+const files = [
+  'plugin/integrations/extension/memory-wire.ts',
+  'plugin/integrations/opencode-plugin/memory-wire.ts',
+];
+
+function extractFormatRecall(file) {
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  let s = lines.findIndex(l => l.trim() === 'var UNTRUSTED_TIER = "untrusted_external";');
+  if (s < 0) { console.error(file + ': no UNTRUSTED_TIER'); process.exit(1); }
+  for (let i = s; i >= 0; i--) { if (lines[i].includes('/**')) { s = i; break; } }
+  const start = lines.findIndex((l, i) => i > s && l.startsWith('function formatRecall'));
+  if (start < 0) { console.error(file + ': no formatRecall'); process.exit(1); }
+  let depth = 0, e = -1;
+  for (let i = start; i < lines.length; i++) {
+    for (const ch of lines[i]) { if (ch === '{') depth++; else if (ch === '}') depth--; }
+    if (depth === 0 && i > start) { e = i; break; }
+  }
+  return lines.slice(s, e + 1).join('\n');
+}
+
+const impls = files.map((f) => new Function(
+  'bank', 'clamp', 'RECALL_ENTRIES', 'ENTRY_CAP_CHARS', 'INJECT_CAP_CHARS',
+  extractFormatRecall(f) + '\nreturn formatRecall;'
+)(() => 'bank', (x, n) => x.slice(0, n), 5, 400, 2000));
+
+// One fixture set, fed to both. The cases are the ones the record says matter:
+// trust filtering before the take, a blank row, an absent trust field, the cap,
+// a date prefix, and starvation by untrusted rows above a trusted one.
+const cases = [
+  ['mixed trust', [
+    { id: 'a', content: 'TRUSTED-ONE', trust: 'user_verified', created_at: '2026-11-19T09:30:00.000Z' },
+    { id: 'b', content: 'LEAK-B', trust: 'untrusted_external' },
+    { id: 'c', content: 'TRUSTED-TWO', trust: 'agent_inferred' },
+  ]],
+  ['absent trust', [{ id: 'x', content: 'NO-TRUST-FIELD' }]],
+  ['blank row', [{ id: 'b1', content: '   ' }, { id: 'b2', content: 'REAL-ROW' }]],
+  ['starvation', [
+    ...Array.from({ length: 5 }, (_, i) => ({ id: 'u' + i, content: 'UNTRUSTED-' + i, trust: 'untrusted_external' })),
+    { id: 't', content: 'TRUSTED-AT-RANK-5', trust: 'user_verified' },
+  ]],
+  ['cap overflow', Array.from({ length: 7 }, (_, i) => ({ id: 'c' + i, content: 'ROW-' + i }))],
+  ['undated', [{ id: 'z', content: 'UNDATED-ROW' }]],
+  ['short stamp', [{ id: 's', content: 'SHORT-STAMP', created_at: '2026' }]],
+];
+
+const bad = [];
+for (const [name, items] of cases) {
+  const a = impls[0](JSON.parse(JSON.stringify(items)));
+  const b = impls[1](JSON.parse(JSON.stringify(items)));
+  if (a !== b) {
+    bad.push(name + '\n  extension: ' + JSON.stringify(a) + '\n  opencode : ' + JSON.stringify(b));
+  }
+}
+if (bad.length) {
+  console.error('the two TypeScript doors DISAGREE on behaviour for: ' + bad.join(', '));
+  console.error('A policy change must land in both, or one door silently does something else.');
+  process.exit(1);
+}
+console.log('ok  both TypeScript doors render the same block for ' + cases.length + ' shared fixtures');
+JS
+fi
 
 # ---------------------------------------------------------------------------
 # The export-shape check. Added 2026-11-20 after the opencode door was found
@@ -175,16 +259,12 @@ if command -v node > /dev/null 2>&1; then
   node plugin/integrations/opencode-plugin/cache_source_check.mjs || exit 1
   node plugin/integrations/opencode-plugin/cache_rule_test.mjs || exit 1
 
-  # The two TypeScript doors carry one policy core: 13 constants and 8 helper
-  # functions. This fails when the copies drift apart, which is the failure that
-  # produced the round-5 footer bug in Rust and hermes -- a shape ported by hand
-  # into a second place, with nothing to notice the copy diverging.
-  #
-  # It found a real divergence the first time it ran: `textOf` accepted a bare
-  # string in the extension door and returned "" for one in opencode. Neither
-  # opencode caller can pass a string today, so it was unreachable there, but it
-  # is the exact class of drift this exists to catch before it becomes reachable.
-  node plugin/integrations/door_core_check.mjs || exit 1
+  # RETIRED 2026-11-20: door_core_check.mjs compared the shared core as BYTES.
+  # The rulings review showed that was the wrong instrument -- the two
+  # `formatRecall` doc comments already differed, so it was red until a comment
+  # was reflowed to satisfy it. The source bent to the check. The behavioural
+  # comparison above (7 shared fixtures, identical output) is the replacement:
+  # it cannot see a comment, and it catches the divergence that matters.
 fi
 
 # Every auto-injection door skips a blank-content row before the take, so the

@@ -5409,3 +5409,67 @@ Gate: 669 tests, clippy 0, doc 0 warnings, trust gate green (now 8 checks,
 including two new ones for the opencode cache rule).
 
 Next free CONSISTENCY section: **§70**.
+
+## §70. 2026-11-20 — the rulings round, and the four errors it caught in my own work
+
+A **rulings round** rather than an audit round: the plan written this session
+ended with three decisions waiting on the operator and no artefact settled any
+of them. Pack at `research/audits/context-pack-2026-11-20-rulings/`, verdicts in
+`VERIFICATION.md`. Hydrogen at default effort.
+
+Nothing in the reply was refuted. That is the second round in a row with that
+property, and it is evidence the pack was specific enough to be checkable.
+
+**R1 — fence, don't extract. And my cited cost was misattributed.** I had used
+the round-5 footer bug as the cost evidence for the TypeScript door duplication.
+Verified false: `grep -c "and .* more"` returns 0 for both TS doors and 3 for
+`src/hooks.rs`. The TS doors render no footer. Their measurement settles the
+rest — `git log -L` over the 8 shared functions shows divergent history for
+`textOf` and `bank`, **both of which are commits I made today**, so before this
+session the copies had identical history. The honest reading is that extraction
+buys nothing *observed*.
+
+**My fence was the wrong instrument and they showed why.** `door_core_check.mjs`
+compared declarations as bytes, comments included. The two `formatRecall` doc
+comments already differed, so it was red on day one until **I reflowed a comment
+to satisfy it** — the source bent to the check. Deleted. Replaced with a
+behavioural comparison in the trust gate: extract each door's real
+`formatRecall`, run both against 7 shared fixtures, compare the output.
+Mutation-checked: dropping the blank-row guard from one door makes it fail.
+
+**R2 — the parity suite was misclassified and my own plan reproduced the
+failure class it names.** I called it "Tier 1 by my own classification" and
+listed it as operator-owned in the same breath. Worse, I specified it as
+"CI-only" while `AGENTS.md` says the Actions quota is exhausted and `ci.yml`
+fires only on PR, dispatch and `v*` tags — a suite that runs nowhere. That is
+the exact defect the round exists to name.
+
+**R3 — measure now, and one real error in my plan.** Plan §3.1 attributed
+`10.65 MiB` to "`v0.7.0`'s baseline". `AGENTS.md` puts v0.7.0 at 10.25 MiB and
+10.65 at `6a2a125`. My sentence was wrong. Also verified:
+`build-release.sh --check` builds and verifies without uploading, so the
+three-Linux set *can* be measured safely — the pack said it could not.
+
+**Audit findings, all verified:**
+
+- **A tenth site for the tool count.** TODO 34 listed nine places it corrected
+  and missed hermes, whose `get_tool_schemas` said "the same four tools" when
+  MCP serves six. Hermes serves **four** — it lacks `memory_redact` and
+  `memory_supersede` — so the number was right and the *claim* was stale.
+  Docstring now names the four and the two it omits.
+- Row 37's acceptance was struck through while its status still read `open`,
+  so a finished row was counted in the open total.
+- `opencode-plugin:213` should be `:215`; TODO 4 said "seven hosts" where
+  `Host::ALL` has 8.
+- **No evidence classes.** I wrote the `[LIVE]`/`[CERT]` convention into my own
+  skill notes and then used none of it.
+
+**What the plan did not see, and should have:** a per-host write-then-read smoke
+test (TODO 35's dead door was found by accident), and the question of *why*
+rendering policy lives in the doors at all — the server already serves
+`format=summary` and an opt-in `toon`, which would make the doors thin and
+parity nearly trivial. Both adopted as new work.
+
+Gate: 673 tests, clippy 0, doc 0, trust gate 9 checks.
+
+Next free CONSISTENCY section: **§71**.

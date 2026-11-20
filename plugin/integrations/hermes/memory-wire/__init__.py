@@ -726,7 +726,16 @@ class MemoryWireProvider(MemoryProvider):
     # -- tools ---------------------------------------------------------------
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        """The same four tools ``memory-wire mcp`` serves over stdio.
+        """The four tools ``memory-wire mcp`` serves that Hermes can act on.
+
+        **Not all six.** Hermes carries `memory_retain`, `memory_recall`,
+        `memory_reflect` and `memory_bank_config_get`; MCP also serves
+        `memory_redact` and `memory_supersede`. The docstring said "the same
+        four tools" as though that were the whole MCP surface, which was stale
+        the moment `memory_redact` landed (2026-11-20) -- a count claim that
+        names a number without naming the set is the kind a review catches and
+        a reader does not. This is the tenth site that needed correcting and the
+        one TODO 34's list omitted.
 
         Names, descriptions, parameter objects and annotations are copied from
         ``Server::tools()`` in ``src/mcp.rs`` rather than restated, so a Hermes

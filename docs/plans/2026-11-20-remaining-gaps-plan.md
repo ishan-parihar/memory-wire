@@ -175,8 +175,12 @@ down-payment: they cover one door's one bug, not the matrix.
 
 ### 3.1 C4 — release readiness, measured but not cut
 
-- `10.65 MiB` at `v0.7.0`'s baseline (per `eval/baseline/…/BENCH_FOOTPRINT.md`);
-  the current build's footprint needs re-measuring after §1.3.
+- `10.65 MiB` is **HEAD at `6a2a125`**, not `v0.7.0`'s baseline. **Corrected
+  2026-11-20 by the rulings review**: `AGENTS.md` puts `v0.7.0` at 10.25 MiB
+  and 10.65 at `6a2a125` (11,166,048 B = 10.6487 MiB). The sentence originally
+  attributed HEAD's figure to the oldest baseline in the file, which is the
+  kind of error a reviewer catches and a reader does not. The current build's
+  footprint needs re-measuring after §1.3.
 - `DT_NEEDED = 3`.
 - **59 commits past `v0.10.0`.**
 - AGENTS §11: tagging is your call, and `scripts/build-release.sh` refuses a
