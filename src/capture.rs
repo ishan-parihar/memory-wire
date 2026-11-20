@@ -21,9 +21,8 @@ use sha2::{Digest, Sha256};
 // behind `LazyLock` leaves only the scans.
 // ---------------------------------------------------------------------------
 
-static PRIVATE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?is)<private>.*?</private>").expect("private regex")
-});
+static PRIVATE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<private>.*?</private>").expect("private regex"));
 
 /// Paired BEGIN/END armoured blocks, multiline, case-insensitive. The algorithm
 /// label stays inside a character class that excludes newlines, so it can never
@@ -43,9 +42,8 @@ static GITHUB_RE: LazyLock<Regex> = LazyLock::new(|| {
 static AWS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"AKIA[0-9A-Z]{16}").expect("aws regex"));
 
-static BEARER_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)Bearer\s+[A-Za-z0-9._~+\-/=]{8,}").expect("bearer regex")
-});
+static BEARER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)Bearer\s+[A-Za-z0-9._~+\-/=]{8,}").expect("bearer regex"));
 
 /// Bot / user / app / refresh / session Slack tokens, plus the app-level `xapp-`.
 static SLACK_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -79,11 +77,11 @@ static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// surprising ways (`+1 (555) 123-4567` became two partial hits).
 static PHONE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"\+[0-9]{7,15}\b",                                           // +919205112559
+        r"\+[0-9]{7,15}\b", // +919205112559
         r"|\+[0-9]{1,3}[ \-][0-9]{2,5}[ \-][0-9]{3,4}(?:[ \-][0-9]{2,5})?", // +91 92051 12559
-        r"|\+[0-9]{1,3}[ .\-]?\(?[0-9]{3}\)?[ .\-][0-9]{3}[ .\-][0-9]{4}",   // +1 (555) 123-4567
-        r"|[0-9]{1,3}[ .\-]\(?[0-9]{3}\)?[ .\-][0-9]{3}[ .\-][0-9]{4}",      // 1-800-555-0199
-        r"|\(?[0-9]{3}\)?[ .\-][0-9]{3}[ .\-][0-9]{4}",                     // (555) 123-4567
+        r"|\+[0-9]{1,3}[ .\-]?\(?[0-9]{3}\)?[ .\-][0-9]{3}[ .\-][0-9]{4}", // +1 (555) 123-4567
+        r"|[0-9]{1,3}[ .\-]\(?[0-9]{3}\)?[ .\-][0-9]{3}[ .\-][0-9]{4}", // 1-800-555-0199
+        r"|\(?[0-9]{3}\)?[ .\-][0-9]{3}[ .\-][0-9]{4}", // (555) 123-4567
     ))
     .expect("phone regex")
 });
@@ -172,7 +170,10 @@ mod tests {
     #[test]
     fn redact_should_leave_bare_digit_colon_alone() {
         // A time or a host:port has the digits but not the `AA` prefix.
-        assert_eq!(redact_pii("at 12:30 on 10.0.0.1:8888"), "at 12:30 on 10.0.0.1:8888");
+        assert_eq!(
+            redact_pii("at 12:30 on 10.0.0.1:8888"),
+            "at 12:30 on 10.0.0.1:8888"
+        );
     }
 
     #[test]
@@ -242,8 +243,9 @@ mod tests {
             .contains("[REDACTED:slack_token]"));
         assert!(redact_pii("s xoxp-123456789012-abcdefghijkl").contains("[REDACTED:slack_token]"));
         assert!(redact_pii("s xoxa-123456789012-abcdefghijkl").contains("[REDACTED:slack_token]"));
-        assert!(redact_pii("s xapp-1-A0923Y3F5R-1234567890123-abc")
-            .contains("[REDACTED:slack_token]"));
+        assert!(
+            redact_pii("s xapp-1-A0923Y3F5R-1234567890123-abc").contains("[REDACTED:slack_token]")
+        );
         // Too short to be a token.
         assert_eq!(redact_pii("s xoxa-"), "s xoxa-");
     }
@@ -272,8 +274,14 @@ mod tests {
 
     #[test]
     fn redact_should_mask_phone_numbers() {
-        assert_eq!(redact_pii("call +919205112559 now"), "call [REDACTED:phone] now");
-        assert_eq!(redact_pii("tel +1 (555) 123-4567."), "tel [REDACTED:phone].");
+        assert_eq!(
+            redact_pii("call +919205112559 now"),
+            "call [REDACTED:phone] now"
+        );
+        assert_eq!(
+            redact_pii("tel +1 (555) 123-4567."),
+            "tel [REDACTED:phone]."
+        );
         assert_eq!(redact_pii("1-800-555-0199"), "[REDACTED:phone]");
         assert_eq!(redact_pii("555-123-4567"), "[REDACTED:phone]");
     }

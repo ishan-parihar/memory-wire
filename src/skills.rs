@@ -179,11 +179,7 @@ mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "mw-skills-{}-{}",
-            std::process::id(),
-            n
-        ));
+        let dir = std::env::temp_dir().join(format!("mw-skills-{}-{}", std::process::id(), n));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create home");
         dir
@@ -227,7 +223,11 @@ mod tests {
         let home = fresh_home();
         let data = home.join("data");
         for host in [Host::Omp, Host::Hermes, Host::Pi] {
-            assert!(host.skills_rel().is_none(), "{} has no skills tree", host.id());
+            assert!(
+                host.skills_rel().is_none(),
+                "{} has no skills tree",
+                host.id()
+            );
             let applied = apply(host, &home, &data, false);
             assert_eq!(applied, Applied::Unchanged);
         }
@@ -264,7 +264,10 @@ mod tests {
         std::fs::write(&path, "# edited\n").expect("seed");
 
         apply(host, &home, &data, true);
-        assert!(path.exists(), "a modified copy is left in place on uninstall");
+        assert!(
+            path.exists(),
+            "a modified copy is left in place on uninstall"
+        );
     }
 
     #[test]

@@ -131,7 +131,8 @@ impl Document {
         memory_wire::api::parse_created_at(self.timestamp.as_deref()).map_err(|e| {
             anyhow::anyhow!(
                 "locomo: document {} has an unparseable timestamp {:?}: {e}",
-                self.id, self.timestamp
+                self.id,
+                self.timestamp
             )
         })
     }
@@ -228,7 +229,11 @@ impl Corpus {
 
     /// [`Self::load`], with the write [`Granularity`] the caller names. The bank
     /// is always the conversation; only what one memory holds varies.
-    pub fn load_at(docs_path: &str, queries_path: &str, granularity: Granularity) -> anyhow::Result<Self> {
+    pub fn load_at(
+        docs_path: &str,
+        queries_path: &str,
+        granularity: Granularity,
+    ) -> anyhow::Result<Self> {
         let documents: Vec<Document> =
             serde_json::from_str(&fs::read_to_string(docs_path).with_context(|| {
                 format!("locomo: cannot read the document corpus at {docs_path}")
@@ -264,8 +269,8 @@ impl Corpus {
                 .map(|t| t.len())
                 .unwrap_or(0);
             let store = stores.entry(doc.user_id.clone()).or_insert_with(|| {
-                let s = SqliteStore::open_in_memory()
-                    .expect("an in-memory store cannot fail to open");
+                let s =
+                    SqliteStore::open_in_memory().expect("an in-memory store cannot fail to open");
                 s.put_bank(&Bank {
                     id: doc.user_id.clone(),
                     name: doc.user_id.clone(),
@@ -357,7 +362,11 @@ impl Corpus {
 
     /// The `meta.category` values present, sorted, for a per-category table's header.
     pub fn categories(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.queries.iter().map(|q| q.meta.category.clone()).collect();
+        let mut v: Vec<String> = self
+            .queries
+            .iter()
+            .map(|q| q.meta.category.clone())
+            .collect();
         v.sort();
         v.dedup();
         v
@@ -383,7 +392,10 @@ pub struct PlannedQuery<'q> {
 /// by construction. Keeping it would understate every row by a flat constant
 /// carrying no measurement at all, so it is dropped **and counted**, never silently
 /// kept.
-pub fn plan<'q>(queries: &'q [Query], order: impl IntoIterator<Item = usize>) -> Vec<PlannedQuery<'q>> {
+pub fn plan<'q>(
+    queries: &'q [Query],
+    order: impl IntoIterator<Item = usize>,
+) -> Vec<PlannedQuery<'q>> {
     order
         .into_iter()
         .filter_map(|i| {
@@ -434,7 +446,13 @@ fn dcg(rels: &[bool], k: usize) -> f64 {
     rels.iter()
         .take(k)
         .enumerate()
-        .map(|(i, r)| if *r { 1.0 / ((i + 2) as f64).log2() } else { 0.0 })
+        .map(|(i, r)| {
+            if *r {
+                1.0 / ((i + 2) as f64).log2()
+            } else {
+                0.0
+            }
+        })
         .sum()
 }
 
@@ -442,7 +460,11 @@ fn dcg(rels: &[bool], k: usize) -> f64 {
 /// `min(|gold|, k)` relevant rows. Zero when the gold set is empty, which
 /// [`plan`] has already made unreachable.
 pub fn ndcg(retrieved: &[String], gold: &HashSet<String>, k: usize) -> f64 {
-    let rels: Vec<bool> = retrieved.iter().take(k).map(|id| gold.contains(id)).collect();
+    let rels: Vec<bool> = retrieved
+        .iter()
+        .take(k)
+        .map(|id| gold.contains(id))
+        .collect();
     let ideal = dcg(&vec![true; gold.len().min(k)], k);
     if ideal == 0.0 {
         return 0.0;
@@ -648,10 +670,15 @@ pub fn git_head() -> String {
         None
     });
     let read = found.and_then(|git| {
-        let head = fs::read_to_string(git.join("HEAD")).ok()?.trim().to_string();
+        let head = fs::read_to_string(git.join("HEAD"))
+            .ok()?
+            .trim()
+            .to_string();
         // A detached HEAD is the commit; a branch is a ref file to read.
         match head.strip_prefix("ref: ") {
-            Some(r) => fs::read_to_string(git.join(r.trim())).ok().map(|s| s.trim().to_string()),
+            Some(r) => fs::read_to_string(git.join(r.trim()))
+                .ok()
+                .map(|s| s.trim().to_string()),
             None => Some(head),
         }
     });

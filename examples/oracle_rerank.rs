@@ -206,8 +206,14 @@ impl Acc {
         for w in KS.windows(2) {
             let a = KS.iter().position(|&k| k == w[0]).expect("k from KS");
             let b = KS.iter().position(|&k| k == w[1]).expect("k from KS");
-            assert!(self.cur[b] >= self.cur[a], "R@{w:?} must not fall as k rises");
-            assert!(self.ora[b] >= self.ora[a], "oracle R@{w:?} must not fall as k rises");
+            assert!(
+                self.cur[b] >= self.cur[a],
+                "R@{w:?} must not fall as k rises"
+            );
+            assert!(
+                self.ora[b] >= self.ora[a],
+                "oracle R@{w:?} must not fall as k rises"
+            );
             assert!(self.ora[a] >= self.cur[a], "a reranker cannot lose a hit");
         }
     }
@@ -299,7 +305,9 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let data = bench_common::arg(&args, "--data", "eval/data/longmemeval_s_cleaned.json");
     let n: usize = bench_common::arg(&args, "--n", "0").parse().unwrap_or(0);
-    let seed: u64 = bench_common::arg(&args, "--seed", "42").parse().unwrap_or(42);
+    let seed: u64 = bench_common::arg(&args, "--seed", "42")
+        .parse()
+        .unwrap_or(42);
     let ref_json = bench_common::arg(&args, "--ref-json", "eval/results.json");
     let out_md = bench_common::out_md(&args, "ORACLE_RERANK.md");
 
@@ -343,9 +351,15 @@ fn main() -> anyhow::Result<()> {
             id: "eval".into(),
             name: "eval".into(),
         })?;
-        for (sid, turns) in e.haystack_session_ids.iter().zip(e.haystack_sessions.iter()) {
-            let text: Vec<String> =
-                turns.iter().map(|t| format!("{}: {}", t.role, t.content)).collect();
+        for (sid, turns) in e
+            .haystack_session_ids
+            .iter()
+            .zip(e.haystack_sessions.iter())
+        {
+            let text: Vec<String> = turns
+                .iter()
+                .map(|t| format!("{}: {}", t.role, t.content))
+                .collect();
             store.put(&Memory {
                 id: sid.clone(),
                 bank_id: "eval".into(),
@@ -358,7 +372,9 @@ fn main() -> anyhow::Result<()> {
         let svc = MemoryService::new(store);
 
         // ---- the pool, built exactly as `api.rs` builds it ----------------
-        let (all, keyword_hits) = svc.store.recall_inputs("eval", &e.question, &[], FTS_LIMIT)?;
+        let (all, keyword_hits) = svc
+            .store
+            .recall_inputs("eval", &e.question, &[], FTS_LIMIT)?;
         let window = all.len();
         let fts_stream: Vec<RankedHit> = keyword_hits
             .iter()
@@ -389,7 +405,12 @@ fn main() -> anyhow::Result<()> {
         let served = svc.recall("eval", &e.question, 100_000)?;
         let served_ids: Vec<String> = served.iter().map(|h| h.memory.id.clone()).collect();
         if served_ids.len() < pool.len() {
-            shorter.push(format!("{} ({} of {})", e.question_id, served_ids.len(), pool.len()));
+            shorter.push(format!(
+                "{} ({} of {})",
+                e.question_id,
+                served_ids.len(),
+                pool.len()
+            ));
         }
         for h in &served {
             if let Some(s) = by_id.get(h.memory.id.as_str()) {
@@ -715,7 +736,11 @@ fn main() -> anyhow::Result<()> {
     for t in types {
         let a = &by_type[t];
         let (c6, c21, cabsent, ctrim, cmisses) = a.misses();
-        debug_assert_eq!(c6 + c21 + cabsent + ctrim, cmisses, "partitioned by Acc::check");
+        debug_assert_eq!(
+            c6 + c21 + cabsent + ctrim,
+            cmisses,
+            "partitioned by Acc::check"
+        );
         md.push_str(&format!(
             "| {t} | {} | {:.1}% | {:.1}% | +{:.1}pp | {c6} | {c21} | {cabsent} | {ctrim} |\n",
             a.n,
@@ -813,4 +838,3 @@ reranker would be reordering are exactly the ones the budget keeps out of the re
     );
     Ok(())
 }
-

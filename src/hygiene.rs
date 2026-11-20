@@ -122,7 +122,11 @@ impl fmt::Display for HygieneCandidate {
             HygieneCandidate::Anchor { id, markers } => {
                 write!(f, "anchor: {} ({})", id, markers.join(", "))
             }
-            HygieneCandidate::Promote { ids, pattern, sessions } => {
+            HygieneCandidate::Promote {
+                ids,
+                pattern,
+                sessions,
+            } => {
                 write!(f, "promote: {} ({}x {})", ids.join(", "), pattern, sessions)
             }
             HygieneCandidate::Split { id, size } => {
@@ -193,8 +197,7 @@ impl fmt::Display for HygieneReport {
 const RELATIVE_DATE_PATTERN: &str = r"(?i)\b(yesterday|today|tomorrow|last\s+(?:week|month|year)|next\s+(?:week|month|year)|currently|now|this\s+(?:sprint|week|month|quarter))\b";
 
 /// Negation/contrast markers that indicate a potential contradiction.
-const CONTRAST_PATTERN: &str =
-    r"(?i)\b(actually|but|however|although|instead|rather|not|no|never|changed|switched|now|anymore)\b";
+const CONTRAST_PATTERN: &str = r"(?i)\b(actually|but|however|although|instead|rather|not|no|never|changed|switched|now|anymore)\b";
 
 /// An ISO date (YYYY-MM-DD) somewhere in the content.
 const ISO_DATE_PATTERN: &str = r"\b\d{4}-\d{2}-\d{2}\b";
@@ -307,7 +310,11 @@ pub fn hygiene_scan<S: crate::store::Store>(
                 continue;
             }
             // The newer one (by created_at) supersedes the older.
-            let (newer, older) = if ci > cj { (&ri.id, &rj.id) } else { (&rj.id, &ri.id) };
+            let (newer, older) = if ci > cj {
+                (&ri.id, &rj.id)
+            } else {
+                (&rj.id, &ri.id)
+            };
             candidates.push(HygieneCandidate::Supersede {
                 newer: newer.clone(),
                 older: older.clone(),
@@ -336,7 +343,10 @@ pub fn hygiene_scan<S: crate::store::Store>(
     for r in &rows {
         let key = (r.meta.scope.clone(), r.meta.aspect.clone());
         if let Some(date) = r.created_at.as_deref().and_then(|t| t.get(..10)) {
-            pattern_sessions.entry(key).or_default().insert(date.to_string());
+            pattern_sessions
+                .entry(key)
+                .or_default()
+                .insert(date.to_string());
         }
     }
     for ((scope, aspect), dates) in &pattern_sessions {
@@ -408,7 +418,6 @@ mod tests {
     use super::*;
     use crate::memory::{Memory, MemoryMeta};
     use crate::store::{SqliteStore, Store};
-    
 
     fn mem_with_content(
         bank: &str,
@@ -641,6 +650,9 @@ mod tests {
         let s = setup_store_with_rows(rows);
         let opts = HygieneOptions::default();
         let report = hygiene_scan(&s, "a", Some("2026-10-10T00:00:00Z"), &opts).expect("scan");
-        assert_eq!(report.rows_scanned, 1, "only rows after the cursor are scanned");
+        assert_eq!(
+            report.rows_scanned, 1,
+            "only rows after the cursor are scanned"
+        );
     }
 }

@@ -29,11 +29,26 @@ pub struct Target {
 /// so it is one physical file serving two labels — writing it twice would be
 /// the same bytes twice.
 pub const TARGETS: &[Target] = &[
-    Target { labels: &["universal", "opencode"], rel: "AGENTS.md" },
-    Target { labels: &["claude-code"], rel: "CLAUDE.md" },
-    Target { labels: &["gemini-cli"], rel: "GEMINI.md" },
-    Target { labels: &["cursor"], rel: ".cursorrules" },
-    Target { labels: &["copilot-cli"], rel: ".github/copilot-instructions.md" },
+    Target {
+        labels: &["universal", "opencode"],
+        rel: "AGENTS.md",
+    },
+    Target {
+        labels: &["claude-code"],
+        rel: "CLAUDE.md",
+    },
+    Target {
+        labels: &["gemini-cli"],
+        rel: "GEMINI.md",
+    },
+    Target {
+        labels: &["cursor"],
+        rel: ".cursorrules",
+    },
+    Target {
+        labels: &["copilot-cli"],
+        rel: ".github/copilot-instructions.md",
+    },
 ];
 
 /// What a target write did.
@@ -218,7 +233,10 @@ mod tests {
         let doubled = format!("{}\n{}\n", demo_block(), demo_block());
         let reversed = format!("{END}\n{}\n{START}\n", demo_block());
         for bad in [orphan_start, orphan_end, doubled, reversed] {
-            assert!(upsert(&bad, &demo_block()).is_err(), "should have refused: {bad}");
+            assert!(
+                upsert(&bad, &demo_block()).is_err(),
+                "should have refused: {bad}"
+            );
         }
     }
 
@@ -234,8 +252,14 @@ mod tests {
         let cursor = dir.join(".cursorrules");
         let broken = format!("user rules\n{START}\n");
         std::fs::write(&cursor, &broken).expect("write");
-        let ct = TARGETS.iter().find(|t| t.rel == ".cursorrules").expect("target");
-        assert!(matches!(apply_to(&dir, ct, &demo_block()), Applied::Refused(_)));
+        let ct = TARGETS
+            .iter()
+            .find(|t| t.rel == ".cursorrules")
+            .expect("target");
+        assert!(matches!(
+            apply_to(&dir, ct, &demo_block()),
+            Applied::Refused(_)
+        ));
         assert_eq!(std::fs::read_to_string(&cursor).expect("read"), broken);
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -54,9 +54,9 @@ use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, CompleteRequestParams, CompleteResult,
     CompletionInfo, ContentBlock, ErrorCode, ErrorData, GetPromptRequestParams, GetPromptResponse,
     GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams,
-    ReadResourceResponse, ReadResourceResult, Reference, Resource, ResourceContents, Role,
-    ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
+    PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams, ReadResourceResponse,
+    ReadResourceResult, Reference, Resource, ResourceContents, Role, ServerCapabilities,
+    ServerConfig, Tool, ToolAnnotations,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
@@ -228,7 +228,10 @@ pub struct Server<S: Store = SqliteStore> {
 /// cheap to duplicate and the store itself is never copied.
 impl<S: Store> Clone for Server<S> {
     fn clone(&self) -> Self {
-        Self { svc: self.svc.clone(), bank: self.bank.clone() }
+        Self {
+            svc: self.svc.clone(),
+            bank: self.bank.clone(),
+        }
     }
 }
 
@@ -527,12 +530,12 @@ impl<S: Store> Server<S> {
             .svc
             .get_memory(&bank, id)
             .map_err(|e| api_failure(&e))?
-            .ok_or_else(|| {
-                ErrorData::new(ErrorCode::RESOURCE_NOT_FOUND, "unknown memory", None)
-            })?;
-        Ok(ReadResourceResult::new(vec![
-            ResourceContents::text(memory.content, uri).with_mime_type(MEMORY_MIME),
-        ]))
+            .ok_or_else(|| ErrorData::new(ErrorCode::RESOURCE_NOT_FOUND, "unknown memory", None))?;
+        Ok(ReadResourceResult::new(vec![ResourceContents::text(
+            memory.content,
+            uri,
+        )
+        .with_mime_type(MEMORY_MIME)]))
     }
 
     /// The prompt list: [`REFLECT_SYSTEM_PROMPT`], verbatim, under a name a
@@ -642,7 +645,9 @@ impl<S: Store> Server<S> {
                     .and_then(Value::as_u64)
                     .and_then(|n| usize::try_from(n).ok());
                 let exclude = arg_tags_key(args, "exclude_tags");
-                let hits = self.svc.recall_filtered(&bank, query, budget, &tags, &exclude)?;
+                let hits = self
+                    .svc
+                    .recall_filtered(&bank, query, budget, &tags, &exclude)?;
                 // `format: "full"` is the citing shape; the default stays a bare
                 // array of content strings — the shape every consumer since the
                 // first release parses. What changed 2026-10-17 is each string
@@ -682,7 +687,9 @@ impl<S: Store> Server<S> {
             SUPERSEDE => {
                 let id = required_str(args, "id")?;
                 let superseded_by = arg_str(args, "superseded_by");
-                let changed = self.svc.supersede_memory(&bank, id, superseded_by.as_deref())?;
+                let changed = self
+                    .svc
+                    .supersede_memory(&bank, id, superseded_by.as_deref())?;
                 Ok(json!({ "superseded": changed, "id": id }))
             }
             REDACT => {
@@ -778,7 +785,10 @@ impl<S: Store + 'static> ServerHandler for Server<S> {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult { tools: Server::<SqliteStore>::tools(), ..Default::default() })
+        Ok(ListToolsResult {
+            tools: Server::<SqliteStore>::tools(),
+            ..Default::default()
+        })
     }
 
     async fn call_tool(
@@ -816,9 +826,7 @@ impl<S: Store + 'static> ServerHandler for Server<S> {
                 CallToolResult::success(vec![ContentBlock::text(v.to_string())]).into()
             }
             // The tool ran and failed: the caller must be able to read why.
-            ToolOutcome::Failed(why) => {
-                CallToolResult::error(vec![ContentBlock::text(why)]).into()
-            }
+            ToolOutcome::Failed(why) => CallToolResult::error(vec![ContentBlock::text(why)]).into(),
             // Unroutable: a JSON-RPC error the client surfaces opaquely.
             ToolOutcome::UnknownTool(unknown) => {
                 return Err(ErrorData::new(
@@ -870,7 +878,10 @@ impl<S: Store + 'static> ServerHandler for Server<S> {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
-        Ok(ListPromptsResult { prompts: Server::<SqliteStore>::prompts(), ..Default::default() })
+        Ok(ListPromptsResult {
+            prompts: Server::<SqliteStore>::prompts(),
+            ..Default::default()
+        })
     }
 
     /// The historian framing itself, byte for byte as `reflect` frames it.
@@ -1031,16 +1042,21 @@ fn arg_tags(args: &Value) -> Vec<String> {
 fn arg_tags_key(args: &Value, key: &str) -> Vec<String> {
     args.get(key)
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use memory_wire::store::{Store, StoreError};
     use rmcp::service::serve_directly;
     use rmcp::transport::async_rw::AsyncRwTransport;
-    use memory_wire::store::{Store, StoreError};
     use rmcp::RoleServer;
     use std::time::Duration;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
@@ -1054,7 +1070,10 @@ mod tests {
 
     impl Client {
         async fn send(&mut self, v: Value) {
-            self.out.write_all(format!("{v}\n").as_bytes()).await.expect("write");
+            self.out
+                .write_all(format!("{v}\n").as_bytes())
+                .await
+                .expect("write");
             self.out.flush().await.expect("flush");
         }
 
@@ -1096,12 +1115,20 @@ mod tests {
         // Held by the caller for the life of the test: dropping it stops the loop.
         let running = serve_directly(s, transport, None);
         let (client_r, client_w) = tokio::io::split(client_io);
-        (Client { out: client_w, inp: BufReader::new(client_r) }, running)
+        (
+            Client {
+                out: client_w,
+                inp: BufReader::new(client_r),
+            },
+            running,
+        )
     }
 
     fn server() -> Server {
         Server {
-            svc: Arc::new(MemoryService::new(SqliteStore::open_in_memory().expect("open"))),
+            svc: Arc::new(MemoryService::new(
+                SqliteStore::open_in_memory().expect("open"),
+            )),
             bank: "agent".to_string(),
         }
     }
@@ -1154,7 +1181,9 @@ mod tests {
         run(async {
             let (mut c, _running) = session(server());
             let reply = c.request(2, "tools/list", json!({})).await;
-            let tools = reply["result"]["tools"].as_array().unwrap_or_else(|| panic!("{reply}"));
+            let tools = reply["result"]["tools"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{reply}"));
             assert_eq!(tools.len(), 6, "{reply}");
 
             let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
@@ -1167,7 +1196,11 @@ mod tests {
             for tool in tools {
                 let name = tool["name"].as_str().unwrap_or_default();
                 let ann = &tool["annotations"];
-                assert_eq!(ann["destructiveHint"], json!(false), "{name} must not be destructive");
+                assert_eq!(
+                    ann["destructiveHint"],
+                    json!(false),
+                    "{name} must not be destructive"
+                );
                 // Only the read paths and retain are read-only. The rule is not
                 // "retain writes, the rest read": `SUPERSEDE` sets
                 // `lifecycle='superseded'` and appends an audit row, and `REDACT`
@@ -1177,7 +1210,8 @@ mod tests {
                 let expected = name != RETAIN && name != SUPERSEDE && name != REDACT;
                 assert_eq!(ann["readOnlyHint"], json!(expected), "{name}");
                 assert_eq!(
-                    tool["inputSchema"]["type"], json!("object"),
+                    tool["inputSchema"]["type"],
+                    json!("object"),
                     "{name} needs an object schema"
                 );
             }
@@ -1188,7 +1222,12 @@ mod tests {
                     .iter()
                     .find(|t| t["name"] == json!(name))
                     .and_then(|t| t["inputSchema"]["required"].as_array())
-                    .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(Value::as_str)
+                            .map(String::from)
+                            .collect()
+                    })
                     .unwrap_or_default()
             };
             assert_eq!(required(RETAIN), vec!["content"]);
@@ -1205,29 +1244,46 @@ mod tests {
             let (mut c, _running) = session(server());
 
             let kept = c
-                .request(3, "tools/call", json!({
-                    "name": RETAIN,
-                    "arguments": { "content": "auth uses jose middleware" }
-                }))
+                .request(
+                    3,
+                    "tools/call",
+                    json!({
+                        "name": RETAIN,
+                        "arguments": { "content": "auth uses jose middleware" }
+                    }),
+                )
                 .await;
             assert_ne!(kept["result"]["isError"], json!(true), "{kept}");
-            assert!(kept["result"]["content"][0]["text"].as_str().unwrap().contains("\"id\""));
+            assert!(kept["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("\"id\""));
 
             let found = c
-                .request(4, "tools/call", json!({
-                    "name": RECALL,
-                    "arguments": { "query": "jose" }
-                }))
+                .request(
+                    4,
+                    "tools/call",
+                    json!({
+                        "name": RECALL,
+                        "arguments": { "query": "jose" }
+                    }),
+                )
                 .await;
             assert_eq!(found["result"]["isError"], json!(false), "{found}");
-            let text = found["result"]["content"][0]["text"].as_str().unwrap().to_string();
+            let text = found["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string();
             let hits: Vec<String> = serde_json::from_str(&text).expect("a JSON array of strings");
             assert_eq!(hits.len(), 1, "{hits:?}");
             // The default shape is unchanged — an array of strings — but since
             // 2026-10-17 each carries its occurrence date in-band (H12's
             // serving shape, at the product surface): a memory retained now is
             // stamped now, so the prefix is today's date.
-            assert!(hits[0].starts_with("[20"), "occurrence date in-band: {hits:?}");
+            assert!(
+                hits[0].starts_with("[20"),
+                "occurrence date in-band: {hits:?}"
+            );
             assert!(hits[0].contains("] auth uses jose middleware"), "{hits:?}");
         });
     }
@@ -1248,23 +1304,41 @@ mod tests {
             // Plain prose: nothing the redactor catches, so it reaches the store.
             let secret = "the vault word is p4ntaloon";
             let kept = c
-                .request(70, "tools/call", json!({
-                    "name": RETAIN,
-                    "arguments": { "content": secret }
-                }))
+                .request(
+                    70,
+                    "tools/call",
+                    json!({
+                        "name": RETAIN,
+                        "arguments": { "content": secret }
+                    }),
+                )
                 .await;
             assert_ne!(kept["result"]["isError"], json!(true), "{kept}");
             // The retain reply is `{"id": ...}` and nothing else, so the content
             // is confirmed by reading it back rather than from the write.
-            let text = kept["result"]["content"][0]["text"].as_str().unwrap().to_string();
-            let id = text.split('"').nth(3).expect("an id in the retain reply").to_string();
+            let text = kept["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            let id = text
+                .split('"')
+                .nth(3)
+                .expect("an id in the retain reply")
+                .to_string();
             let seeded = c
-                .request(74, "tools/call", json!({
-                    "name": RECALL,
-                    "arguments": { "query": "vault word", "format": "full" }
-                }))
+                .request(
+                    74,
+                    "tools/call",
+                    json!({
+                        "name": RECALL,
+                        "arguments": { "query": "vault word", "format": "full" }
+                    }),
+                )
                 .await;
-            let seeded_text = seeded["result"]["content"][0]["text"].as_str().unwrap().to_string();
+            let seeded_text = seeded["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string();
             assert!(
                 seeded_text.contains(secret),
                 "the content reached the store intact, so the redact has work: {seeded_text}"
@@ -1272,10 +1346,14 @@ mod tests {
 
             // First redact rewrites: current + versions.
             let done = c
-                .request(71, "tools/call", json!({
-                    "name": REDACT,
-                    "arguments": { "id": id, "pattern": "p4ntaloon", "name": "TOKEN" }
-                }))
+                .request(
+                    71,
+                    "tools/call",
+                    json!({
+                        "name": REDACT,
+                        "arguments": { "id": id, "pattern": "p4ntaloon", "name": "TOKEN" }
+                    }),
+                )
                 .await;
             assert_ne!(done["result"]["isError"], json!(true), "{done}");
             let body: Value =
@@ -1290,30 +1368,52 @@ mod tests {
             // `redacted_rows` is 0 with the row still present, which is the
             // difference between "nothing matched" and failure -- AGENTS §10.
             let again = c
-                .request(72, "tools/call", json!({
-                    "name": REDACT,
-                    "arguments": { "id": id, "pattern": "p4ntaloon" }
-                }))
+                .request(
+                    72,
+                    "tools/call",
+                    json!({
+                        "name": REDACT,
+                        "arguments": { "id": id, "pattern": "p4ntaloon" }
+                    }),
+                )
                 .await;
             let body2: Value =
                 serde_json::from_str(again["result"]["content"][0]["text"].as_str().unwrap())
                     .expect("a JSON body");
-            assert_eq!(body2["redacted_rows"], json!(0), "a second redact is a no-op");
+            assert_eq!(
+                body2["redacted_rows"],
+                json!(0),
+                "a second redact is a no-op"
+            );
 
             // The bytes are gone from the served content, and the row is still
             // there: the audit skeleton survives, the value does not.
             let recall = c
-                .request(73, "tools/call", json!({
-                    "name": RECALL,
-                    "arguments": { "query": "vault word", "format": "full" }
-                }))
+                .request(
+                    73,
+                    "tools/call",
+                    json!({
+                        "name": RECALL,
+                        "arguments": { "query": "vault word", "format": "full" }
+                    }),
+                )
                 .await;
-            let text = recall["result"]["content"][0]["text"].as_str().unwrap().to_string();
+            let text = recall["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string();
             assert!(!text.contains("p4ntaloon"), "the secret is gone: {text}");
-            assert!(text.contains("[REDACTED:TOKEN]"), "the row is recognisable: {text}");
+            assert!(
+                text.contains("[REDACTED:TOKEN]"),
+                "the row is recognisable: {text}"
+            );
             let rows: Vec<Value> = serde_json::from_str(&text).expect("a JSON array");
             assert_eq!(rows.len(), 1, "the row survived the redact: {rows:?}");
-            assert_eq!(rows[0]["id"], json!(id), "same id, rewritten bytes: {rows:?}");
+            assert_eq!(
+                rows[0]["id"],
+                json!(id),
+                "same id, rewritten bytes: {rows:?}"
+            );
         });
     }
 
@@ -1335,14 +1435,21 @@ mod tests {
                 .expect("seed before read-only");
             svc.set_bank_config("agent", r#"{"readOnly":true}"#)
                 .expect("set read-only");
-            let server = Server { svc: Arc::new(svc), bank: "agent".to_string() };
+            let server = Server {
+                svc: Arc::new(svc),
+                bank: "agent".to_string(),
+            };
             let (mut c, _running) = session(server);
 
             let done = c
-                .request(75, "tools/call", json!({
-                    "name": REDACT,
-                    "arguments": { "id": id, "pattern": "a secret" }
-                }))
+                .request(
+                    75,
+                    "tools/call",
+                    json!({
+                        "name": REDACT,
+                        "arguments": { "id": id, "pattern": "a secret" }
+                    }),
+                )
                 .await;
             assert_eq!(done["result"]["isError"], json!(true), "{done}");
             let text = done["result"]["content"][0]["text"].as_str().unwrap();
@@ -1357,14 +1464,24 @@ mod tests {
         run(async {
             let (mut c, _running) = session(server());
             let reply = c
-                .request(5, "tools/call", json!({ "name": "memory_nope", "arguments": {} }))
+                .request(
+                    5,
+                    "tools/call",
+                    json!({ "name": "memory_nope", "arguments": {} }),
+                )
                 .await;
             assert_eq!(reply["error"]["code"], json!(-32601), "{reply}");
             assert!(
-                reply["error"]["message"].as_str().unwrap().contains("memory_nope"),
+                reply["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("memory_nope"),
                 "{reply}"
             );
-            assert!(reply.get("result").is_none(), "an error carries no result: {reply}");
+            assert!(
+                reply.get("result").is_none(),
+                "an error carries no result: {reply}"
+            );
         });
     }
 
@@ -1375,18 +1492,27 @@ mod tests {
         run(async {
             let (mut c, _running) = session(server());
             for (id, name, args) in [
-                (10u64, RETAIN, json!({})),                             // missing `content`
-                (11, RETAIN, json!({ "bank": "  ", "content": "x" })),  // blank bank
+                (10u64, RETAIN, json!({})),                            // missing `content`
+                (11, RETAIN, json!({ "bank": "  ", "content": "x" })), // blank bank
                 (12, RECALL, json!({ "query": "x", "bank": 7 })),      // wrong-typed bank
-                (13, CONFIG_GET, json!({ "bank": "ghost" })),           // bank never created
+                (13, CONFIG_GET, json!({ "bank": "ghost" })),          // bank never created
             ] {
                 let reply = c
                     .request(id, "tools/call", json!({ "name": name, "arguments": args }))
                     .await;
-                assert_eq!(reply["result"]["isError"], json!(true), "{name} {args}: {reply}");
-                let text = reply["result"]["content"][0]["text"].as_str().unwrap_or_default();
+                assert_eq!(
+                    reply["result"]["isError"],
+                    json!(true),
+                    "{name} {args}: {reply}"
+                );
+                let text = reply["result"]["content"][0]["text"]
+                    .as_str()
+                    .unwrap_or_default();
                 assert!(!text.is_empty(), "{name} {args} must explain itself");
-                assert!(!text.contains("FOREIGN KEY"), "raw driver text leaked: {text}");
+                assert!(
+                    !text.contains("FOREIGN KEY"),
+                    "raw driver text leaked: {text}"
+                );
                 assert!(!text.contains('/'), "a path leaked: {text}");
             }
             // The session survives every one of them.
@@ -1398,18 +1524,36 @@ mod tests {
     #[test]
     fn retain_should_default_to_the_server_bank_and_honor_a_per_call_override() {
         let s = server();
-        let id = call_json(&s, RETAIN, json!({ "content": "rate limiting via token bucket" }))
-            .expect("retain");
+        let id = call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "rate limiting via token bucket" }),
+        )
+        .expect("retain");
         let id = id["id"].as_str().expect("id").to_string();
         assert!(
             s.svc.store.get("agent", &id).expect("get").is_some(),
             "no bank argument must land in the server's bank"
         );
 
-        call_json(&s, RETAIN, json!({ "bank": "other", "content": "second bank note" }))
-            .expect("retain other");
-        assert_eq!(s.svc.recall("other", "second bank", 2000).expect("recall").len(), 1);
-        assert!(s.svc.recall("agent", "second bank", 2000).expect("recall").is_empty());
+        call_json(
+            &s,
+            RETAIN,
+            json!({ "bank": "other", "content": "second bank note" }),
+        )
+        .expect("retain other");
+        assert_eq!(
+            s.svc
+                .recall("other", "second bank", 2000)
+                .expect("recall")
+                .len(),
+            1
+        );
+        assert!(s
+            .svc
+            .recall("agent", "second bank", 2000)
+            .expect("recall")
+            .is_empty());
     }
 
     #[test]
@@ -1428,9 +1572,14 @@ mod tests {
     #[test]
     fn tags_should_round_trip_from_a_tool_call_into_a_filtered_recall() {
         let s = server();
-        call_json(&s, RETAIN, json!({ "content": "auth uses jose middleware", "tags": ["Auth"] }))
-            .expect("retain tagged");
-        call_json(&s, RETAIN, json!({ "content": "auth uses jose untagged" })).expect("retain plain");
+        call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "auth uses jose middleware", "tags": ["Auth"] }),
+        )
+        .expect("retain tagged");
+        call_json(&s, RETAIN, json!({ "content": "auth uses jose untagged" }))
+            .expect("retain plain");
 
         let tagged: Vec<String> = serde_json::from_value(
             call_json(&s, RECALL, json!({ "query": "jose", "tags": ["auth"] })).expect("recall"),
@@ -1440,10 +1589,9 @@ mod tests {
         assert!(tagged[0].contains("middleware"), "{tagged:?}");
 
         // Both memories are still visible without the filter.
-        let all: Vec<String> = serde_json::from_value(
-            call_json(&s, RECALL, json!({ "query": "jose" })).expect("all"),
-        )
-        .expect("array");
+        let all: Vec<String> =
+            serde_json::from_value(call_json(&s, RECALL, json!({ "query": "jose" })).expect("all"))
+                .expect("array");
         assert_eq!(all.len(), 2, "{all:?}");
     }
 
@@ -1451,7 +1599,9 @@ mod tests {
     fn an_explicit_budget_should_win_over_the_bank_default() {
         let s = server();
         call_json(&s, RETAIN, json!({ "content": "jose ".repeat(400) })).expect("retain");
-        s.svc.set_bank_config("agent", r#"{"recallMaxTokens":5}"#).expect("config");
+        s.svc
+            .set_bank_config("agent", r#"{"recallMaxTokens":5}"#)
+            .expect("config");
 
         let bank_default: Vec<String> = serde_json::from_value(
             call_json(&s, RECALL, json!({ "query": "jose" })).expect("bank default"),
@@ -1466,9 +1616,15 @@ mod tests {
         // serving shape) — the budget trims the *content*, so the count is
         // taken after the `] ` that closes the prefix.
         let content_chars = |s: &str| {
-            s.split_once("] ").map(|(_, rest)| rest.chars().count()).unwrap_or_else(|| s.chars().count())
+            s.split_once("] ")
+                .map(|(_, rest)| rest.chars().count())
+                .unwrap_or_else(|| s.chars().count())
         };
-        assert_eq!(content_chars(&bank_default[0]), 5 * 4, "bank recallMaxTokens must apply");
+        assert_eq!(
+            content_chars(&bank_default[0]),
+            5 * 4,
+            "bank recallMaxTokens must apply"
+        );
         assert!(
             content_chars(&explicit[0]) > content_chars(&bank_default[0]),
             "an explicit budget must override the bank default"
@@ -1480,11 +1636,25 @@ mod tests {
     #[test]
     fn retain_created_at_should_round_trip_through_full_recall() {
         let s = server();
-        call_json(&s, RETAIN, json!({ "content": "jose dated", "created_at": "2023-05-08T13:56:00+05:30" }))
-            .expect("retain");
-        let full = call_json(&s, RECALL, json!({ "query": "jose", "format": "full" })).expect("full");
-        assert_eq!(full[0]["created_at"], json!("2023-05-08T08:26:00.000Z"), "{full}");
-        assert!(call_json(&s, RETAIN, json!({ "content": "jose bad", "created_at": "May 8" })).is_err());
+        call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "jose dated", "created_at": "2023-05-08T13:56:00+05:30" }),
+        )
+        .expect("retain");
+        let full =
+            call_json(&s, RECALL, json!({ "query": "jose", "format": "full" })).expect("full");
+        assert_eq!(
+            full[0]["created_at"],
+            json!("2023-05-08T08:26:00.000Z"),
+            "{full}"
+        );
+        assert!(call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "jose bad", "created_at": "May 8" })
+        )
+        .is_err());
     }
 
     // `format: "full"` is the citing shape over MCP too; the default stays the
@@ -1492,13 +1662,18 @@ mod tests {
     #[test]
     fn recall_should_serve_the_full_shape_only_when_asked() {
         let s = server();
-        let kept = call_json(&s, RETAIN, json!({ "content": "auth uses jose middleware" }))
-            .expect("retain");
+        let kept = call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "auth uses jose middleware" }),
+        )
+        .expect("retain");
         let id = kept["id"].as_str().expect("id");
 
-        let plain: Vec<String> =
-            serde_json::from_value(call_json(&s, RECALL, json!({ "query": "jose" })).expect("recall"))
-                .expect("array of strings");
+        let plain: Vec<String> = serde_json::from_value(
+            call_json(&s, RECALL, json!({ "query": "jose" })).expect("recall"),
+        )
+        .expect("array of strings");
         assert_eq!(plain.len(), 1, "{plain:?}");
 
         let full: Vec<Value> = serde_json::from_value(
@@ -1507,7 +1682,10 @@ mod tests {
         .expect("array of objects");
         assert_eq!(full.len(), 1, "{full:?}");
         assert_eq!(full[0]["id"], json!(id), "{full:?}");
-        assert_eq!(full[0]["content"].as_str(), Some("auth uses jose middleware"));
+        assert_eq!(
+            full[0]["content"].as_str(),
+            Some("auth uses jose middleware")
+        );
         // Same fused RRF value the HTTP surface serves: rank 1 in both streams,
         // each contributing its stream's weight. One rule, two adapters — the
         // score is not re-derived per surface. Built from the shipped weights so
@@ -1578,7 +1756,10 @@ mod tests {
         for level in ["off", "info", "debug", "trace"] {
             let (stdout, stderr) = run_mcp(&dir, level, &frames);
             let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
-            assert!(lines.len() >= 2, "RUST_LOG={level} left no protocol: {stdout:?}");
+            assert!(
+                lines.len() >= 2,
+                "RUST_LOG={level} left no protocol: {stdout:?}"
+            );
             let ids: Vec<Option<u64>> = lines
                 .iter()
                 .map(|line| {
@@ -1627,15 +1808,22 @@ mod tests {
         run(async {
             let (mut c, _running) = session(server());
             let reply = c
-                .request(30, "initialize", json!({
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": {},
-                    "clientInfo": { "name": "test", "version": "1" }
-                }))
+                .request(
+                    30,
+                    "initialize",
+                    json!({
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": { "name": "test", "version": "1" }
+                    }),
+                )
                 .await;
             let caps = &reply["result"]["capabilities"];
             for declared in ["tools", "resources", "prompts", "completions"] {
-                assert!(caps[declared].is_object(), "{declared} must be declared: {reply}");
+                assert!(
+                    caps[declared].is_object(),
+                    "{declared} must be declared: {reply}"
+                );
             }
             // Never served, so never declared: subscribing, any list-changed
             // notification this server does not send, and log messages.
@@ -1659,8 +1847,12 @@ mod tests {
     #[test]
     fn resources_list_should_expose_each_memory_as_an_addressable_uri() {
         let s = server();
-        let kept = call_json(&s, RETAIN, json!({ "content": "auth uses jose middleware" }))
-            .expect("retain");
+        let kept = call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "auth uses jose middleware" }),
+        )
+        .expect("retain");
         let id = kept["id"].as_str().expect("id").to_string();
 
         let listed = s.list(None).expect("list");
@@ -1685,14 +1877,22 @@ mod tests {
     #[test]
     fn read_resource_should_return_the_stored_content_for_its_uri() {
         let s = server();
-        let kept = call_json(&s, RETAIN, json!({ "content": "auth uses jose middleware" }))
-            .expect("retain");
+        let kept = call_json(
+            &s,
+            RETAIN,
+            json!({ "content": "auth uses jose middleware" }),
+        )
+        .expect("retain");
         let id = kept["id"].as_str().expect("id").to_string();
 
         let read = s.read(&format!("memory://agent/{id}")).expect("read");
         assert_eq!(read.contents.len(), 1, "{read:?}");
-        let ResourceContents::TextResourceContents { text, uri, mime_type, .. } =
-            &read.contents[0]
+        let ResourceContents::TextResourceContents {
+            text,
+            uri,
+            mime_type,
+            ..
+        } = &read.contents[0]
         else {
             panic!("a memory is text: {read:?}");
         };
@@ -1706,8 +1906,7 @@ mod tests {
     #[test]
     fn a_pinned_endpoint_should_refuse_a_resource_uri_naming_another_bank() {
         let s = server();
-        let mine = call_json(&s, RETAIN, json!({ "content": "pinned bank note" }))
-            .expect("retain");
+        let mine = call_json(&s, RETAIN, json!({ "content": "pinned bank note" })).expect("retain");
         let mine = mine["id"].as_str().expect("id").to_string();
         let theirs = call_json(
             &s,
@@ -1717,7 +1916,9 @@ mod tests {
         .expect("retain other");
         let theirs = theirs["id"].as_str().expect("id").to_string();
 
-        let ok = s.read_scoped(&format!("memory://agent/{mine}"), Some("agent")).expect("own");
+        let ok = s
+            .read_scoped(&format!("memory://agent/{mine}"), Some("agent"))
+            .expect("own");
         assert_eq!(ok.contents.len(), 1, "{ok:?}");
 
         let err = s
@@ -1737,8 +1938,12 @@ mod tests {
     fn resources_list_should_serve_the_pinned_bank_and_an_empty_one_as_nothing() {
         let s = server();
         call_json(&s, RETAIN, json!({ "content": "in the pinned bank" })).expect("retain");
-        call_json(&s, RETAIN, json!({ "bank": "other", "content": "not yours" }))
-            .expect("retain other");
+        call_json(
+            &s,
+            RETAIN,
+            json!({ "bank": "other", "content": "not yours" }),
+        )
+        .expect("retain other");
 
         let pinned = s.list_scoped(None, Some("agent")).expect("list");
         assert_eq!(pinned.resources.len(), 1, "{pinned:?}");
@@ -1751,7 +1956,11 @@ mod tests {
         // The server default is untouched by the pin: it is still `agent`.
         assert_eq!(s.list(None).expect("list").resources.len(), 1);
         // A bank that was never created lists as empty, not as a failure.
-        assert!(s.list_scoped(None, Some("ghost")).expect("list").resources.is_empty());
+        assert!(s
+            .list_scoped(None, Some("ghost"))
+            .expect("list")
+            .resources
+            .is_empty());
     }
 
     // The bound is the whole reason the list is safe, and the cursor is the
@@ -1760,8 +1969,12 @@ mod tests {
     fn resources_list_should_be_bounded_and_page_with_a_cursor() {
         let s = server();
         for n in 0..=RESOURCE_PAGE {
-            call_json(&s, RETAIN, json!({ "content": format!("memory number {n}") }))
-                .expect("retain");
+            call_json(
+                &s,
+                RETAIN,
+                json!({ "content": format!("memory number {n}") }),
+            )
+            .expect("retain");
         }
 
         let first = s.list(None).expect("first page");
@@ -1778,7 +1991,9 @@ mod tests {
 
         // A cursor the server did not mint is refused, not read as page zero:
         // silently serving page 0 would look like the start of a whole bank.
-        let err = s.list(Some("not-an-offset")).expect_err("a bad cursor must fail loudly");
+        let err = s
+            .list(Some("not-an-offset"))
+            .expect_err("a bad cursor must fail loudly");
         assert_eq!(error_code(&err), -32602, "{err:?}");
     }
 
@@ -1813,7 +2028,11 @@ mod tests {
         );
         // A blank bank is the service's own message, the one the tool path uses.
         let blank = s.read("memory:///some-id").expect_err("blank bank");
-        assert!(blank.message.contains("invalid bank id"), "{}", blank.message);
+        assert!(
+            blank.message.contains("invalid bank id"),
+            "{}",
+            blank.message
+        );
     }
 
     // The preamble, served as-is. Byte equality is the assertion: a re-wrap, a
@@ -1845,7 +2064,8 @@ mod tests {
             assert_eq!(messages.len(), 1, "{got}");
             assert_eq!(messages[0]["role"], json!("user"), "{got}");
             assert_eq!(
-                messages[0]["content"]["text"], json!(REFLECT_SYSTEM_PROMPT),
+                messages[0]["content"]["text"],
+                json!(REFLECT_SYSTEM_PROMPT),
                 "the preamble must reach the host byte for byte"
             );
         });
@@ -1860,7 +2080,10 @@ mod tests {
                 .await;
             assert_eq!(reply["error"]["code"], json!(-32602), "{reply}");
             assert!(
-                reply["error"]["message"].as_str().unwrap().contains("memory_nope"),
+                reply["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("memory_nope"),
                 "{reply}"
             );
         });
@@ -1875,17 +2098,25 @@ mod tests {
             // A bank exists once it has been retained into; completion offers
             // real banks, so the store has to have one.
             let kept = c
-                .request(34, "tools/call", json!({
-                    "name": RETAIN, "arguments": { "content": "seeds the bank" }
-                }))
+                .request(
+                    34,
+                    "tools/call",
+                    json!({
+                        "name": RETAIN, "arguments": { "content": "seeds the bank" }
+                    }),
+                )
                 .await;
             assert_ne!(kept["result"]["isError"], json!(true), "{kept}");
 
             let reply = c
-                .request(35, "completion/complete", json!({
-                    "ref": { "type": "ref/resource", "uri": "memory://{bank}/{id}" },
-                    "argument": { "name": "bank", "value": "AG" }
-                }))
+                .request(
+                    35,
+                    "completion/complete",
+                    json!({
+                        "ref": { "type": "ref/resource", "uri": "memory://{bank}/{id}" },
+                        "argument": { "name": "bank", "value": "AG" }
+                    }),
+                )
                 .await;
             let completion = &reply["result"]["completion"];
             assert_eq!(
@@ -1909,13 +2140,18 @@ mod tests {
                 json!({ "type": "ref/resource", "uri": "file:///etc/passwd" }),
             ] {
                 let reply = c
-                    .request(36, "completion/complete", json!({
-                        "ref": r#ref,
-                        "argument": { "name": "bank", "value": "" }
-                    }))
+                    .request(
+                        36,
+                        "completion/complete",
+                        json!({
+                            "ref": r#ref,
+                            "argument": { "name": "bank", "value": "" }
+                        }),
+                    )
                     .await;
                 assert_eq!(
-                    reply["result"]["completion"]["values"], json!([]),
+                    reply["result"]["completion"]["values"],
+                    json!([]),
                     "an empty list, not an error: {reply}"
                 );
             }
@@ -1929,8 +2165,12 @@ mod tests {
     fn bank_completion_should_serve_only_real_banks() {
         let s = server();
         call_json(&s, RETAIN, json!({ "content": "seeds the default bank" })).expect("retain");
-        call_json(&s, RETAIN, json!({ "bank": "other", "content": "seeds another" }))
-            .expect("retain other");
+        call_json(
+            &s,
+            RETAIN,
+            json!({ "bank": "other", "content": "seeds another" }),
+        )
+        .expect("retain other");
 
         assert_eq!(s.bank_completions(""), vec!["agent", "other"]);
         assert_eq!(s.bank_completions("oth"), vec!["other"]);
@@ -2014,13 +2254,18 @@ mod tests {
             };
             let (mut c, _running) = session(s);
             // `memory_retain` -> `put_bank`, the tool path's first store call.
-            c.request(1, "tools/call", json!({ "name": RETAIN, "arguments": { "content": "x" } }))
-                .await;
+            c.request(
+                1,
+                "tools/call",
+                json!({ "name": RETAIN, "arguments": { "content": "x" } }),
+            )
+            .await;
             // `resources/list` -> `list_page`, whose default delegates to `list`.
             c.request(2, "resources/list", json!({})).await;
             // `resources/read` -> `get`. A miss is a JSON-RPC error, which is a
             // reply like any other here: what matters is that `get` ran.
-            c.request(3, "resources/read", json!({ "uri": "memory://agent/m1" })).await;
+            c.request(3, "resources/read", json!({ "uri": "memory://agent/m1" }))
+                .await;
             // `completion/complete` -> `bank_ttls`, the bank listing.
             c.request(
                 4,
@@ -2034,7 +2279,11 @@ mod tests {
             std::thread::current().id()
         });
 
-        let seen = probe.seen.lock().expect("probe mutex is never poisoned").clone();
+        let seen = probe
+            .seen
+            .lock()
+            .expect("probe mutex is never poisoned")
+            .clone();
         assert_eq!(
             seen.len(),
             4,

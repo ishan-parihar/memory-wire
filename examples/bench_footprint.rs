@@ -54,14 +54,17 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::Result;
-use bench_common::{arg, db_bytes, free_port, http, profile, rm_db, rss_kb, rss_kb_of, wait_healthy};
+use bench_common::{
+    arg, db_bytes, free_port, http, profile, rm_db, rss_kb, rss_kb_of, wait_healthy,
+};
 use memory_wire::memory::{Bank, Memory};
 use memory_wire::store::{SqliteStore, Store};
 use rusqlite::Connection;
 use std::process::{Child, Command, Stdio};
 
 /// Default corpus: the size the README's storage line is quoted at.
-const DEFAULT_MEMORIES: usize = 10_000;/// How long to wait for a spawned `serve` to answer `/health` before giving up.
+const DEFAULT_MEMORIES: usize = 10_000;
+/// How long to wait for a spawned `serve` to answer `/health` before giving up.
 /// Generous because this box is not quiet; a server that has not answered in two
 /// seconds has failed, whatever the machine is doing.
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
@@ -265,7 +268,10 @@ fn main() -> Result<()> {
     println!("profile {}", profile());
     println!("binary  {binary_note}");
     println!("harness idle RSS      {}", opt_mb(harness_idle));
-    println!("harness RSS @ {memories} rows  {}", opt_range_mb(&harness_loaded));
+    println!(
+        "harness RSS @ {memories} rows  {}",
+        opt_range_mb(&harness_loaded)
+    );
     match &serve {
         Some(s) => {
             println!("serve idle RSS        {}", opt_kb(s.idle_kb));

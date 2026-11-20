@@ -130,9 +130,7 @@ pub enum ApiError {
 /// does *not* record is the request, so a retained memory never reaches the log.
 pub fn http_error(e: &ApiError) -> (StatusCode, &'static str) {
     match e {
-        ApiError::Store(StoreError::InvalidBank) => {
-            (StatusCode::BAD_REQUEST, "invalid bank id")
-        }
+        ApiError::Store(StoreError::InvalidBank) => (StatusCode::BAD_REQUEST, "invalid bank id"),
         ApiError::Store(StoreError::InvalidConfig) => {
             (StatusCode::BAD_REQUEST, "invalid bank config")
         }
@@ -300,8 +298,7 @@ type SynonymTable = HashMap<String, RecallSynonyms>;
 /// cost — provably allocates nothing for a feature it has not enabled. `Sync` is
 /// what makes this sound: it is never mutated, and [`expand_synonyms`] takes
 /// `&`.
-static EMPTY_SYNONYMS: std::sync::LazyLock<SynonymTable> =
-    std::sync::LazyLock::new(HashMap::new);
+static EMPTY_SYNONYMS: std::sync::LazyLock<SynonymTable> = std::sync::LazyLock::new(HashMap::new);
 
 /// One `recallSynonyms` entry: the terms to add, and how much each is worth.
 ///
@@ -362,7 +359,9 @@ impl Trust {
             "untrusted_external" | "untrusted-external" | "untrusted" => {
                 Some(Trust::UntrustedExternal)
             }
-            "agent_inferred" | "agent-inferred" | "agent_inferred_only" => Some(Trust::AgentInferred),
+            "agent_inferred" | "agent-inferred" | "agent_inferred_only" => {
+                Some(Trust::AgentInferred)
+            }
             "human_stated" | "human-stated" | "human" => Some(Trust::HumanStated),
             "verified" => Some(Trust::Verified),
             _ => None,
@@ -464,7 +463,12 @@ fn parse_recall_synonyms(value: &serde_json::Value) -> HashMap<String, RecallSyn
         let terms: Vec<String> = entry
             .get("terms")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|t| t.as_str()).map(String::from).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|t| t.as_str())
+                    .map(String::from)
+                    .collect()
+            })
             .unwrap_or_default();
         if terms.is_empty() {
             continue;
@@ -596,7 +600,6 @@ impl<'a> TagScope<'a> {
     }
 }
 
-
 impl<S: Store> MemoryService<S> {
     /// Create a service over the given store.
     pub fn new(store: S) -> Self {
@@ -682,7 +685,15 @@ impl<S: Store> MemoryService<S> {
         document_id: Option<&str>,
         update_mode: UpdateMode,
     ) -> Result<String, ApiError> {
-        self.retain_doc_at(bank_id, content, context, tags, document_id, update_mode, None)
+        self.retain_doc_at(
+            bank_id,
+            content,
+            context,
+            tags,
+            document_id,
+            update_mode,
+            None,
+        )
     }
 
     /// [`Self::retain_doc`] with a caller-stated occurrence time.
@@ -1085,12 +1096,15 @@ impl<S: Store> MemoryService<S> {
         // means the shipped recall path runs byte-identically — no SQL, no rows
         // removed, same ranking, same score. `Some` narrows both streams in SQL
         // before fusion, so an excluded row never votes.
-        let dims = tags.dimensions.as_ref().map(|d| crate::store::DimensionalFilter {
-            scopes: d.scopes.to_vec(),
-            aspects: d.aspects.to_vec(),
-            lifecycles: d.lifecycles.to_vec(),
-            include_history: d.include_history,
-        });
+        let dims = tags
+            .dimensions
+            .as_ref()
+            .map(|d| crate::store::DimensionalFilter {
+                scopes: d.scopes.to_vec(),
+                aspects: d.aspects.to_vec(),
+                lifecycles: d.lifecycles.to_vec(),
+                include_history: d.include_history,
+            });
         let (mut all, mut keyword_hits) = if let Some(dims) = dims.as_ref() {
             self.store
                 .recall_inputs_dimensional(bank_id, &lexical, &normalized, FTS_LIMIT, dims)?
@@ -1121,7 +1135,10 @@ impl<S: Store> MemoryService<S> {
         let fts_stream: Vec<RankedHit> = keyword_hits
             .iter()
             .enumerate()
-            .map(|(i, (id, _))| RankedHit { id: id.clone(), rank: i + 1 })
+            .map(|(i, (id, _))| RankedHit {
+                id: id.clone(),
+                rank: i + 1,
+            })
             .collect();
         // The BM25 magnitudes, keyed by id. `store::KeywordHits` already carries
         // them as the `f64` of each pair — FTS5's `bm25()`, more negative better —
@@ -1132,18 +1149,27 @@ impl<S: Store> MemoryService<S> {
         let magnitudes: HashMap<String, f64> = if weights.bm25_magnitude == 0.0 {
             HashMap::new()
         } else {
-            keyword_hits.iter().map(|(id, rank)| (id.clone(), *rank)).collect()
+            keyword_hits
+                .iter()
+                .map(|(id, rank)| (id.clone(), *rank))
+                .collect()
         };
         // Stream B: token-overlap rank, capped so a large bank cannot flood fusion.
         // `overlap_scope` defaults to the whole-document scorer, which is the same
         // function this line has always called.
-        let ranked =
-            rank_candidates_scoped(query, all.iter().map(|m| m.content.as_str()), weights.overlap_scope);
+        let ranked = rank_candidates_scoped(
+            query,
+            all.iter().map(|m| m.content.as_str()),
+            weights.overlap_scope,
+        );
         let overlap_stream: Vec<RankedHit> = ranked
             .iter()
             .take(OVERLAP_LIMIT)
             .enumerate()
-            .map(|(i, (idx, _))| RankedHit { id: all[*idx].id.clone(), rank: i + 1 })
+            .map(|(i, (idx, _))| RankedHit {
+                id: all[*idx].id.clone(),
+                rank: i + 1,
+            })
             .collect();
         // Stream C: recency, off unless the resolved weight is non-zero. Resolved
         // through `recency_weight_for` rather than read off the struct so the
@@ -1153,11 +1179,8 @@ impl<S: Store> MemoryService<S> {
         let mut streams = vec![fts_stream, overlap_stream];
         let recency_weight = weights.recency_weight_for(query);
         if recency_weight != 0.0 {
-            let recency_stream = recency_rank(
-                &all,
-                chrono::Utc::now(),
-                weights.recency_half_life_days,
-            );
+            let recency_stream =
+                recency_rank(&all, chrono::Utc::now(), weights.recency_half_life_days);
             if !recency_stream.is_empty() {
                 streams.push(recency_stream);
             }
@@ -1170,8 +1193,7 @@ impl<S: Store> MemoryService<S> {
         // One index over the single store read, plus the score the ranking used.
         // Fused ids are bounded by the two stream caps, so the content lookup
         // below is bounded too.
-        let by_id: HashMap<&str, &Memory> =
-            all.iter().map(|m| (m.id.as_str(), m)).collect();
+        let by_id: HashMap<&str, &Memory> = all.iter().map(|m| (m.id.as_str(), m)).collect();
         let mut ids: Vec<String> = Vec::with_capacity(fused.len());
         let mut scores: HashMap<&str, f64> = HashMap::with_capacity(fused.len());
         // The content the budget trim reads is content `by_id` already holds, so
@@ -1272,7 +1294,12 @@ impl<S: Store> MemoryService<S> {
     /// A `readOnly` bank refuses this: a supersede hides a row from default
     /// recall and appends to the audit trail, so it changes what the bank serves
     /// even though the row survives. Hiding is a write.
-    pub fn supersede_memory(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, ApiError> {
+    pub fn supersede_memory(
+        &self,
+        bank_id: &str,
+        id: &str,
+        superseded_by: Option<&str>,
+    ) -> Result<bool, ApiError> {
         self.require_writable(bank_id)?;
         Ok(self.store.supersede(bank_id, id, superseded_by)?)
     }
@@ -1288,7 +1315,13 @@ impl<S: Store> MemoryService<S> {
     ///
     /// A `readOnly` bank refuses this. Redaction rewrites stored bytes in place,
     /// which is the clearest case of a write the flag exists to stop.
-    pub fn redact_memory(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, ApiError> {
+    pub fn redact_memory(
+        &self,
+        bank_id: &str,
+        id: &str,
+        pattern: &str,
+        name: &str,
+    ) -> Result<usize, ApiError> {
         self.require_writable(bank_id)?;
         Ok(self.store.redact(bank_id, id, pattern, name)?)
     }
@@ -1304,12 +1337,7 @@ impl<S: Store> MemoryService<S> {
     /// `tags` scopes the answer to memories carrying any of them (empty = the
     /// whole bank), with the same fail-closed normalization recall applies.
     /// The framing an LLM step must follow is [`REFLECT_SYSTEM_PROMPT`].
-    pub fn reflect(
-        &self,
-        bank_id: &str,
-        query: &str,
-        tags: &[String],
-    ) -> Result<String, ApiError> {
+    pub fn reflect(&self, bank_id: &str, query: &str, tags: &[String]) -> Result<String, ApiError> {
         Self::require_bank(bank_id)?;
         let hits = self.recall_filtered(bank_id, query, Some(2000), tags, &[])?;
         match hits.first() {
@@ -1330,7 +1358,10 @@ pub fn operations() -> [&'static str; 3] {
 /// drift; the binary wires it in with
 /// `Router::merge(memory_wire::api::bank_config_routes::<S>())`.
 pub fn bank_config_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
-    Router::new().route("/banks/:id/config", get(get_bank_config).put(put_bank_config))
+    Router::new().route(
+        "/banks/:id/config",
+        get(get_bank_config).put(put_bank_config),
+    )
 }
 
 /// The TOON encoder, built in-tree rather than pulled in as a crate.
@@ -1790,7 +1821,10 @@ fn toon_rows(rows: &[Memory], cap: Option<usize>, bank: &str) -> (Vec<render::Ro
                         .clone()
                         .map_or(render::Cell::Null, render::Cell::Text),
                 ),
-                ("content".to_string(), render::Cell::Text(content.into_owned())),
+                (
+                    "content".to_string(),
+                    render::Cell::Text(content.into_owned()),
+                ),
             ];
             if let Some(ctx) = &m.context {
                 row.push(("context".to_string(), render::Cell::Text(ctx.clone())));
@@ -1835,7 +1869,9 @@ async fn get_bank_config<S: Store + 'static>(
     let raw = blocking(move || svc.bank_config(&bank))
         .await
         .map_err(to_http)?;
-    Ok(Json(serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))))
+    Ok(Json(
+        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({})),
+    ))
 }
 
 /// `?cursor=` for the hygiene scan: a `created_at` watermark, exclusive.
@@ -1888,8 +1924,13 @@ async fn bank_hygiene<S: Store + 'static>(
     let report = blocking({
         let (scan_svc, scan_bank, cursor) = (Arc::clone(&svc), bank.clone(), q.cursor.clone());
         move || {
-            crate::hygiene::hygiene_scan(scan_svc.store.as_ref(), &scan_bank, cursor.as_deref(), &opts)
-                .map_err(ApiError::from)
+            crate::hygiene::hygiene_scan(
+                scan_svc.store.as_ref(),
+                &scan_bank,
+                cursor.as_deref(),
+                &opts,
+            )
+            .map_err(ApiError::from)
         }
     })
     .await
@@ -1945,31 +1986,41 @@ async fn put_bank_config<S: Store + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::Bank;
     use crate::recall::{
         is_temporal_query, rank_candidates, recency_rank, KeywordScope, OverlapScope, RecencyPolicy,
     };
-    use crate::memory::Bank;
     use crate::store::{SqliteStore, UpdateMode};
 
     #[test]
     fn retain_should_redact_before_persist() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
-        let id = svc.retain("b", "key sk-abcDEF123456", None).expect("retain");
+        let id = svc
+            .retain("b", "key sk-abcDEF123456", None)
+            .expect("retain");
         let got = svc.store.get("b", &id).expect("get").expect("some");
         assert!(got.content.contains("[REDACTED:api_key]"));
     }
 
     #[test]
-    fn recall_should_isolate_banks() {        let s = SqliteStore::open_in_memory().expect("open");
+    fn recall_should_isolate_banks() {
+        let s = SqliteStore::open_in_memory().expect("open");
         for b in ["a", "b"] {
-            s.put_bank(&Bank { id: b.to_string(), name: b.to_string() })
-                .expect("bank");
+            s.put_bank(&Bank {
+                id: b.to_string(),
+                name: b.to_string(),
+            })
+            .expect("bank");
         }
         let svc = MemoryService::new(s);
-        svc.retain("a", "auth uses jose middleware", None).expect("retain");
+        svc.retain("a", "auth uses jose middleware", None)
+            .expect("retain");
         assert_eq!(svc.recall("b", "jose", 2000).expect("recall").len(), 0);
         assert_eq!(svc.recall("a", "jose", 2000).expect("recall").len(), 1);
     }
@@ -1977,11 +2028,18 @@ mod tests {
     #[test]
     fn retain_should_redact_context_too() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         let id = svc
-            .retain("b", "harmless body", Some("hook saw ghp_abcdefgh12345678".into()))
+            .retain(
+                "b",
+                "harmless body",
+                Some("hook saw ghp_abcdefgh12345678".into()),
+            )
             .expect("retain");
         let got = svc.store.get("b", &id).expect("get").expect("some");
         let ctx = got.context.expect("context");
@@ -1998,10 +2056,16 @@ mod tests {
         for bank in ["", "   ", "\t\n"] {
             assert!(invalid_bank(svc.retain(bank, "x", None)), "retain {bank:?}");
             assert!(invalid_bank(svc.recall(bank, "x", 100)), "recall {bank:?}");
-            assert!(invalid_bank(svc.reflect(bank, "x", &[])), "reflect {bank:?}");
+            assert!(
+                invalid_bank(svc.reflect(bank, "x", &[])),
+                "reflect {bank:?}"
+            );
             assert!(invalid_bank(svc.list_memories(bank, 1, 0)), "list {bank:?}");
             assert!(invalid_bank(svc.get_memory(bank, "m")), "get {bank:?}");
-            assert!(invalid_bank(svc.delete_memory(bank, "m")), "delete {bank:?}");
+            assert!(
+                invalid_bank(svc.delete_memory(bank, "m")),
+                "delete {bank:?}"
+            );
             assert!(invalid_bank(svc.bank_stats(bank)), "stats {bank:?}");
             assert!(
                 invalid_bank(svc.retain_doc(bank, "x", None, &[], Some("d"), UpdateMode::Replace)),
@@ -2025,7 +2089,10 @@ mod tests {
         let (status, msg) = http_error(&failed);
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(msg, "storage error");
-        assert!(!msg.contains("FOREIGN KEY"), "raw driver text must not leak");
+        assert!(
+            !msg.contains("FOREIGN KEY"),
+            "raw driver text must not leak"
+        );
     }
 
     // The HTTP and MCP handlers both declared the bank before writing, so a
@@ -2035,19 +2102,37 @@ mod tests {
     fn retain_should_create_the_bank_it_names() {
         let s = SqliteStore::open_in_memory().expect("open");
         let svc = MemoryService::new(s);
-        assert!(svc.store.get_bank_config("fresh").expect("config").is_none());
+        assert!(svc
+            .store
+            .get_bank_config("fresh")
+            .expect("config")
+            .is_none());
 
         let id = svc.retain("fresh", "auth uses jose", None).expect("retain");
-        assert!(svc.store.get_bank_config("fresh").expect("config").is_some());
+        assert!(svc
+            .store
+            .get_bank_config("fresh")
+            .expect("config")
+            .is_some());
         assert_eq!(
-            svc.get_memory("fresh", &id).expect("get").expect("some").content,
+            svc.get_memory("fresh", &id)
+                .expect("get")
+                .expect("some")
+                .content,
             "auth uses jose"
         );
         // Every entry point into the write path, not just the plain one.
         svc.retain_tagged("tagged", "jose note", None, &tags(&["t"]))
             .expect("tagged");
-        svc.retain_doc("documented", "jose note", None, &[], Some("d"), UpdateMode::Replace)
-            .expect("documented");
+        svc.retain_doc(
+            "documented",
+            "jose note",
+            None,
+            &[],
+            Some("d"),
+            UpdateMode::Replace,
+        )
+        .expect("documented");
         for bank in ["fresh", "tagged", "documented"] {
             assert_eq!(svc.bank_stats(bank).expect("stats").memories, 1, "{bank}");
         }
@@ -2073,18 +2158,31 @@ mod tests {
     #[test]
     fn retain_should_dedup_byte_identical_content_within_a_bank() {
         let svc = svc_with_banks(&["a", "b"]);
-        let first = svc.retain("a", "auth uses jose middleware", None).expect("first");
-        let again = svc.retain("a", "auth uses jose middleware", None).expect("again");
-        assert_eq!(again, first, "the row that already holds the content is returned");
-        assert_eq!(svc.bank_stats("a").expect("stats").memories, 1, "no second copy");
+        let first = svc
+            .retain("a", "auth uses jose middleware", None)
+            .expect("first");
+        let again = svc
+            .retain("a", "auth uses jose middleware", None)
+            .expect("again");
+        assert_eq!(
+            again, first,
+            "the row that already holds the content is returned"
+        );
+        assert_eq!(
+            svc.bank_stats("a").expect("stats").memories,
+            1,
+            "no second copy"
+        );
 
         // Scoped to the bank: the same content in another bank is a different
         // memory, not a duplicate of this one.
-        svc.retain("b", "auth uses jose middleware", None).expect("other bank");
+        svc.retain("b", "auth uses jose middleware", None)
+            .expect("other bank");
         assert_eq!(svc.bank_stats("b").expect("stats").memories, 1);
 
         // Different content is a different memory.
-        svc.retain("a", "auth uses jose secrets", None).expect("changed");
+        svc.retain("a", "auth uses jose secrets", None)
+            .expect("changed");
         assert_eq!(svc.bank_stats("a").expect("stats").memories, 2);
     }
 
@@ -2106,10 +2204,24 @@ mod tests {
     fn a_document_scoped_retain_should_not_be_deduped() {
         let svc = svc_with_banks(&["a"]);
         let first = svc
-            .retain_doc("a", "auth uses jose v1", None, &[], Some("doc"), UpdateMode::Replace)
+            .retain_doc(
+                "a",
+                "auth uses jose v1",
+                None,
+                &[],
+                Some("doc"),
+                UpdateMode::Replace,
+            )
             .expect("v1");
         let second = svc
-            .retain_doc("a", "auth uses jose v1", None, &[], Some("other"), UpdateMode::Replace)
+            .retain_doc(
+                "a",
+                "auth uses jose v1",
+                None,
+                &[],
+                Some("other"),
+                UpdateMode::Replace,
+            )
             .expect("v2");
         assert_ne!(second, first, "each document id gets its own row");
         assert_eq!(svc.bank_stats("a").expect("stats").memories, 2);
@@ -2129,25 +2241,47 @@ mod tests {
     #[test]
     fn recall_should_truncate_rather_than_exceed_the_budget() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         let long = "jose ".repeat(400);
         svc.retain("b", &long, None).expect("retain");
 
         let hits = svc.recall("b", "jose", 5).expect("recall");
-        assert_eq!(hits.len(), 1, "an over-budget top hit is truncated, not dropped");
+        assert_eq!(
+            hits.len(),
+            1,
+            "an over-budget top hit is truncated, not dropped"
+        );
         let got = &hits[0].memory.content;
-        assert!(got.ends_with(crate::recall::TRUNCATION_MARKER), "got len {}", got.len());
-        assert!(got.chars().count() <= 5 * 4, "budget cap breached: {}", got.chars().count());
+        assert!(
+            got.ends_with(crate::recall::TRUNCATION_MARKER),
+            "got len {}",
+            got.len()
+        );
+        assert!(
+            got.chars().count() <= 5 * 4,
+            "budget cap breached: {}",
+            got.chars().count()
+        );
 
         // A one-token budget cannot fit the marker, so the top hit comes back cut
         // to exactly the cap rather than dropped: R@1 is never bought with a
         // budget the caller set too small to hold one.
         let tiny = svc.recall("b", "jose", 1).expect("tiny");
         assert_eq!(tiny.len(), 1, "a tiny budget still returns the top hit");
-        assert_eq!(tiny[0].memory.content.chars().count(), 4, "cut to exactly the cap");
-        assert!(!tiny[0].memory.content.contains(crate::recall::TRUNCATION_MARKER));
+        assert_eq!(
+            tiny[0].memory.content.chars().count(),
+            4,
+            "cut to exactly the cap"
+        );
+        assert!(!tiny[0]
+            .memory
+            .content
+            .contains(crate::recall::TRUNCATION_MARKER));
 
         assert!(svc.recall("b", "jose", 0).expect("recall").is_empty());
     }
@@ -2155,11 +2289,15 @@ mod tests {
     #[test]
     fn recall_should_cap_results_at_one_hundred() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         for i in 0..150 {
-            svc.retain("b", &format!("shared token note number {i}"), None).expect("retain");
+            svc.retain("b", &format!("shared token note number {i}"), None)
+                .expect("retain");
         }
         let hits = svc.recall("b", "shared token", 1_000_000).expect("recall");
         assert_eq!(hits.len(), MAX_RESULTS, "recall must cap at {MAX_RESULTS}");
@@ -2170,7 +2308,8 @@ mod tests {
     fn reflect_prompt_should_stay_declarative_and_historical() {
         let p = REFLECT_SYSTEM_PROMPT.to_lowercase();
         // Reports decisions and rationale, never the current implementation.
-        assert!(REFLECT_SYSTEM_PROMPT.contains("Report decisions and rationale, never the current implementation"));
+        assert!(REFLECT_SYSTEM_PROMPT
+            .contains("Report decisions and rationale, never the current implementation"));
         // Past tense framing, not a change queue.
         assert!(p.contains("past decisions"));
         // Imperatives are banned, so each is only ever allowed to appear inside
@@ -2186,8 +2325,11 @@ mod tests {
     fn svc_with_banks(banks: &[&str]) -> MemoryService<SqliteStore> {
         let s = SqliteStore::open_in_memory().expect("open");
         for b in banks {
-            s.put_bank(&Bank { id: b.to_string(), name: b.to_string() })
-                .expect("bank");
+            s.put_bank(&Bank {
+                id: b.to_string(),
+                name: b.to_string(),
+            })
+            .expect("bank");
         }
         MemoryService::new(s)
     }
@@ -2219,13 +2361,9 @@ mod tests {
         bank: &str,
         q: MemoriesQuery,
     ) -> Response {
-        list_memories(
-            State(Arc::clone(svc)),
-            Path(bank.to_string()),
-            Query(q),
-        )
-        .await
-        .expect("a valid bank lists")
+        list_memories(State(Arc::clone(svc)), Path(bank.to_string()), Query(q))
+            .await
+            .expect("a valid bank lists")
     }
 
     /// `GET /banks/:bank/memories/:mid` with an explicit query.
@@ -2299,7 +2437,8 @@ mod tests {
         let legacy: Vec<serde_json::Value> = rows.iter().map(legacy_memory_json).collect();
         let (want_headers, want_body) = split(Json(legacy).into_response()).await;
 
-        let (got_headers, got_body) = split(call_list(&svc, "t", MemoriesQuery::default()).await).await;
+        let (got_headers, got_body) =
+            split(call_list(&svc, "t", MemoriesQuery::default()).await).await;
 
         assert_eq!(got_body, want_body, "the default body bytes moved");
         // Every header the old response carried is still there, unchanged, and
@@ -2324,7 +2463,10 @@ mod tests {
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { format: Some(OutputFormat::Json), ..Default::default() },
+                MemoriesQuery {
+                    format: Some(OutputFormat::Json),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2340,7 +2482,10 @@ mod tests {
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { limit: Some(1), ..Default::default() },
+                MemoriesQuery {
+                    limit: Some(1),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2355,7 +2500,9 @@ mod tests {
         assert!(headers.get("x-truncated").is_none(), "{headers:?}");
         let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
         assert_eq!(rows.len(), 3);
-        assert!(rows.iter().all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")));
+        assert!(rows
+            .iter()
+            .all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")));
     }
 
     #[tokio::test]
@@ -2366,7 +2513,10 @@ mod tests {
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { truncate: Some(40), ..Default::default() },
+                MemoriesQuery {
+                    truncate: Some(40),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2374,14 +2524,22 @@ mod tests {
         let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
         let long = rows
             .iter()
-            .find(|r| r["content"].as_str().unwrap_or("").contains("truncated from"))
+            .find(|r| {
+                r["content"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("truncated from")
+            })
             .expect("the truncated row")
             .clone();
         let content = long["content"].as_str().expect("content");
 
         // The cap applies to the memory's own characters; the marker is added
         // after them, so a caller can still find where the memory stopped.
-        assert!(content.starts_with(&"deploy key rotates. ".repeat(2)[..40]), "{content}");
+        assert!(
+            content.starts_with(&"deploy key rotates. ".repeat(2)[..40]),
+            "{content}"
+        );
         assert!(content.contains("truncated from 9000 chars"), "{content}");
         assert!(
             content.contains(&format!("full: GET /banks/t/memories/{id}")),
@@ -2398,14 +2556,18 @@ mod tests {
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { truncate: Some(9_000), ..Default::default() },
+                MemoriesQuery {
+                    truncate: Some(9_000),
+                    ..Default::default()
+                },
             )
             .await,
         )
         .await;
         let rows: Vec<serde_json::Value> = serde_json::from_slice(&body).expect("array");
         assert!(
-            rows.iter().all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")),
+            rows.iter()
+                .all(|r| !r["content"].as_str().unwrap_or("").contains("truncated")),
             "a cap the whole page fits under must cut nothing"
         );
     }
@@ -2424,16 +2586,25 @@ mod tests {
             meta: crate::memory::MemoryMeta::default(),
         };
         let served = summary_content(&m, "b");
-        assert!(served.starts_with("gold marker: the auth stack."), "{served}");
         assert!(
-            served.contains("[summary of ") && served.contains("chars; full: GET /banks/b/memories/m1]"),
+            served.starts_with("gold marker: the auth stack."),
+            "{served}"
+        );
+        assert!(
+            served.contains("[summary of ")
+                && served.contains("chars; full: GET /banks/b/memories/m1]"),
             "the hidden remainder must be one GET away: {served}"
         );
     }
 
     #[test]
     fn summary_content_should_cut_a_long_line_at_its_first_sentence_boundary() {
-        let long = format!("{} {} {}", "decision made here.".repeat(20), "later tail", "x".repeat(400));
+        let long = format!(
+            "{} {} {}",
+            "decision made here.".repeat(20),
+            "later tail",
+            "x".repeat(400)
+        );
         let m = Memory {
             id: "m2".into(),
             bank_id: "b".into(),
@@ -2448,7 +2619,10 @@ mod tests {
         // boundary inside the cap.
         let capsule = &served[..capsule_end];
         assert!(capsule.chars().count() <= SUMMARY_CAP_CHARS, "{capsule}");
-        assert!(capsule.ends_with('.') || capsule.ends_with('!') || capsule.ends_with('?'), "{capsule}");
+        assert!(
+            capsule.ends_with('.') || capsule.ends_with('!') || capsule.ends_with('?'),
+            "{capsule}"
+        );
     }
 
     #[test]
@@ -2478,7 +2652,10 @@ mod tests {
         };
         assert_eq!(summary_content(&m, "b"), "one line, short");
         // Empty content serves empty, borrowed, no marker.
-        let empty = Memory { content: String::new(), ..m };
+        let empty = Memory {
+            content: String::new(),
+            ..m
+        };
         assert_eq!(summary_content(&empty, "b"), "");
     }
 
@@ -2508,7 +2685,10 @@ mod tests {
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { truncate: Some(10), ..Default::default() },
+                MemoriesQuery {
+                    truncate: Some(10),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2536,7 +2716,10 @@ mod tests {
         let res = call_list(
             &svc,
             "t",
-            MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+            MemoriesQuery {
+                format: Some(OutputFormat::Toon),
+                ..Default::default()
+            },
         )
         .await;
         let headers = {
@@ -2551,7 +2734,10 @@ mod tests {
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+                MemoriesQuery {
+                    format: Some(OutputFormat::Toon),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2573,7 +2759,10 @@ mod tests {
             call_list(
                 &svc,
                 "empty",
-                MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+                MemoriesQuery {
+                    format: Some(OutputFormat::Toon),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2588,13 +2777,23 @@ mod tests {
     async fn a_toon_page_mixing_context_rows_should_fall_back_to_list_form() {
         let svc = Arc::new(svc_with_banks(&["t"]));
         svc.retain("t", "plain row", None).expect("retain");
-        svc.retain_doc("t", "row with context", Some("saw the prompt".into()), &[], None, UpdateMode::Replace)
-            .expect("retain with context");
+        svc.retain_doc(
+            "t",
+            "row with context",
+            Some("saw the prompt".into()),
+            &[],
+            None,
+            UpdateMode::Replace,
+        )
+        .expect("retain with context");
         let out = text(
             call_list(
                 &svc,
                 "t",
-                MemoriesQuery { format: Some(OutputFormat::Toon), ..Default::default() },
+                MemoriesQuery {
+                    format: Some(OutputFormat::Toon),
+                    ..Default::default()
+                },
             )
             .await,
         )
@@ -2602,7 +2801,10 @@ mod tests {
         // §9.3 requires one key set across the whole array, so this page is not a
         // table and must not pretend to be one.
         assert!(out.contains("memories[2]:"), "{out}");
-        assert!(!out.contains('{'), "a non-uniform page takes the list form: {out}");
+        assert!(
+            !out.contains('{'),
+            "a non-uniform page takes the list form: {out}"
+        );
         assert!(out.contains("  - id: "), "{out}");
         assert!(out.contains("    context: saw the prompt"), "{out}");
     }
@@ -2645,27 +2847,46 @@ mod tests {
         let svc = Arc::new(svc_with_banks(&["t"]));
         let id = svc.retain("t", "auth uses jose", None).expect("retain");
 
-        let (json_headers, json_body) =
-            split(call_get(&svc, "t", &id, FormatQuery::default()).await.expect("found")).await;
+        let (json_headers, json_body) = split(
+            call_get(&svc, "t", &id, FormatQuery::default())
+                .await
+                .expect("found"),
+        )
+        .await;
         let json: serde_json::Value = serde_json::from_slice(&json_body).expect("object");
         assert_eq!(json["id"], serde_json::json!(id));
         assert_eq!(json["content"], serde_json::json!("auth uses jose"));
-        assert_eq!(json_headers.get(CONTENT_TYPE).expect("content-type"), "application/json");
+        assert_eq!(
+            json_headers.get(CONTENT_TYPE).expect("content-type"),
+            "application/json"
+        );
 
         let toon_res = call_get(
             &svc,
             "t",
             &id,
-            FormatQuery { format: Some(OutputFormat::Toon) },
+            FormatQuery {
+                format: Some(OutputFormat::Toon),
+            },
         )
         .await
         .expect("found");
         let (toon_headers, _) = split(toon_res).await;
-        assert_eq!(toon_headers.get(CONTENT_TYPE).expect("content-type"), TOON_CONTENT_TYPE);
+        assert_eq!(
+            toon_headers.get(CONTENT_TYPE).expect("content-type"),
+            TOON_CONTENT_TYPE
+        );
         let out = text(
-            call_get(&svc, "t", &id, FormatQuery { format: Some(OutputFormat::Toon) })
-                .await
-                .expect("found"),
+            call_get(
+                &svc,
+                "t",
+                &id,
+                FormatQuery {
+                    format: Some(OutputFormat::Toon),
+                },
+            )
+            .await
+            .expect("found"),
         )
         .await;
         assert!(out.starts_with(&format!("id: {id}\n")), "{out}");
@@ -2691,12 +2912,17 @@ mod tests {
         let res = list_memories(
             State(Arc::clone(&svc)),
             Path("t".to_string()),
-            Query(MemoriesQuery { limit: Some(1), ..Default::default() }),
+            Query(MemoriesQuery {
+                limit: Some(1),
+                ..Default::default()
+            }),
         )
         .await
         .expect("valid bank lists");
         assert!(!text(res).await.is_empty());
-        assert!(call_get(&svc, "t", &id, FormatQuery::default()).await.is_ok());
+        assert!(call_get(&svc, "t", &id, FormatQuery::default())
+            .await
+            .is_ok());
     }
 
     #[tokio::test]
@@ -2712,9 +2938,31 @@ mod tests {
         // Default page size.
         assert_eq!(rows(MemoriesQuery::default()).await, 3);
         // The cap, and the offset that walks the bank with it.
-        assert_eq!(rows(MemoriesQuery { limit: Some(1), ..Default::default() }).await, 1);
-        assert_eq!(rows(MemoriesQuery { limit: Some(1), offset: Some(2), ..Default::default() }).await, 1);
-        assert_eq!(rows(MemoriesQuery { offset: Some(99), ..Default::default() }).await, 0);
+        assert_eq!(
+            rows(MemoriesQuery {
+                limit: Some(1),
+                ..Default::default()
+            })
+            .await,
+            1
+        );
+        assert_eq!(
+            rows(MemoriesQuery {
+                limit: Some(1),
+                offset: Some(2),
+                ..Default::default()
+            })
+            .await,
+            1
+        );
+        assert_eq!(
+            rows(MemoriesQuery {
+                offset: Some(99),
+                ..Default::default()
+            })
+            .await,
+            0
+        );
         assert_eq!(
             page_bounds(Some(usize::MAX), None).0,
             MAX_PAGE,
@@ -2729,11 +2977,17 @@ mod tests {
     #[test]
     fn recall_should_score_with_the_fused_rrf_value() {
         let svc = svc_with_banks(&["b"]);
-        svc.retain("b", "auth uses jose middleware", None).expect("hit");
-        svc.retain("b", "cafeteria menu noodles", None).expect("miss");
+        svc.retain("b", "auth uses jose middleware", None)
+            .expect("hit");
+        svc.retain("b", "cafeteria menu noodles", None)
+            .expect("miss");
 
         let hits = svc.recall("b", "jose", 2000).expect("recall");
-        assert_eq!(hits.len(), 1, "only the memory mentioning jose is a candidate");
+        assert_eq!(
+            hits.len(),
+            1,
+            "only the memory mentioning jose is a candidate"
+        );
         // Rank 1 in the BM25 stream and rank 1 in the overlap stream: the fused
         // score is the *weighted* sum of both contributions, not either count.
         // Built from the shipped weights rather than written out, so changing
@@ -2745,7 +2999,10 @@ mod tests {
         assert_eq!(hits[0].score, expected);
         // An overlap count would have been 1 here, and the fused value is not
         // that — the assertion above is the point, this one pins the scale.
-        assert!(hits[0].score < 1.0, "RRF scores are reciprocal-rank sums, not counts");
+        assert!(
+            hits[0].score < 1.0,
+            "RRF scores are reciprocal-rank sums, not counts"
+        );
     }
 
     // Scores have to order results the way the ranking did, which is the only
@@ -2766,7 +3023,9 @@ mod tests {
             assert!(
                 pair[0].score >= pair[1].score,
                 "results must come back in descending fused score: {:?}",
-                hits.iter().map(|h| (h.memory.content.as_str(), h.score)).collect::<Vec<_>>()
+                hits.iter()
+                    .map(|h| (h.memory.content.as_str(), h.score))
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -2784,7 +3043,10 @@ mod tests {
         let many: Vec<String> = (0..MAX_TAGS + 5).map(|i| format!("t{i}")).collect();
         let capped = normalize_tags(&many);
         assert_eq!(capped.len(), MAX_TAGS);
-        assert_eq!(capped[0], "t0", "the cap keeps the head, not an arbitrary subset");
+        assert_eq!(
+            capped[0], "t0",
+            "the cap keeps the head, not an arbitrary subset"
+        );
     }
 
     #[test]
@@ -2792,12 +3054,23 @@ mod tests {
         let svc = svc_with_banks(&["b"]);
         svc.retain_tagged("b", "auth uses jose middleware", None, &tags(&["auth"]))
             .expect("retain auth");
-        svc.retain_tagged("b", "auth uses jose secrets", None, &tags(&["ops", "secrets"]))
-            .expect("retain ops");
-        svc.retain("b", "auth uses jose untagged", None).expect("retain none");
+        svc.retain_tagged(
+            "b",
+            "auth uses jose secrets",
+            None,
+            &tags(&["ops", "secrets"]),
+        )
+        .expect("retain ops");
+        svc.retain("b", "auth uses jose untagged", None)
+            .expect("retain none");
 
         // Unfiltered recall is unchanged: every memory still comes back.
-        assert_eq!(svc.recall_filtered("b", "jose", None, &[], &[]).expect("all").len(), 3);
+        assert_eq!(
+            svc.recall_filtered("b", "jose", None, &[], &[])
+                .expect("all")
+                .len(),
+            3
+        );
         // Any-match: one hit per matching tag, and an untagged memory never does.
         for filter in ["auth", "ops", "secrets"] {
             assert_eq!(
@@ -2821,12 +3094,22 @@ mod tests {
     #[test]
     fn exclude_tags_should_drop_tagged_rows_and_keep_the_rest() {
         let svc = svc_with_banks(&["b"]);
-        svc.retain_tagged("b", "auth uses jose transcript", None, &tags(&["transcript"]))
-            .expect("retain transcript");
+        svc.retain_tagged(
+            "b",
+            "auth uses jose transcript",
+            None,
+            &tags(&["transcript"]),
+        )
+        .expect("retain transcript");
         svc.retain_tagged("b", "auth uses jose live", None, &tags(&["auth"]))
             .expect("retain live");
 
-        assert_eq!(svc.recall_filtered("b", "jose", None, &[], &[]).expect("all").len(), 2);
+        assert_eq!(
+            svc.recall_filtered("b", "jose", None, &[], &[])
+                .expect("all")
+                .len(),
+            2
+        );
         let hits = svc
             .recall_filtered("b", "jose", None, &[], &tags(&["transcript"]))
             .expect("excluded");
@@ -2843,7 +3126,8 @@ mod tests {
     #[test]
     fn retain_should_union_request_tags_with_bank_retain_tags() {
         let svc = svc_with_banks(&["b"]);
-        svc.set_bank_config("b", r#"{"retainTags":["Bank","ops"]}"#).expect("config");
+        svc.set_bank_config("b", r#"{"retainTags":["Bank","ops"]}"#)
+            .expect("config");
         svc.retain_tagged("b", "auth uses jose middleware", None, &tags(&["  Req  "]))
             .expect("retain");
 
@@ -2858,18 +3142,20 @@ mod tests {
             );
         }
         // A bank-wide default applies to every later retain, not just this one.
-        svc.retain("b", "auth uses jose second", None).expect("plain retain");
+        svc.retain("b", "auth uses jose second", None)
+            .expect("plain retain");
         assert_eq!(
             svc.recall_filtered("b", "jose", None, &tags(&["bank"]), &[])
                 .expect("bank")
                 .len(),
             2
         );
-        assert!(svc
-            .recall_filtered("b", "jose", None, &tags(&["req"]), &[])
-            .expect("req")
-            .len()
-            == 1);
+        assert!(
+            svc.recall_filtered("b", "jose", None, &tags(&["req"]), &[])
+                .expect("req")
+                .len()
+                == 1
+        );
     }
 
     /// The overlap stream is **not** a "no query terms match" fallback: it drops
@@ -2880,19 +3166,28 @@ mod tests {
     #[test]
     fn a_query_nothing_matches_should_return_nothing() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         svc.retain("b", "auth uses jose", None).expect("retain");
-        svc.retain("b", "deploy the redis cache", None).expect("retain");
-        for w in [FusionWeights::SHIPPED, FusionWeights { overlap: 0.25, ..FusionWeights::SHIPPED }] {
+        svc.retain("b", "deploy the redis cache", None)
+            .expect("retain");
+        for w in [
+            FusionWeights::SHIPPED,
+            FusionWeights {
+                overlap: 0.25,
+                ..FusionWeights::SHIPPED
+            },
+        ] {
             let hits = svc
                 .recall_with_weights("b", "kubernetes helm rollout", 2000, &w)
                 .expect("recall");
             assert!(hits.is_empty(), "nothing matches {hits:?} at {w:?}");
         }
     }
-
 
     /// The one job BM25 cannot do: **more than 50 candidates.** BM25 is `LIMIT
     /// FTS_LIMIT` = 50 in SQL, so a query matching more than 50 rows truncates
@@ -2908,8 +3203,11 @@ mod tests {
     #[test]
     fn a_query_matching_more_rows_than_bm25_returns_must_still_surface_the_overflow() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         // 120 rows, all matching `shard`; the needle is the last one written, so
         // it is outside BM25's 50 by construction.
@@ -2917,23 +3215,29 @@ mod tests {
             svc.retain("b", &format!("shard replica {i} rollout note"), None)
                 .expect("retain");
         }
-        let needle = svc.retain("b", "shard replica 120 rollout note", None).expect("retain");
-        let ids = |rows: Vec<ScoredMemory>| {
-            rows.into_iter().map(|r| r.memory.id).collect::<Vec<_>>()
-        };
+        let needle = svc
+            .retain("b", "shard replica 120 rollout note", None)
+            .expect("retain");
+        let ids =
+            |rows: Vec<ScoredMemory>| rows.into_iter().map(|r| r.memory.id).collect::<Vec<_>>();
         let shipped = ids(svc.recall("b", "shard", 100_000).expect("recall"));
         assert!(
             shipped.len() > 50,
             "BM25 truncates at 50, so a non-zero overlap weight is what carries the overflow; got {}",
             shipped.len()
         );
-        assert!(!shipped.contains(&needle), "the needle is not a gold row here, only an overflow witness");
-        // And the contrast that makes it a real test rather than a comment.
-        let bm25_only = FusionWeights { overlap: 0.0, ..FusionWeights::SHIPPED };
-        let dropped = ids(
-            svc.recall_with_weights("b", "shard", 100_000, &bm25_only)
-                .expect("recall"),
+        assert!(
+            !shipped.contains(&needle),
+            "the needle is not a gold row here, only an overflow witness"
         );
+        // And the contrast that makes it a real test rather than a comment.
+        let bm25_only = FusionWeights {
+            overlap: 0.0,
+            ..FusionWeights::SHIPPED
+        };
+        let dropped = ids(svc
+            .recall_with_weights("b", "shard", 100_000, &bm25_only)
+            .expect("recall"));
         assert_eq!(
             dropped.len(),
             50,
@@ -2980,7 +3284,8 @@ mod tests {
             "the shipped default moved off the configuration E1 measured"
         );
         assert_ne!(
-            FusionWeights::SHIPPED.overlap, 1.0,
+            FusionWeights::SHIPPED.overlap,
+            1.0,
             "equal weighting was measured 4.0pp worse on R@5; see docs/NEXT_ITERATION.md"
         );
         // The mechanisms exist, so their off switches are the only thing keeping
@@ -2997,8 +3302,11 @@ mod tests {
     #[test]
     fn the_shipped_recall_should_be_the_default_fusion() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         for c in [
             "auth uses jose for the session cookie",
@@ -3007,20 +3315,29 @@ mod tests {
         ] {
             svc.retain("b", c, None).expect("retain");
         }
-        let shipped = svc.recall("b", "session cookie latency", 2000).expect("recall");
+        let shipped = svc
+            .recall("b", "session cookie latency", 2000)
+            .expect("recall");
         let explicit = svc
             .recall_with_weights("b", "session cookie latency", 2000, &FusionWeights::SHIPPED)
             .expect("recall");
         assert_eq!(
-            shipped.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
-            explicit.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>()
+            shipped
+                .iter()
+                .map(|h| h.memory.id.as_str())
+                .collect::<Vec<_>>(),
+            explicit
+                .iter()
+                .map(|h| h.memory.id.as_str())
+                .collect::<Vec<_>>()
         );
     }
 
     #[test]
     fn recall_budget_should_prefer_explicit_then_bank_then_default() {
         let svc = svc_with_banks(&["cfg", "plain"]);
-        svc.set_bank_config("cfg", r#"{"recallMaxTokens":5}"#).expect("config");
+        svc.set_bank_config("cfg", r#"{"recallMaxTokens":5}"#)
+            .expect("config");
         // ~2000 chars: well past both a 5- and a 10-token budget, well inside the
         // 2000-token server default.
         let long = "jose ".repeat(400);
@@ -3029,13 +3346,27 @@ mod tests {
         }
 
         let len = |hits: Vec<ScoredMemory>| hits[0].memory.content.chars().count();
-        let bank_default = len(svc.recall_filtered("cfg", "jose", None, &[], &[]).expect("bank"));
-        let explicit = len(svc.recall_filtered("cfg", "jose", Some(10), &[], &[]).expect("explicit"));
-        let server_default = len(svc.recall_filtered("plain", "jose", None, &[], &[]).expect("default"));
+        let bank_default = len(svc
+            .recall_filtered("cfg", "jose", None, &[], &[])
+            .expect("bank"));
+        let explicit = len(svc
+            .recall_filtered("cfg", "jose", Some(10), &[], &[])
+            .expect("explicit"));
+        let server_default = len(svc
+            .recall_filtered("plain", "jose", None, &[], &[])
+            .expect("default"));
 
-        assert_eq!(bank_default, 5 * 4, "bank recallMaxTokens must be the default");
+        assert_eq!(
+            bank_default,
+            5 * 4,
+            "bank recallMaxTokens must be the default"
+        );
         assert_eq!(explicit, 10 * 4, "an explicit budget must win");
-        assert_eq!(server_default, long.chars().count(), "no config falls back to the server default");
+        assert_eq!(
+            server_default,
+            long.chars().count(),
+            "no config falls back to the server default"
+        );
         assert!(bank_default < explicit && explicit < server_default);
     }
 
@@ -3049,11 +3380,18 @@ mod tests {
         assert_eq!(svc.bank_config("b").expect("get").as_str(), raw);
 
         // A whole-object replace, not a merge: the previous value is gone.
-        svc.set_bank_config("b", r#"{"recallMaxTokens":8}"#).expect("replace");
-        assert_eq!(svc.bank_config("b").expect("get").as_str(), r#"{"recallMaxTokens":8}"#);
+        svc.set_bank_config("b", r#"{"recallMaxTokens":8}"#)
+            .expect("replace");
+        assert_eq!(
+            svc.bank_config("b").expect("get").as_str(),
+            r#"{"recallMaxTokens":8}"#
+        );
 
         let (status, msg) = http_error(&svc.set_bank_config("b", "{\"a\":").expect_err("bad json"));
-        assert_eq!((status, msg), (StatusCode::BAD_REQUEST, "invalid bank config"));
+        assert_eq!(
+            (status, msg),
+            (StatusCode::BAD_REQUEST, "invalid bank config")
+        );
         for bad in ["[1,2]", "\"str\"", "null"] {
             assert_eq!(
                 http_error(&svc.set_bank_config("b", bad).expect_err(bad)).0,
@@ -3075,9 +3413,12 @@ mod tests {
         let svc = svc_with_banks(&["b"]);
         svc.set_bank_config("b", r#"{"recallMaxTokens":"lots","retainTags":"nope"}"#)
             .expect("config");
-        svc.retain("b", "auth uses jose middleware", None).expect("retain");
+        svc.retain("b", "auth uses jose middleware", None)
+            .expect("retain");
         // The bad keys are ignored, so the server default applies and recall works.
-        let hits = svc.recall_filtered("b", "jose", None, &[], &[]).expect("recall");
+        let hits = svc
+            .recall_filtered("b", "jose", None, &[], &[])
+            .expect("recall");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].memory.content, "auth uses jose middleware");
     }
@@ -3092,31 +3433,52 @@ mod tests {
         // something real to refuse. This is the case the earlier version of
         // this test missed: it only exercised `retain`, so it went green while
         // DELETE and supersede happily emptied the bank.
-        svc.retain("ro", "jose is great", None).expect("seed before read-only");
+        svc.retain("ro", "jose is great", None)
+            .expect("seed before read-only");
         let id = svc.list_memories("ro", 10, 0).expect("list").remove(0).id;
-        svc.set_bank_config("ro", r#"{"readOnly":true}"#).expect("set read-only");
+        svc.set_bank_config("ro", r#"{"readOnly":true}"#)
+            .expect("set read-only");
 
         let denied = |e: ApiError| {
-            assert_eq!(http_error(&e), (StatusCode::BAD_REQUEST, "bank is read-only"))
+            assert_eq!(
+                http_error(&e),
+                (StatusCode::BAD_REQUEST, "bank is read-only")
+            )
         };
 
         // 1. retain (HTTP and MCP both route through here).
-        denied(svc.retain("ro", "jose is great", None).expect_err("retain must refuse"));
+        denied(
+            svc.retain("ro", "jose is great", None)
+                .expect_err("retain must refuse"),
+        );
 
         // 2. delete. The destructive half the flag exists for.
-        denied(svc.delete_memory("ro", &id).expect_err("delete must refuse"));
+        denied(
+            svc.delete_memory("ro", &id)
+                .expect_err("delete must refuse"),
+        );
 
         // 3. supersede. Hiding a row from default recall is a write.
-        denied(svc.supersede_memory("ro", &id, None).expect_err("supersede must refuse"));
+        denied(
+            svc.supersede_memory("ro", &id, None)
+                .expect_err("supersede must refuse"),
+        );
 
         // 4. redact. Rewriting stored bytes in place is a write.
-        denied(svc.redact_memory("ro", &id, "jose", "probe").expect_err("redact must refuse"));
+        denied(
+            svc.redact_memory("ro", &id, "jose", "probe")
+                .expect_err("redact must refuse"),
+        );
 
         // Nothing changed: the row is still there and still readable. A guard
         // that refused the call but let the write through would pass every
         // assertion above, so the state is the real test.
         let after = svc.list_memories("ro", 10, 0).expect("list after");
-        assert_eq!(after.len(), 1, "the seeded row survived every refused write");
+        assert_eq!(
+            after.len(),
+            1,
+            "the seeded row survived every refused write"
+        );
         assert_eq!(after[0].content, "jose is great");
         assert!(svc.get_memory("ro", &id).expect("get").is_some());
         // And it is still in default recall, i.e. the supersede did not land.
@@ -3133,13 +3495,27 @@ mod tests {
         let b = svc.retain("rw", "beta", None).expect("retain b");
 
         svc.supersede_memory("rw", &a, Some(&b)).expect("supersede");
-        assert!(svc.get_memory("rw", &a).expect("get").expect("some").meta.superseded_by.is_some());
+        assert!(svc
+            .get_memory("rw", &a)
+            .expect("get")
+            .expect("some")
+            .meta
+            .superseded_by
+            .is_some());
 
-        svc.redact_memory("rw", &b, "beta", "probe").expect("redact");
-        assert!(svc.get_memory("rw", &b).expect("get").expect("some").content.contains("[REDACTED:probe]"));
+        svc.redact_memory("rw", &b, "beta", "probe")
+            .expect("redact");
+        assert!(svc
+            .get_memory("rw", &b)
+            .expect("get")
+            .expect("some")
+            .content
+            .contains("[REDACTED:probe]"));
 
         assert!(svc.delete_memory("rw", &a).expect("delete"));
-        assert!(!svc.delete_memory("rw", &a).expect("second delete finds nothing"));
+        assert!(!svc
+            .delete_memory("rw", &a)
+            .expect("second delete finds nothing"));
     }
 
     #[test]
@@ -3149,14 +3525,17 @@ mod tests {
         svc.retain("b", "jose is great", None).expect("retain");
         // So does a bank whose config spells readOnly wrong — the typo must not
         // take writes down, the same fail-open rule every BankConfig key has.
-        svc.set_bank_config("b", r#"{"readOnly":"yes"}"#).expect("set");
-        svc.retain("b", "jose again", None).expect("retain after typo");
+        svc.set_bank_config("b", r#"{"readOnly":"yes"}"#)
+            .expect("set");
+        svc.retain("b", "jose again", None)
+            .expect("retain after typo");
     }
 
     #[test]
     fn a_write_above_the_trust_ceiling_should_downgrade_and_land() {
         let svc = svc_with_banks(&["b"]);
-        svc.set_bank_config("b", r#"{"maxTrust":"human_stated"}"#).expect("set");
+        svc.set_bank_config("b", r#"{"maxTrust":"human_stated"}"#)
+            .expect("set");
         // A verified write against a human_stated ceiling is downgraded one
         // step (verified -> human_stated) and lands, never refused.
         let id = svc
@@ -3172,13 +3551,17 @@ mod tests {
             )
             .expect("downgrade and land");
         let got = svc.get_memory("b", &id).expect("get").expect("some");
-        assert_eq!(got.meta.trust.0, "human_stated", "verified downgraded to human_stated");
+        assert_eq!(
+            got.meta.trust.0, "human_stated",
+            "verified downgraded to human_stated"
+        );
     }
 
     #[test]
     fn a_write_at_or_below_the_trust_ceiling_should_land_verbatim() {
         let svc = svc_with_banks(&["b"]);
-        svc.set_bank_config("b", r#"{"maxTrust":"verified"}"#).expect("set");
+        svc.set_bank_config("b", r#"{"maxTrust":"verified"}"#)
+            .expect("set");
         let id = svc
             .retain_doc_at_trusted(
                 "b",
@@ -3235,7 +3618,8 @@ mod tests {
     #[test]
     fn an_unknown_trust_tier_in_config_should_read_as_no_ceiling() {
         let svc = svc_with_banks(&["b"]);
-        svc.set_bank_config("b", r#"{"maxTrust":"totally_bogus"}"#).expect("set");
+        svc.set_bank_config("b", r#"{"maxTrust":"totally_bogus"}"#)
+            .expect("set");
         // An unrecognised tier is the same fail-open default every other key
         // has: a typo must not take writes down.
         let id = svc
@@ -3251,13 +3635,21 @@ mod tests {
             )
             .expect("verified under a bogus ceiling");
         let got = svc.get_memory("b", &id).expect("get").expect("some");
-        assert_eq!(got.meta.trust.0, "verified", "a bogus ceiling stores verbatim");
+        assert_eq!(
+            got.meta.trust.0, "verified",
+            "a bogus ceiling stores verbatim"
+        );
     }
 
     #[test]
     fn trust_round_trips_through_the_string_form() {
         for t in [Trust::AgentInferred, Trust::HumanStated, Trust::Verified] {
-            assert_eq!(Trust::tier(t.as_str()), Some(t), "round-trip {}", t.as_str());
+            assert_eq!(
+                Trust::tier(t.as_str()),
+                Some(t),
+                "round-trip {}",
+                t.as_str()
+            );
         }
     }
 
@@ -3266,24 +3658,47 @@ mod tests {
         let svc = svc_with_banks(&["b"]);
         let old_tags = tags(&["handbook"]);
         let first = svc
-            .retain_doc("b", "auth uses jose v1", None, &old_tags, Some("handbook"), UpdateMode::Replace)
+            .retain_doc(
+                "b",
+                "auth uses jose v1",
+                None,
+                &old_tags,
+                Some("handbook"),
+                UpdateMode::Replace,
+            )
             .expect("v1");
         let second = svc
-            .retain_doc("b", "auth uses jose v2", None, &tags(&["auth"]), Some("handbook"), UpdateMode::Replace)
+            .retain_doc(
+                "b",
+                "auth uses jose v2",
+                None,
+                &tags(&["auth"]),
+                Some("handbook"),
+                UpdateMode::Replace,
+            )
             .expect("v2");
 
         let rows = svc.list_memories("b", 10, 0).expect("list");
-        assert_eq!(rows.len(), 1, "a replace leaves exactly one current revision");
+        assert_eq!(
+            rows.len(),
+            1,
+            "a replace leaves exactly one current revision"
+        );
         assert_eq!(rows[0].id, second);
         assert!(rows[0].content.ends_with("v2"));
-        assert!(svc.get_memory("b", &first).expect("get").is_none(), "the superseded row is gone");
+        assert!(
+            svc.get_memory("b", &first).expect("get").is_none(),
+            "the superseded row is gone"
+        );
         // Tags are authoritative, not merged: the old revision's tag went with it.
         assert!(svc
             .recall_filtered("b", "jose", None, &old_tags, &[])
             .expect("old tag")
             .is_empty());
         assert_eq!(
-            svc.recall_filtered("b", "jose", None, &tags(&["auth"]), &[]).expect("new tag").len(),
+            svc.recall_filtered("b", "jose", None, &tags(&["auth"]), &[])
+                .expect("new tag")
+                .len(),
             1
         );
     }
@@ -3292,7 +3707,14 @@ mod tests {
     fn retain_doc_append_should_keep_every_row() {
         let svc = svc_with_banks(&["b"]);
         let a = svc
-            .retain_doc("b", "turn one jose", None, &[], Some("session-1#1"), UpdateMode::Append)
+            .retain_doc(
+                "b",
+                "turn one jose",
+                None,
+                &[],
+                Some("session-1#1"),
+                UpdateMode::Append,
+            )
             .expect("one");
         let b = svc
             .retain_doc("b", "turn two jose", None, &[], None, UpdateMode::Append)
@@ -3311,13 +3733,28 @@ mod tests {
     #[test]
     fn an_append_that_reuses_a_document_id_should_be_refused_not_deduped() {
         let svc = svc_with_banks(&["b"]);
-        svc.retain_doc("b", "first jose", None, &[], Some("doc"), UpdateMode::Append).expect("first");
+        svc.retain_doc(
+            "b",
+            "first jose",
+            None,
+            &[],
+            Some("doc"),
+            UpdateMode::Append,
+        )
+        .expect("first");
         // The unique (bank, document_id) index is what stops a document holding
         // two rows under one key, so the repeat is refused loudly: silently
         // replacing would be the other mode, and silently keeping both would
         // break the unique revision a reader expects.
         let err = svc
-            .retain_doc("b", "second jose", None, &[], Some("doc"), UpdateMode::Append)
+            .retain_doc(
+                "b",
+                "second jose",
+                None,
+                &[],
+                Some("doc"),
+                UpdateMode::Append,
+            )
             .expect_err("duplicate document id");
         assert!(
             matches!(err, ApiError::Store(StoreError::DocumentConflict)),
@@ -3329,7 +3766,10 @@ mod tests {
         let (status, msg) = http_error(&err);
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(msg, "document already exists; use update_mode=replace");
-        assert!(msg.contains("replace"), "the body must name the mode that works: {msg}");
+        assert!(
+            msg.contains("replace"),
+            "the body must name the mode that works: {msg}"
+        );
         assert!(!msg.contains("SQLITE"), "driver text must not leak: {msg}");
 
         let left = svc.list_memories("b", 10, 0).expect("list");
@@ -3364,7 +3804,14 @@ mod tests {
                 "{blank:?} must be named as the client's mistake"
             );
             assert!(matches!(
-                svc.retain_doc("b", blank, None, &tags(&["t"]), Some("d"), UpdateMode::Replace),
+                svc.retain_doc(
+                    "b",
+                    blank,
+                    None,
+                    &tags(&["t"]),
+                    Some("d"),
+                    UpdateMode::Replace
+                ),
                 Err(ApiError::InvalidContent)
             ));
         }
@@ -3375,17 +3822,24 @@ mod tests {
     #[test]
     fn reflect_should_answer_from_the_tagged_subset_only() {
         let svc = svc_with_banks(&["b"]);
-        svc.retain_tagged("b", "auth uses jose middleware", None, &tags(&["auth"])).expect("auth");
-        svc.retain_tagged("b", "auth uses jose deploy notes", None, &tags(&["ops"])).expect("ops");
+        svc.retain_tagged("b", "auth uses jose middleware", None, &tags(&["auth"]))
+            .expect("auth");
+        svc.retain_tagged("b", "auth uses jose deploy notes", None, &tags(&["ops"]))
+            .expect("ops");
 
-        let auth = svc.reflect("b", "jose auth", &tags(&["auth"])).expect("auth scope");
-        let ops = svc.reflect("b", "jose auth", &tags(&["ops"])).expect("ops scope");
+        let auth = svc
+            .reflect("b", "jose auth", &tags(&["auth"]))
+            .expect("auth scope");
+        let ops = svc
+            .reflect("b", "jose auth", &tags(&["ops"]))
+            .expect("ops scope");
         assert!(auth.contains("middleware"), "got {auth}");
         assert!(ops.contains("deploy notes"), "got {ops}");
         assert_ne!(auth, ops, "each tag scope must cite its own memory");
         // A scope nothing carries has nothing to cite, same as an empty bank.
         assert_eq!(
-            svc.reflect("b", "jose", &tags(&["nope"])).expect("no scope"),
+            svc.reflect("b", "jose", &tags(&["nope"]))
+                .expect("no scope"),
             "no relevant memories"
         );
     }
@@ -3402,23 +3856,44 @@ mod tests {
             .expect("blank filter")
             .is_empty());
         // An absent filter is the whole bank, and stays that way.
-        assert_eq!(svc.recall_filtered("b", "jose", None, &[], &[]).expect("empty filter").len(), 1);
+        assert_eq!(
+            svc.recall_filtered("b", "jose", None, &[], &[])
+                .expect("empty filter")
+                .len(),
+            1
+        );
         assert_eq!(svc.recall("b", "jose", 2000).expect("unfiltered").len(), 1);
     }
 
     #[test]
     fn memories_should_be_listed_fetched_and_deleted_inside_one_bank_only() {
         let svc = svc_with_banks(&["a", "b"]);
-        let id = svc.retain_tagged("a", "auth uses jose middleware", None, &tags(&["auth"]))
+        let id = svc
+            .retain_tagged("a", "auth uses jose middleware", None, &tags(&["auth"]))
             .expect("retain");
 
         assert_eq!(svc.get_memory("a", &id).expect("get").expect("some").id, id);
-        assert!(svc.get_memory("b", &id).expect("get").is_none(), "another bank's id must not resolve");
-        assert!(!svc.delete_memory("b", &id).expect("cross-bank delete"), "another bank must not delete it");
-        assert!(svc.get_memory("a", &id).expect("get").is_some(), "the refused delete changed nothing");
+        assert!(
+            svc.get_memory("b", &id).expect("get").is_none(),
+            "another bank's id must not resolve"
+        );
+        assert!(
+            !svc.delete_memory("b", &id).expect("cross-bank delete"),
+            "another bank must not delete it"
+        );
+        assert!(
+            svc.get_memory("a", &id).expect("get").is_some(),
+            "the refused delete changed nothing"
+        );
 
-        assert!(svc.delete_memory("a", &id).expect("delete"), "a bank-scoped delete reports true");
-        assert!(!svc.delete_memory("a", &id).expect("again"), "a second delete finds nothing");
+        assert!(
+            svc.delete_memory("a", &id).expect("delete"),
+            "a bank-scoped delete reports true"
+        );
+        assert!(
+            !svc.delete_memory("a", &id).expect("again"),
+            "a second delete finds nothing"
+        );
         // The row's tags went with it, so the bank reports neither.
         assert_eq!(svc.bank_stats("a").expect("stats"), BankStats::default());
     }
@@ -3427,7 +3902,8 @@ mod tests {
     fn list_memories_should_page_in_insertion_order() {
         let svc = svc_with_banks(&["b"]);
         for i in 0..5 {
-            svc.retain("b", &format!("shared note {i}"), None).expect("retain");
+            svc.retain("b", &format!("shared note {i}"), None)
+                .expect("retain");
         }
         let page = |limit, offset| -> Vec<String> {
             svc.list_memories("b", limit, offset)
@@ -3437,7 +3913,11 @@ mod tests {
                 .collect()
         };
         assert_eq!(page(2, 0).len(), 2);
-        assert_ne!(page(2, 0), page(2, 2), "a second page must not repeat the first");
+        assert_ne!(
+            page(2, 0),
+            page(2, 2),
+            "a second page must not repeat the first"
+        );
         assert!(page(2, 5).is_empty(), "an offset past the end is empty");
     }
 
@@ -3450,14 +3930,27 @@ mod tests {
             (0, 0, None, None)
         );
 
-        svc.retain_tagged("a", "auth uses jose", None, &tags(&["auth", "jose"])).expect("1");
-        svc.retain_tagged("a", "jose deploy notes", None, &tags(&["ops"])).expect("2");
-        svc.retain("b", "other bank jose", None).expect("other bank");
+        svc.retain_tagged("a", "auth uses jose", None, &tags(&["auth", "jose"]))
+            .expect("1");
+        svc.retain_tagged("a", "jose deploy notes", None, &tags(&["ops"]))
+            .expect("2");
+        svc.retain("b", "other bank jose", None)
+            .expect("other bank");
 
         let st = svc.bank_stats("a").expect("stats");
-        assert_eq!((st.memories, st.tags), (2, 3), "this bank's rows and distinct tags only");
-        let (oldest, newest) = (st.oldest.clone().expect("oldest"), st.newest.clone().expect("newest"));
-        assert!(oldest <= newest, "oldest {oldest} must not follow newest {newest}");
+        assert_eq!(
+            (st.memories, st.tags),
+            (2, 3),
+            "this bank's rows and distinct tags only"
+        );
+        let (oldest, newest) = (
+            st.oldest.clone().expect("oldest"),
+            st.newest.clone().expect("newest"),
+        );
+        assert!(
+            oldest <= newest,
+            "oldest {oldest} must not follow newest {newest}"
+        );
         let json = serde_json::to_string(&st).expect("serialize");
         for key in ["memories", "tags", "oldest", "newest"] {
             assert!(json.contains(key), "BankStats must expose {key}: {json}");
@@ -3510,7 +4003,13 @@ mod tests {
         // Seeded through the inner store, not `retain`: this backend's config
         // read is broken from the start, and the point is the *recall* path, not
         // the retain that also reads a config for `retainTags`.
-        svc.store.0.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() }).expect("bank");
+        svc.store
+            .0
+            .put_bank(&Bank {
+                id: "b".to_string(),
+                name: "b".to_string(),
+            })
+            .expect("bank");
         svc.store
             .0
             .put(&Memory {
@@ -3527,7 +4026,10 @@ mod tests {
         let err = svc
             .recall_filtered("b", "jose", None, &[], &[])
             .expect_err("a swallowed config error must not answer 200 with the wrong budget");
-        assert!(matches!(err, ApiError::Store(StoreError::Sqlite(_))), "got {err:?}");
+        assert!(
+            matches!(err, ApiError::Store(StoreError::Sqlite(_))),
+            "got {err:?}"
+        );
         // …and it is the documented opaque 500, because that is what every
         // storage failure has always been to a client.
         assert_eq!(
@@ -3539,7 +4041,9 @@ mod tests {
         // the fix is not "recall now needs the config", it is "recall does not
         // lie about the config it could not read".
         assert_eq!(
-            svc.recall_filtered("b", "jose", Some(2000), &[], &[]).expect("explicit budget").len(),
+            svc.recall_filtered("b", "jose", Some(2000), &[], &[])
+                .expect("explicit budget")
+                .len(),
             1
         );
     }
@@ -3549,13 +4053,24 @@ mod tests {
     #[test]
     fn an_unrecognized_update_mode_should_be_refused_without_touching_the_document() {
         let svc = svc_with_banks(&["b"]);
-        svc.retain_doc("b", "auth uses jose v1", None, &[], Some("doc"), UpdateMode::Replace)
-            .expect("v1");
+        svc.retain_doc(
+            "b",
+            "auth uses jose v1",
+            None,
+            &[],
+            Some("doc"),
+            UpdateMode::Replace,
+        )
+        .expect("v1");
 
         for typo in ["append ", "APPEND", "upsert", ""] {
-            let err = parse_update_mode(Some(typo))
-                .expect_err(&format!("{typo:?} must be refused"));
-            assert_eq!(http_error(&err), (StatusCode::BAD_REQUEST, "invalid content"), "{typo:?}");
+            let err =
+                parse_update_mode(Some(typo)).expect_err(&format!("{typo:?} must be refused"));
+            assert_eq!(
+                http_error(&err),
+                (StatusCode::BAD_REQUEST, "invalid content"),
+                "{typo:?}"
+            );
         }
         assert_eq!(
             parse_update_mode(None).expect("absent"),
@@ -3595,8 +4110,11 @@ mod tests {
     /// fixtures from drifting apart.
     fn mechanism_bank() -> MemoryService<SqliteStore> {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         for content in [
             "rate limiting is a token bucket",
@@ -3625,7 +4143,10 @@ mod tests {
     fn the_shipped_recall_should_be_the_pre_change_fusion() {
         let svc = mechanism_bank();
         let query = "token bucket rate limiting";
-        let (all, hits) = svc.store.recall_inputs("b", query, &[], FTS_LIMIT).expect("inputs");
+        let (all, hits) = svc
+            .store
+            .recall_inputs("b", query, &[], FTS_LIMIT)
+            .expect("inputs");
 
         // The pre-change pipeline, written out.
         let mut reference: Vec<(String, f64)> = Vec::new();
@@ -3676,18 +4197,23 @@ mod tests {
     fn a_non_zero_bm25_magnitude_should_reach_the_fused_score() {
         let svc = mechanism_bank();
         let query = "token bucket";
-        let off = svc.recall_with_weights("b", query, 100_000, &FusionWeights::SHIPPED)
+        let off = svc
+            .recall_with_weights("b", query, 100_000, &FusionWeights::SHIPPED)
             .expect("recall");
         // A large enough knob that a row the rank-only RRF put lower has to
         // overtake the leader; the exact value is not a claim about quality, it
         // is large enough for the mechanism to be observable at all.
-        let on = svc.recall_with_weights(
-            "b",
-            query,
-            100_000,
-            &FusionWeights { bm25_magnitude: 4.0, ..FusionWeights::SHIPPED },
-        )
-        .expect("recall");
+        let on = svc
+            .recall_with_weights(
+                "b",
+                query,
+                100_000,
+                &FusionWeights {
+                    bm25_magnitude: 4.0,
+                    ..FusionWeights::SHIPPED
+                },
+            )
+            .expect("recall");
         assert_eq!(off.len(), on.len(), "the candidate set must not change");
         assert_ne!(
             off.iter().map(|h| h.score).collect::<Vec<_>>(),
@@ -3713,8 +4239,11 @@ mod tests {
     #[test]
     fn a_non_zero_recency_weight_should_add_a_third_stream() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         // Written oldest-first, so insertion order and recency disagree, and the
         // store is asked directly because `retain_doc` has no created_at arm —
@@ -3745,7 +4274,10 @@ mod tests {
                 "b",
                 query,
                 100_000,
-                &FusionWeights { recency: w, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    recency: w,
+                    ..FusionWeights::SHIPPED
+                },
             )
             .expect("recall")
             .iter()
@@ -3755,7 +4287,11 @@ mod tests {
         // Every row ties under both existing streams — same text shape, same
         // length, every query term present in all three — so the store's own
         // order is the whole of the baseline ranking.
-        assert_eq!(ids(0.0), ["m0", "m1", "m2"], "the shipped order is the store's");
+        assert_eq!(
+            ids(0.0),
+            ["m0", "m1", "m2"],
+            "the shipped order is the store's"
+        );
 
         // **A third stream at weight 1.0 cannot reverse the other two.** RRF's
         // discount is the same `1/(k+rank)` shape in all three streams, so if the
@@ -3770,16 +4306,26 @@ mod tests {
             ["m0", "m1", "m2"],
             "at unit weight the reversed stream is exactly a wash"
         );
-        assert_eq!(ids(4.0), ["m2", "m1", "m0"], "a weight past unit reverses it");
+        assert_eq!(
+            ids(4.0),
+            ["m2", "m1", "m0"],
+            "a weight past unit reverses it"
+        );
         let top = svc
             .recall_with_weights(
                 "b",
                 query,
                 100_000,
-                &FusionWeights { recency: 4.0, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    recency: 4.0,
+                    ..FusionWeights::SHIPPED
+                },
             )
             .expect("recall");
-        assert_eq!(top[0].memory.created_at.as_deref(), Some("2026-09-20T00:00:00Z"));
+        assert_eq!(
+            top[0].memory.created_at.as_deref(),
+            Some("2026-09-20T00:00:00Z")
+        );
     }
 
     /// The scope knob reaches the ranker: a long memory that names each query
@@ -3795,13 +4341,20 @@ mod tests {
     #[test]
     fn the_overlap_scope_should_change_which_document_outranks_which() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "b".to_string(), name: "b".to_string() })
-            .expect("bank");
+        s.put_bank(&Bank {
+            id: "b".to_string(),
+            name: "b".to_string(),
+        })
+        .expect("bank");
         let svc = MemoryService::new(s);
         // Eight query terms, one per sentence: the only document that has all
         // eight, and no single segment with more than one.
         let scattered = svc
-            .retain("b", "rate. limiting. token. bucket. burst. refill. allowance. capacity.", None)
+            .retain(
+                "b",
+                "rate. limiting. token. bucket. burst. refill. allowance. capacity.",
+                None,
+            )
             .expect("retain");
         // Six documents that each hold two of the eight in one unbroken run, so
         // the sentence stream scores every one of them 2 and the scattered
@@ -3822,7 +4375,10 @@ mod tests {
                 "b",
                 query,
                 100_000,
-                &FusionWeights { overlap_scope: scope, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    overlap_scope: scope,
+                    ..FusionWeights::SHIPPED
+                },
             )
             .expect("recall")
             .into_iter()
@@ -3873,7 +4429,10 @@ mod tests {
             .store
             .recall_inputs("b", "token bucket", &[], FTS_LIMIT)
             .expect("inputs");
-        assert_eq!(recency_rank(&all, chrono::Utc::now(), 30.0).len(), all.len());
+        assert_eq!(
+            recency_rank(&all, chrono::Utc::now(), 30.0).len(),
+            all.len()
+        );
     }
 
     // ---- Phase B: the lexical query config ---------------------------------
@@ -3898,8 +4457,14 @@ mod tests {
             "not json at all",
         ] {
             let table = BankConfig::parse(raw).recall_synonyms;
-            assert!(table.is_empty(), "{raw} should have produced no synonyms: {table:?}");
-            assert!(expand_synonyms(&table, "a b migrate").is_empty(), "{raw} expanded");
+            assert!(
+                table.is_empty(),
+                "{raw} should have produced no synonyms: {table:?}"
+            );
+            assert!(
+                expand_synonyms(&table, "a b migrate").is_empty(),
+                "{raw} expanded"
+            );
         }
     }
 
@@ -3935,10 +4500,9 @@ mod tests {
     /// `"Migrate"` in a config and `"MIGRATE"` in a query meet in the middle.
     #[test]
     fn synonym_trigger_matching_should_ignore_case_in_both_directions() {
-        let table = BankConfig::parse(
-            r#"{"recallSynonyms": {"Migrate": {"terms": ["REFACTOR"]}}}"#,
-        )
-        .recall_synonyms;
+        let table =
+            BankConfig::parse(r#"{"recallSynonyms": {"Migrate": {"terms": ["REFACTOR"]}}}"#)
+                .recall_synonyms;
         assert_eq!(expand_synonyms(&table, "MIGRATE this").len(), 1);
         assert_eq!(expand_synonyms(&table, "migrate this").len(), 1);
         assert_eq!(expand_synonyms(&table, "MiGrAtE this").len(), 1);
@@ -3993,26 +4557,34 @@ mod tests {
         }
 
         // Weight above 1.0 is clamped to a full term.
-        let over = BankConfig::parse(
-            r#"{"recallSynonyms": {"a": {"terms": ["b"], "weight": 5.0}}}"#,
-        )
-        .recall_synonyms;
-        assert_eq!(expand_synonyms(&over, "a query"), vec![("b".to_string(), 1.0)]);
+        let over =
+            BankConfig::parse(r#"{"recallSynonyms": {"a": {"terms": ["b"], "weight": 5.0}}}"#)
+                .recall_synonyms;
+        assert_eq!(
+            expand_synonyms(&over, "a query"),
+            vec![("b".to_string(), 1.0)]
+        );
 
         // A negative weight is clamped up to the smallest positive weight rather
         // than honoured: a synonym must not be able to *subtract*.
-        let under = BankConfig::parse(
-            r#"{"recallSynonyms": {"a": {"terms": ["b"], "weight": -3.0}}}"#,
-        )
-        .recall_synonyms;
+        let under =
+            BankConfig::parse(r#"{"recallSynonyms": {"a": {"terms": ["b"], "weight": -3.0}}}"#)
+                .recall_synonyms;
         let got = expand_synonyms(&under, "a query");
         assert_eq!(got.len(), 1);
-        assert!(got[0].1 > 0.0, "a negative weight must not survive: {:?}", got);
+        assert!(
+            got[0].1 > 0.0,
+            "a negative weight must not survive: {:?}",
+            got
+        );
 
         // A missing weight takes the documented default, not zero and not one.
-        let none = BankConfig::parse(r#"{"recallSynonyms": {"a": {"terms": ["b"]}}}"#)
-            .recall_synonyms;
-        assert_eq!(expand_synonyms(&none, "a query"), vec![("b".to_string(), DEFAULT_SYNONYM_WEIGHT)]);
+        let none =
+            BankConfig::parse(r#"{"recallSynonyms": {"a": {"terms": ["b"]}}}"#).recall_synonyms;
+        assert_eq!(
+            expand_synonyms(&none, "a query"),
+            vec![("b".to_string(), DEFAULT_SYNONYM_WEIGHT)]
+        );
     }
 
     /// The end-to-end default-off proof, in the form the brief asks for: with no
@@ -4028,12 +4600,18 @@ mod tests {
         assert!(!reference.is_empty(), "the fixture must actually match");
 
         // The config-aware entry point, with a config that has no synonym key.
-        svc.set_bank_config("b", r#"{"recallMaxTokens": 100000}"#).expect("config");
-        let got = svc.recall_filtered("b", query, None, &[], &[]).expect("configured recall");
+        svc.set_bank_config("b", r#"{"recallMaxTokens": 100000}"#)
+            .expect("config");
+        let got = svc
+            .recall_filtered("b", query, None, &[], &[])
+            .expect("configured recall");
 
         assert_eq!(
             got.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
-            reference.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            reference
+                .iter()
+                .map(|h| h.memory.id.as_str())
+                .collect::<Vec<_>>(),
             "a config without the key moved the order"
         );
         for (want, have) in reference.iter().zip(&got) {
@@ -4064,7 +4642,9 @@ mod tests {
         // fail on a stopword rather than on the synonym.
         let query = "migrate";
         assert_eq!(
-            svc.recall_filtered("b", query, None, &[], &[]).expect("before").len(),
+            svc.recall_filtered("b", query, None, &[], &[])
+                .expect("before")
+                .len(),
             0,
             "the query alone must not match"
         );
@@ -4074,8 +4654,14 @@ mod tests {
             r#"{"recallSynonyms": {"migrate": {"terms": ["schema"], "weight": 0.7}}}"#,
         )
         .expect("config");
-        let after = svc.recall_filtered("b", query, None, &[], &[]).expect("after");
-        assert_eq!(after.len(), 1, "the configured synonym must reach it: {after:?}");
+        let after = svc
+            .recall_filtered("b", query, None, &[], &[])
+            .expect("after");
+        assert_eq!(
+            after.len(),
+            1,
+            "the configured synonym must reach it: {after:?}"
+        );
         assert!(after[0].memory.content.contains("schema change"));
 
         // …and the same expansion survives an explicit `budget`, which is the
@@ -4086,8 +4672,14 @@ mod tests {
             .recall_filtered("b", query, Some(DEFAULT_RECALL_BUDGET), &[], &[])
             .expect("explicit-budget recall");
         assert_eq!(
-            explicit.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
-            after.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>(),
+            explicit
+                .iter()
+                .map(|h| h.memory.id.as_str())
+                .collect::<Vec<_>>(),
+            after
+                .iter()
+                .map(|h| h.memory.id.as_str())
+                .collect::<Vec<_>>(),
             "an explicit budget must not drop the configured synonyms"
         );
     }
@@ -4099,11 +4691,13 @@ mod tests {
     #[test]
     fn the_prefix_arm_should_be_selectable_through_weights_and_off_by_default() {
         let svc = svc_with_banks(&["b"]);
-        svc.retain("b", "the database migration needs a backup", None).expect("retain");
+        svc.retain("b", "the database migration needs a backup", None)
+            .expect("retain");
         let query = "migrat";
 
         // Off: nothing. The exact grammar cannot see "migration" from "migrat".
-        let off = svc.recall_with_weights("b", query, 100_000, &FusionWeights::SHIPPED)
+        let off = svc
+            .recall_with_weights("b", query, 100_000, &FusionWeights::SHIPPED)
             .expect("off recall");
         assert!(
             off.iter().all(|h| !h.memory.content.contains("migration")),
@@ -4116,7 +4710,10 @@ mod tests {
                 "b",
                 query,
                 100_000,
-                &FusionWeights { keyword_scope: KeywordScope::ExactAndPrefix, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    keyword_scope: KeywordScope::ExactAndPrefix,
+                    ..FusionWeights::SHIPPED
+                },
             )
             .expect("on recall");
         assert!(

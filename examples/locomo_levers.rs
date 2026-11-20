@@ -45,7 +45,9 @@ mod dev;
 
 use std::collections::BTreeMap;
 
-use memory_wire::recall::{is_temporal_query, FusionWeights, KeywordScope, OverlapScope, RecencyPolicy};
+use memory_wire::recall::{
+    is_temporal_query, FusionWeights, KeywordScope, OverlapScope, RecencyPolicy,
+};
 
 /// The levers under test, one pre-registered value each. Values come from
 /// `docs/handoff/RND_PLAN.md` §H1/H3, written there before this harness; nothing
@@ -113,7 +115,10 @@ fn main() -> anyhow::Result<()> {
         Some(p) => p,
         None => {
             let p = std::env::temp_dir().join("results_locomo_levers.json");
-            eprintln!("no --out-json given: writing per-question data to {}", p.display());
+            eprintln!(
+                "no --out-json given: writing per-question data to {}",
+                p.display()
+            );
             p.display().to_string()
         }
     };
@@ -169,11 +174,15 @@ fn main() -> anyhow::Result<()> {
         let mut this_rows: Vec<dev::Row> = Vec::with_capacity(levers.len());
         let mut this_lists: Vec<Vec<String>> = Vec::with_capacity(levers.len());
         for (li, (_, weights)) in levers.iter().enumerate() {
-            let hits = svc.recall_with_weights(&q.user_id, &q.query, corpus.budget_tokens, weights)?;
+            let hits =
+                svc.recall_with_weights(&q.user_id, &q.query, corpus.budget_tokens, weights)?;
             let retrieved = dev::session_of(hits.into_iter().map(|h| h.memory.id));
             let row = dev::Row::new(q, &retrieved, &pq.gold);
             agg[li].add(&row);
-            per_cat[li].entry(row.category.clone()).or_default().add(&row);
+            per_cat[li]
+                .entry(row.category.clone())
+                .or_default()
+                .add(&row);
             this_rows.push(row);
             this_lists.push(retrieved);
         }
@@ -181,7 +190,9 @@ fn main() -> anyhow::Result<()> {
         let fires = is_temporal_query(&q.query);
         if fires {
             h3_fired += 1;
-            *h3_fired_by_cat.entry(base_row.category.clone()).or_default() += 1;
+            *h3_fired_by_cat
+                .entry(base_row.category.clone())
+                .or_default() += 1;
         } else {
             h3_n_nontemporal += 1;
         }
@@ -330,7 +341,9 @@ fn main() -> anyhow::Result<()> {
 
     // ---- artifact -----------------------------------------------------------------
     let mut md = String::new();
-    md.push_str("# LoCoMo lever A/B — H1a, H1b, H1c, H3 (dev set, single pre-registered values)\n\n");
+    md.push_str(
+        "# LoCoMo lever A/B — H1a, H1b, H1c, H3 (dev set, single pre-registered values)\n\n",
+    );
     md.push_str("## Provenance\n\n| | |\n|---|---|\n");
     md.push_str(&format!("| Commit under test | `{}` |\n", dev::git_head()));
     md.push_str(&format!(
@@ -344,7 +357,11 @@ fn main() -> anyhow::Result<()> {
         bench_common::profile(),
         bench_common::host()
     ));
-    md.push_str(&format!("| Load at start / at end | `{}` / `{}` |\n", load_start, dev::loadavg()));
+    md.push_str(&format!(
+        "| Load at start / at end | `{}` / `{}` |\n",
+        load_start,
+        dev::loadavg()
+    ));
     md.push_str(&format!(
         "| Dataset | LoCoMo (Snap Research) via the canonical distribution \
          `vectorize-io/agent-memory-benchmark`, `data/locomo/locomo10/`, pinned at upstream commit \
@@ -426,7 +443,12 @@ fn main() -> anyhow::Result<()> {
                 2 => agg[li].r5(),
                 _ => agg[li].ndcg10(),
             };
-            md.push_str(&format!("| {} | {} | {:.1}% |\n", name, cells.join(" | "), overall));
+            md.push_str(&format!(
+                "| {} | {} | {:.1}% |\n",
+                name,
+                cells.join(" | "),
+                overall
+            ));
         }
         md.push('\n');
     }

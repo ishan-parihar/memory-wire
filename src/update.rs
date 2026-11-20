@@ -65,11 +65,7 @@ pub fn orchestrate(ops: &mut dyn Ops, current: &str) -> Result<String, String> {
 /// compared its own fresh path against a leftover *file*. That is a test that
 /// passes or fails on what happened to be in `$HOME`, which is the definition of
 /// the hermeticity rule `a45ea07` established for `golden_install_shapes`.
-fn orchestrate_into(
-    ops: &mut dyn Ops,
-    current: &str,
-    root: PathBuf,
-) -> Result<String, String> {
+fn orchestrate_into(ops: &mut dyn Ops, current: &str, root: PathBuf) -> Result<String, String> {
     let tags = ops.releases()?;
     let Some(newest) = newest(&tags, current) else {
         return Ok(format!(
@@ -83,13 +79,16 @@ fn orchestrate_into(
     let dir = scratch_in(&root, &newest);
     let assets = ops.download(&newest, &dir)?;
     let Some(archive) = assets.iter().find(|p| {
-        p.extension().is_some_and(|e| e == "gz")
-            && !p.to_string_lossy().ends_with(".sha256")
+        p.extension().is_some_and(|e| e == "gz") && !p.to_string_lossy().ends_with(".sha256")
     }) else {
         return Err(format!(
             "no memory-wire-<target>.tar.gz in {} (files: {})",
             dir.display(),
-            assets.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+            assets
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     };
     let digest_path = PathBuf::from(format!("{}.sha256", archive.display()));
@@ -178,7 +177,11 @@ fn scratch_in(root: &Path, tag: &str) -> PathBuf {
 fn verify(archive: &Path, digest_path: &Path) -> Result<(), String> {
     let sidecar = std::fs::read_to_string(digest_path)
         .map_err(|e| format!("no checksum sidecar ({}): {e}", digest_path.display()))?;
-    let want = sidecar.split_whitespace().next().unwrap_or_default().to_string();
+    let want = sidecar
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_string();
     let bytes = std::fs::read(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
     use sha2::{Digest, Sha256};
     let got = Sha256::digest(&bytes);
@@ -263,7 +266,8 @@ impl GhOps {
         if !on_path {
             return Err(
                 "gh is required for update (GitHub serves https only, and this binary stays \
-                 dependency-free). Install: https://cli.github.com".to_string(),
+                 dependency-free). Install: https://cli.github.com"
+                    .to_string(),
             );
         }
         Ok(Self {
@@ -292,7 +296,12 @@ impl Ops for GhOps {
         // the third is the tag; the tag is what the API routes on.
         let tags = String::from_utf8_lossy(&out.stdout)
             .lines()
-            .filter_map(|l| l.split('\t').nth(2).map(str::trim).filter(|t| !t.is_empty()))
+            .filter_map(|l| {
+                l.split('\t')
+                    .nth(2)
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+            })
             .map(String::from)
             .collect();
         Ok(tags)
@@ -342,7 +351,8 @@ impl Ops for GhOps {
         let Ok(rec) = serde_json::from_str::<crate::daemon::ServeState>(&text) else {
             return false;
         };
-        crate::doctor::probe_server(&format!("http://{}", rec.addr)) == crate::doctor::ServerState::Up
+        crate::doctor::probe_server(&format!("http://{}", rec.addr))
+            == crate::doctor::ServerState::Up
     }
 
     fn stop_daemon(&mut self) -> Result<(), String> {
@@ -435,10 +445,7 @@ mod tests {
     /// both (v0.8.1's bug) makes `update` permanently claim "up to date".
     #[test]
     fn newest_must_accept_the_bare_semver_current_binary_reports() {
-        let tags: Vec<String> = ["v0.8.0", "v0.8.1"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let tags: Vec<String> = ["v0.8.0", "v0.8.1"].iter().map(|s| s.to_string()).collect();
         assert_eq!(newest(&tags, "0.8.0").as_deref(), Some("v0.8.1"));
         // Equal versions are not newer — the None that means "up to date".
         assert_eq!(newest(&tags, "0.8.1"), None);
@@ -479,7 +486,10 @@ mod tests {
     }
     impl Fake {
         fn ok() -> Self {
-            Self { log: vec![], live: false }
+            Self {
+                log: vec![],
+                live: false,
+            }
         }
     }
     impl Ops for Fake {
@@ -491,8 +501,7 @@ mod tests {
             self.log.push(format!("download {tag}"));
             let a = dir.join("memory-wire-linux-x86_64.tar.gz");
             std::fs::write(&a, b"tarball").ok();
-            std::fs::write(a.with_extension("gz.sha256"), hex_of(b"tarball"))
-                .ok();
+            std::fs::write(a.with_extension("gz.sha256"), hex_of(b"tarball")).ok();
             Ok(vec![a])
         }
         fn extract(&mut self, _archive: &Path, dir: &Path) -> Result<PathBuf, String> {
@@ -538,7 +547,10 @@ mod tests {
     fn orchestrate_runs_the_full_order_when_live() {
         let root = std::env::temp_dir().join(format!("mw-update-root-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
-        let mut f = Fake { live: true, ..Fake::ok() };
+        let mut f = Fake {
+            live: true,
+            ..Fake::ok()
+        };
         let report = orchestrate_into(&mut f, "v0.7.0", root.clone()).expect("update");
         assert!(report.contains("v0.7.0"), "{report}");
         assert!(report.contains("v0.8.0"), "{report}");
@@ -578,7 +590,11 @@ mod tests {
             .current_dir(&cwd)
             .output()
             .expect("tar");
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         let bin = extract(&dir.join("asset.tar.gz"), &dir).expect("extract");
         assert!(bin.is_file(), "{}", bin.display());
         assert_eq!(bin, dir.join("memory-wire"));
@@ -591,7 +607,10 @@ mod tests {
         // No scratch dir is reached on this path, but the root is named anyway
         // so no test in this module resolves the real data dir.
         let root = std::env::temp_dir().join(format!("mw-update-root-{}-cur", std::process::id()));
-        let mut f = Fake { live: true, ..Fake::ok() };
+        let mut f = Fake {
+            live: true,
+            ..Fake::ok()
+        };
         let report = orchestrate_into(&mut f, "v0.8.0", root).expect("report");
         assert!(report.contains("up to date"), "{report}");
         assert_eq!(f.log, vec!["releases".to_string()]);
@@ -635,20 +654,33 @@ mod tests {
             }
         }
         let mut t = Tampered(Fake::ok());
-        let root = std::env::temp_dir().join(format!("mw-update-root-{}-tamper", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("mw-update-root-{}-tamper", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         let err = orchestrate_into(&mut t, "v0.7.0", root.clone())
             .expect_err("tampered archive must refuse");
         assert!(err.contains("checksum mismatch"), "{err}");
-        assert_eq!(t.0.log, vec!["releases".to_string(), "download v0.8.0".to_string()]);
+        assert_eq!(
+            t.0.log,
+            vec!["releases".to_string(), "download v0.8.0".to_string()]
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
     fn asset_slug_should_map_the_known_triples() {
-        assert_eq!(asset_slug_for("x86_64-unknown-linux-gnu"), Some("linux-x86_64"));
-        assert_eq!(asset_slug_for("x86_64-unknown-linux-musl"), Some("linux-x86_64-musl"));
-        assert_eq!(asset_slug_for("aarch64-unknown-linux-gnu"), Some("linux-aarch64"));
+        assert_eq!(
+            asset_slug_for("x86_64-unknown-linux-gnu"),
+            Some("linux-x86_64")
+        );
+        assert_eq!(
+            asset_slug_for("x86_64-unknown-linux-musl"),
+            Some("linux-x86_64-musl")
+        );
+        assert_eq!(
+            asset_slug_for("aarch64-unknown-linux-gnu"),
+            Some("linux-aarch64")
+        );
         assert_eq!(asset_slug_for("x86_64-apple-darwin"), None);
     }
 }

@@ -51,17 +51,16 @@ use crate::paths;
 /// `connect` has none of those as preconditions, so the file travels inside the
 /// binary and installing is a copy.
 ///
-    /// Source of truth is `plugin/integrations/extension/memory-wire.ts`. One file
-    /// serves both hosts, so there is no per-host template to drift, and
-    /// `the_embedded_source_is_the_one_on_disk` asserts the directory and
-    /// `include_str!` agree — a file in the directory but not here would install
-    /// an incomplete tree and pass every other test in this module.
+/// Source of truth is `plugin/integrations/extension/memory-wire.ts`. One file
+/// serves both hosts, so there is no per-host template to drift, and
+/// `the_embedded_source_is_the_one_on_disk` asserts the directory and
+/// `include_str!` agree — a file in the directory but not here would install
+/// an incomplete tree and pass every other test in this module.
 ///
 /// `pub(crate)` rather than private because `connect`'s tests assert an installed
 /// file equals it, and a test comparing against a re-derived copy of the string
 /// would pass whatever the binary happened to hold.
-pub(crate) const SOURCE: &str =
-    include_str!("../plugin/integrations/extension/memory-wire.ts");
+pub(crate) const SOURCE: &str = include_str!("../plugin/integrations/extension/memory-wire.ts");
 
 /// Marker the template carries, and the only thing that distinguishes one
 /// installed copy from another.
@@ -73,7 +72,13 @@ const DEFAULT_BANK_LINE: &str = "var DEFAULT_BANK = \"memory-wire\";";
 ///
 /// A `None` from [`extension_rel`] means the host has no extension surface, and
 /// that is a [`Outcome::Skipped`] rather than a failure: nothing to get wrong.
-pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>) -> Outcome {
+pub fn apply(
+    host: Host,
+    home: &Path,
+    uninstall: bool,
+    data_root: &Path,
+    bank: Option<&str>,
+) -> Outcome {
     let Some(rel) = extension_rel(host) else {
         return Outcome::Skipped("no extension surface for this host".to_string());
     };
@@ -115,7 +120,9 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     // pinned to a second bank would silently re-write every extension back to
     // the default and the surfaces would split from the hooks and MCP entries
     // that did keep their pin. Only a file carrying our marker contributes.
-    let baked_pin = existing.as_deref().and_then(crate::connect::bank_from_extension);
+    let baked_pin = existing
+        .as_deref()
+        .and_then(crate::connect::bank_from_extension);
     let bank = bank.or(baked_pin.as_deref());
     let source = crate::connect_common::baked(SOURCE, DEFAULT_BANK_LINE, bank);
     if let Some(have) = existing.as_deref() {
@@ -189,7 +196,8 @@ pub fn extension_rel(host: Host) -> Option<PathBuf> {
 /// is genuinely connected, and reporting `wired=no` there would be a false
 /// negative the user has no way to act on.
 pub fn installed(host: Host, home: &Path) -> bool {
-    extension_rel(host).is_some_and(|rel| crate::connect_common::is_ours(&home.join(rel), VERSION_MARKER))
+    extension_rel(host)
+        .is_some_and(|rel| crate::connect_common::is_ours(&home.join(rel), VERSION_MARKER))
 }
 /// The version a source declares, read out of the marker line.
 ///
@@ -236,7 +244,9 @@ fn prune_empty_dirs(dir: &Path) {
     // directory cannot walk an arbitrary chain upward; the early return on the
     // name is what normally stops it.
     for _ in 0..4 {
-        let empty = std::fs::read_dir(cursor).map(|mut e| e.next().is_none()).unwrap_or(false);
+        let empty = std::fs::read_dir(cursor)
+            .map(|mut e| e.next().is_none())
+            .unwrap_or(false);
         if !empty {
             return;
         }
@@ -292,7 +302,15 @@ mod tests {
     }
 
     fn run(host: Host, home: &Path, uninstall: bool) -> Outcome {
-        crate::connect::apply(host, "memory-wire", home, uninstall, no_path, &home.join("data"), None)
+        crate::connect::apply(
+            host,
+            "memory-wire",
+            home,
+            uninstall,
+            no_path,
+            &home.join("data"),
+            None,
+        )
     }
 
     fn read_ext(home: &Path, host: Host) -> String {
@@ -331,7 +349,11 @@ mod tests {
             "omp loads flat *.ts files out of its extensions directory"
         );
         for host in [Host::ClaudeCode, Host::Codex, Host::Hermes] {
-            assert!(extension_rel(host).is_none(), "{} has no extension surface", host.id());
+            assert!(
+                extension_rel(host).is_none(),
+                "{} has no extension surface",
+                host.id()
+            );
         }
     }
 
@@ -358,7 +380,12 @@ mod tests {
         for host in [Host::Pi, Host::Omp] {
             let home = detected("identical", host);
             assert!(matches!(run(host, &home, false), Outcome::Wired { .. }));
-            assert_eq!(read_ext(&home, host), SOURCE, "{} installed a different file", host.id());
+            assert_eq!(
+                read_ext(&home, host),
+                SOURCE,
+                "{} installed a different file",
+                host.id()
+            );
             std::fs::remove_dir_all(&home).ok();
         }
     }
@@ -372,7 +399,10 @@ mod tests {
         let home = tmp_home("bank-baked");
         apply(Host::Omp, &home, false, &home.join("data"), Some("omp"));
         let file = read_ext(&home, Host::Omp);
-        assert!(file.contains("var DEFAULT_BANK = \"omp\";"), "bank baked: {file}");
+        assert!(
+            file.contains("var DEFAULT_BANK = \"omp\";"),
+            "bank baked: {file}"
+        );
         // A reconnect with the same bank then reports already-wired, because
         // the idempotence compare runs against the same rendering.
         let out = apply(Host::Omp, &home, false, &home.join("data"), Some("omp"));
@@ -385,21 +415,36 @@ mod tests {
 
     #[test]
     fn the_version_is_read_out_of_the_marker_rather_than_declared_here() {
-        assert_eq!(version(SOURCE), Some("3"), "the template declares no readable version");
+        assert_eq!(
+            version(SOURCE),
+            Some("3"),
+            "the template declares no readable version"
+        );
         assert_eq!(version("// MEMORY_WIRE_EXTENSION_VERSION: 3"), Some("3"));
-        assert_eq!(version("const V = 1; // MEMORY_WIRE_EXTENSION_VERSION 12"), Some("12"));
+        assert_eq!(
+            version("const V = 1; // MEMORY_WIRE_EXTENSION_VERSION 12"),
+            Some("12")
+        );
         // Tolerating the `v` prefix and leading zeros is deliberate: a template
         // is free to write `v0.5.1`-shaped text, and a parse that returned
         // nothing would silently downgrade every upgrade to "replace nothing".
         assert_eq!(version("// MEMORY_WIRE_EXTENSION_VERSION v2"), Some("2"));
         assert_eq!(version("// MEMORY_WIRE_EXTENSION_VERSION 007"), Some("7"));
-        assert_eq!(version("// MEMORY_WIRE_EXTENSION_VERSION 0"), Some("0"), "v0 is a version");
+        assert_eq!(
+            version("// MEMORY_WIRE_EXTENSION_VERSION 0"),
+            Some("0"),
+            "v0 is a version"
+        );
         // A line that only mentions the word is not a declaration.
         assert_eq!(
             version("// the MEMORY_WIRE_EXTENSION_VERSION marker is read here"),
             None
         );
-        assert_eq!(version("// memory-wire-extension-version 1"), None, "case-sensitive");
+        assert_eq!(
+            version("// memory-wire-extension-version 1"),
+            None,
+            "case-sensitive"
+        );
     }
 
     // -- the install ------------------------------------------------------
@@ -416,7 +461,11 @@ mod tests {
             };
             let rel = extension_rel(host).expect("rel").display().to_string();
             assert!(events.contains(&rel), "{}: {events:?}", host.id());
-            assert!(backup.is_none(), "{}: nothing to preserve on a first install", host.id());
+            assert!(
+                backup.is_none(),
+                "{}: nothing to preserve on a first install",
+                host.id()
+            );
             assert!(home.join(extension_rel(host).expect("rel")).is_file());
             std::fs::remove_dir_all(&home).ok();
         }
@@ -430,7 +479,9 @@ mod tests {
         // `~/.pi` exists, the extensions tree under it does not.
         std::fs::create_dir_all(home.join(".pi")).expect("pi home");
         assert!(matches!(run(Host::Pi, &home, false), Outcome::Wired { .. }));
-        assert!(home.join(".pi/agent/extensions/memory-wire/index.ts").is_file());
+        assert!(home
+            .join(".pi/agent/extensions/memory-wire/index.ts")
+            .is_file());
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -483,7 +534,9 @@ mod tests {
                 panic!("{}: expected a wired outcome", host.id());
             };
             assert!(
-                notes.iter().any(|n| n.contains("replaced extension v0 with v")),
+                notes
+                    .iter()
+                    .any(|n| n.contains("replaced extension v0 with v")),
                 "{}: the version swap is not reported: {notes:?}",
                 host.id()
             );
@@ -511,7 +564,11 @@ mod tests {
             let Outcome::Failed(why) = &out else {
                 panic!("{}: expected a refusal, got {out:?}", host.id());
             };
-            assert!(out.is_failure(), "{}: a refusal must exit nonzero", host.id());
+            assert!(
+                out.is_failure(),
+                "{}: a refusal must exit nonzero",
+                host.id()
+            );
             assert!(why.contains("left untouched"), "{why}");
             assert_eq!(
                 std::fs::read_to_string(&path).expect("read"),
@@ -609,7 +666,11 @@ mod tests {
             std::fs::write(&sib, "// somebody else's extension\n").expect("write");
             assert!(matches!(run(host, &home, false), Outcome::Wired { .. }));
             assert!(matches!(run(host, &home, true), Outcome::Unwired { .. }));
-            assert!(sib.is_file(), "{}: a dir we did not create is not removed", host.id());
+            assert!(
+                sib.is_file(),
+                "{}: a dir we did not create is not removed",
+                host.id()
+            );
             std::fs::remove_dir_all(&home).ok();
         }
     }
@@ -621,10 +682,16 @@ mod tests {
     fn pi_removes_the_directory_it_created_but_not_the_harness_tree() {
         let home = detected("prune", Host::Pi);
         assert!(matches!(run(Host::Pi, &home, false), Outcome::Wired { .. }));
-        assert!(matches!(run(Host::Pi, &home, true), Outcome::Unwired { .. }));
+        assert!(matches!(
+            run(Host::Pi, &home, true),
+            Outcome::Unwired { .. }
+        ));
         assert!(!home.join(".pi/agent/extensions/memory-wire").exists());
         assert!(!home.join(".pi/agent/extensions").exists());
-        assert!(home.join(".pi/agent").is_dir(), "the harness tree is not ours to remove");
+        assert!(
+            home.join(".pi/agent").is_dir(),
+            "the harness tree is not ours to remove"
+        );
         assert!(home.join(".pi").is_dir());
         std::fs::remove_dir_all(&home).ok();
     }
@@ -639,7 +706,10 @@ mod tests {
         std::fs::create_dir_all(home.join(".pi/agent")).expect("agent home");
         std::fs::write(home.join(".pi/agent/settings.json"), "{}\n").expect("write");
         assert!(matches!(run(Host::Pi, &home, false), Outcome::Wired { .. }));
-        assert!(matches!(run(Host::Pi, &home, true), Outcome::Unwired { .. }));
+        assert!(matches!(
+            run(Host::Pi, &home, true),
+            Outcome::Unwired { .. }
+        ));
         assert!(!home.join(".pi/agent/extensions").exists());
         assert_eq!(
             std::fs::read_to_string(home.join(".pi/agent/settings.json")).expect("read"),
@@ -653,8 +723,14 @@ mod tests {
     #[test]
     fn omp_removes_only_the_extensions_directory() {
         let home = detected("prune-omp", Host::Omp);
-        assert!(matches!(run(Host::Omp, &home, false), Outcome::Wired { .. }));
-        assert!(matches!(run(Host::Omp, &home, true), Outcome::Unwired { .. }));
+        assert!(matches!(
+            run(Host::Omp, &home, false),
+            Outcome::Wired { .. }
+        ));
+        assert!(matches!(
+            run(Host::Omp, &home, true),
+            Outcome::Unwired { .. }
+        ));
         assert!(!home.join(".omp/agent/extensions").exists());
         assert!(home.join(".omp/agent").is_dir());
         std::fs::remove_dir_all(&home).ok();
@@ -669,7 +745,10 @@ mod tests {
         std::fs::create_dir_all(sib.parent().expect("parent")).expect("mkdir");
         std::fs::write(&sib, "// somebody else's extension\n").expect("write");
         assert!(matches!(run(Host::Pi, &home, false), Outcome::Wired { .. }));
-        assert!(matches!(run(Host::Pi, &home, true), Outcome::Unwired { .. }));
+        assert!(matches!(
+            run(Host::Pi, &home, true),
+            Outcome::Unwired { .. }
+        ));
         assert!(!home.join(".pi/agent/extensions/memory-wire").exists());
         assert!(home.join(".pi/agent/extensions").is_dir());
         assert!(sib.is_file());
@@ -779,16 +858,28 @@ mod tests {
     fn the_installed_read_agrees_with_the_install() {
         for host in [Host::Pi, Host::Omp] {
             let home = detected("read", host);
-            assert!(!installed(host, &home), "{}: nothing is installed yet", host.id());
+            assert!(
+                !installed(host, &home),
+                "{}: nothing is installed yet",
+                host.id()
+            );
             // Reading must not conjure the directory it looks in, or two of
             // `connect --list` on a machine that has neither host would leave
             // behind the very trees it was asked about.
-            assert_eq!(dir_names(&home), [host.detect_rel()], "{}: a read wrote", host.id());
+            assert_eq!(
+                dir_names(&home),
+                [host.detect_rel()],
+                "{}: a read wrote",
+                host.id()
+            );
             assert!(matches!(run(host, &home, false), Outcome::Wired { .. }));
             assert!(installed(host, &home));
             assert!(matches!(run(host, &home, true), Outcome::Unwired { .. }));
             assert!(!installed(host, &home));
-            assert!(!installed(Host::ClaudeCode, &home), "a host with no rel is never installed");
+            assert!(
+                !installed(Host::ClaudeCode, &home),
+                "a host with no rel is never installed"
+            );
             std::fs::remove_dir_all(&home).ok();
         }
     }

@@ -284,7 +284,11 @@ fn inspect_at(path: &Path) -> Verdict {
     };
     match probe_server(&endpoint_of(&state.addr)) {
         ServerState::Up => Verdict::Serving(state),
-        ServerState::Down(why) => Verdict::AliveNotServing { state, identity, why },
+        ServerState::Down(why) => Verdict::AliveNotServing {
+            state,
+            identity,
+            why,
+        },
     }
 }
 
@@ -317,7 +321,12 @@ fn alive(pid: i32) -> bool {
 #[cfg(target_os = "linux")]
 fn start_ticks(pid: i32) -> Option<u64> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
+    stat.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()
 }
 
 /// No process start time off Linux; see the `linux` arm.
@@ -344,10 +353,16 @@ fn start(addr: &str, db: Option<PathBuf>) -> i32 {
                  one state file ({}), so a second daemon could not be stopped either\n  \
                  `memory-wire daemon status` reports it, `memory-wire daemon stop` ends it\n  \
                  to run on a different address, stop that one first",
-                state.addr, state.pid, state_path().display(),
+                state.addr,
+                state.pid,
+                state_path().display(),
             ));
         }
-        Verdict::AliveNotServing { state, identity, why } => {
+        Verdict::AliveNotServing {
+            state,
+            identity,
+            why,
+        } => {
             return refuse(&format!(
                 "pid {} is alive but http://{} does not answer ({why}), so it is not being \
                  reported as a running daemon and it is not being killed\n  \
@@ -416,14 +431,24 @@ fn start(addr: &str, db: Option<PathBuf>) -> i32 {
         Ok(f) => f,
         // No log means a detached server with nowhere to say why it died, which
         // is the failure mode this whole command exists to prevent.
-        Err(e) => return refuse(&format!("cannot open the server log {}: {e}", log.display())),
+        Err(e) => {
+            return refuse(&format!(
+                "cannot open the server log {}: {e}",
+                log.display()
+            ))
+        }
     };
 
     // Two descriptors into one log, so an interleaved panic message and a
     // shutdown line land in the same file in the order they happened.
     let log_out = match log_file.try_clone() {
         Ok(f) => f,
-        Err(e) => return refuse(&format!("cannot open the server log {}: {e}", log.display())),
+        Err(e) => {
+            return refuse(&format!(
+                "cannot open the server log {}: {e}",
+                log.display()
+            ))
+        }
     };
 
     let mut cmd = Command::new(exe);
@@ -598,11 +623,13 @@ fn stop() -> i32 {
         // (no start time on this platform) does the endpoint remain the sole
         // evidence, and there the conservative refusal stands.
         Verdict::AliveNotServing {
+            state, identity, ..
+        } if may_signal(identity) => terminate(&state),
+        Verdict::AliveNotServing {
             state,
             identity,
-            ..
-        } if may_signal(identity) => terminate(&state),
-        Verdict::AliveNotServing { state, identity, why } => refuse(&format!(
+            why,
+        } => refuse(&format!(
             "pid {} is alive but http://{} does not answer ({why}), and this platform publishes no \
              process start time, so the pid cannot be proven ours and will not be signalled\n  \
              {}\n  \
@@ -690,7 +717,11 @@ fn render(verdict: &Verdict) -> String {
         // that misleads: the pid alone says "running" and the endpoint alone
         // says "not running", and the truth is that we know one and not the
         // other.
-        Verdict::AliveNotServing { state, identity, why } => out.push_str(&format!(
+        Verdict::AliveNotServing {
+            state,
+            identity,
+            why,
+        } => out.push_str(&format!(
             "  state      pid alive, not serving\n  \
              pid        {}  ({})\n  \
              endpoint   http://{}\n  \
@@ -714,7 +745,10 @@ fn render(verdict: &Verdict) -> String {
              db         {}\n  \
              state file {}  (stale)\n  \
              `daemon start` clears the stale file and starts a server",
-            state.pid, state.addr, state.db, state_path().display(),
+            state.pid,
+            state.addr,
+            state.db,
+            state_path().display(),
         )),
         Verdict::Recycled(state) => out.push_str(&format!(
             "  state      not running\n  \
@@ -723,7 +757,10 @@ fn render(verdict: &Verdict) -> String {
              db         {}\n  \
              state file {}  (stale)\n  \
              `daemon start` clears the stale file and starts a server",
-            state.pid, state.addr, state.db, state_path().display(),
+            state.pid,
+            state.addr,
+            state.db,
+            state_path().display(),
         )),
         Verdict::Absent => out.push_str(&format!(
             "  state      not running\n  \
@@ -797,11 +834,7 @@ fn log_tail(path: &Path, n: usize) -> String {
     if lines.is_empty() {
         return format!("{} wrote nothing", path.display());
     }
-    let mut out = format!(
-        "the last {} line(s) of {}:",
-        lines.len(),
-        path.display()
-    );
+    let mut out = format!("the last {} line(s) of {}:", lines.len(), path.display());
     for line in lines.into_iter().rev() {
         out.push_str(&format!("\n  {line}"));
     }
@@ -870,7 +903,9 @@ mod tests {
 
     /// A pid that is guaranteed not to exist: a child that has been waited for.
     fn dead_pid() -> i32 {
-        let mut child = std::process::Command::new("true").spawn().expect("spawn true");
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("spawn true");
         child.wait().expect("wait");
         i32::try_from(child.id()).expect("pid fits an i32")
     }
@@ -908,15 +943,26 @@ mod tests {
 
         // A state file written before `start_ticks` existed still parses, and
         // says so by being absent rather than by failing.
-        std::fs::write(t.state_file(), r#"{"pid":1,"addr":"a:1","db":"b","started_at":2}"#)
-            .expect("write legacy");
-        let old = read_state_at(&t.state_file()).expect("read legacy").expect("some");
+        std::fs::write(
+            t.state_file(),
+            r#"{"pid":1,"addr":"a:1","db":"b","started_at":2}"#,
+        )
+        .expect("write legacy");
+        let old = read_state_at(&t.state_file())
+            .expect("read legacy")
+            .expect("some");
         assert_eq!(old.start_ticks, None);
         assert_eq!(old.pid, 1);
 
         assert!(clear_state_at(&t.state_file()));
-        assert_eq!(read_state_at(&t.state_file()).expect("read after clear"), None);
-        assert!(!clear_state_at(&t.state_file()), "removing twice is not an error");
+        assert_eq!(
+            read_state_at(&t.state_file()).expect("read after clear"),
+            None
+        );
+        assert!(
+            !clear_state_at(&t.state_file()),
+            "removing twice is not an error"
+        );
     }
 
     // A state file we cannot read names no process, so it is never treated as a
@@ -931,14 +977,20 @@ mod tests {
         ] {
             std::fs::write(t.state_file(), bytes).expect("write");
             let err = read_state_at(&t.state_file()).expect_err("must not parse");
-            assert!(err.starts_with(&t.state_file().display().to_string()), "{err}");
+            assert!(
+                err.starts_with(&t.state_file().display().to_string()),
+                "{err}"
+            );
             assert!(!err.contains(why), "sanity: {why}");
 
             let verdict = inspect_at(&t.state_file());
             let Verdict::Corrupt(reported) = &verdict else {
                 panic!("{why} must read as corrupt, not as a daemon: {verdict:?}");
             };
-            assert!(reported.contains(&t.state_file().display().to_string()), "{reported}");
+            assert!(
+                reported.contains(&t.state_file().display().to_string()),
+                "{reported}"
+            );
             let screen = render(&verdict);
             assert!(screen.contains("corrupt"), "{screen}");
             assert!(screen.contains("not overwritten"), "{screen}");
@@ -976,11 +1028,19 @@ mod tests {
         write_state_at(&t.state_file(), &state).expect("write");
 
         let verdict = inspect_at(&t.state_file());
-        let Verdict::AliveNotServing { state: seen, identity, why } = &verdict else {
+        let Verdict::AliveNotServing {
+            state: seen,
+            identity,
+            why,
+        } = &verdict
+        else {
             panic!("a live pid on a dead endpoint must not be a daemon: {verdict:?}");
         };
         assert_eq!(seen.pid, self_pid(), "the pid is reported, not dropped");
-        assert!(!why.is_empty(), "the probe's own reason is carried, not summarised away");
+        assert!(
+            !why.is_empty(),
+            "the probe's own reason is carried, not summarised away"
+        );
         assert_eq!(
             *identity,
             match start_ticks(self_pid()) {
@@ -991,7 +1051,10 @@ mod tests {
 
         let screen = render(&verdict);
         assert!(screen.contains("pid alive, not serving"), "{screen}");
-        assert!(screen.contains(&format!("pid        {}", self_pid())), "{screen}");
+        assert!(
+            screen.contains(&format!("pid        {}", self_pid())),
+            "{screen}"
+        );
         assert!(screen.contains(&addr), "{screen}");
         assert!(screen.contains(identity.note()), "{screen}");
         // The two things a reader must not do with this state.
@@ -1027,7 +1090,9 @@ mod tests {
             while let Ok((mut sock, _)) = listener.accept() {
                 let mut raw = [0u8; 1024];
                 let _ = sock.read(&mut raw);
-                let _ = sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 21\r\n\r\n<html>someone</html>\n");
+                let _ = sock.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 21\r\n\r\n<html>someone</html>\n",
+                );
             }
         });
         let state = claiming(self_pid(), &addr.to_string());
@@ -1045,7 +1110,10 @@ mod tests {
     // a live process, which would end the test.
     #[test]
     fn only_a_start_time_match_authorises_signalling() {
-        assert!(may_signal(Identity::Matched), "a matched start time is proof of identity");
+        assert!(
+            may_signal(Identity::Matched),
+            "a matched start time is proof of identity"
+        );
         assert!(
             !may_signal(Identity::Unavailable),
             "without a start time the pid is only a hint, so the endpoint is all the evidence"
@@ -1104,7 +1172,11 @@ mod tests {
     #[test]
     fn a_timestamp_should_render_as_utc_or_as_a_dash() {
         assert_eq!(stamp(1_700_000_000), "2023-11-14T22:13:20Z");
-        assert_eq!(stamp(i64::MIN), "-", "an unrenderable second is a dash, not a panic");
+        assert_eq!(
+            stamp(i64::MIN),
+            "-",
+            "an unrenderable second is a dash, not a panic"
+        );
     }
 
     #[test]
@@ -1112,7 +1184,11 @@ mod tests {
         let t = Tmp::new("log");
         let log = t.0.join(LOG_FILE);
         std::fs::write(&log, "").expect("write");
-        assert!(log_tail(&log, 5).contains("wrote nothing"), "{}", log_tail(&log, 5));
+        assert!(
+            log_tail(&log, 5).contains("wrote nothing"),
+            "{}",
+            log_tail(&log, 5)
+        );
 
         std::fs::write(&log, "one\ntwo\nthree\nfour\n").expect("write");
         let tail = log_tail(&log, 2);

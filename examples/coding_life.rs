@@ -49,7 +49,10 @@ fn grep_rank(question: &str, sessions: &[Session]) -> Vec<String> {
         .iter()
         .map(|s| {
             let body = s.content.to_lowercase();
-            (toks.iter().filter(|t| body.contains(t.as_str())).count(), s.id.as_str())
+            (
+                toks.iter().filter(|t| body.contains(t.as_str())).count(),
+                s.id.as_str(),
+            )
         })
         .filter(|(c, _)| *c > 0)
         .collect();
@@ -71,12 +74,14 @@ fn main() -> anyhow::Result<()> {
 
     let sessions: Vec<Session> =
         serde_json::from_str(&fs::read_to_string("eval/data/sessions.json")?)?;
-    let queries: Vec<Query> =
-        serde_json::from_str(&fs::read_to_string("eval/data/queries.json")?)?;
+    let queries: Vec<Query> = serde_json::from_str(&fs::read_to_string("eval/data/queries.json")?)?;
 
     // Index once for memory-wire.
     let store = SqliteStore::open_in_memory()?;
-    store.put_bank(&Bank { id: "life".into(), name: "life".into() })?;
+    store.put_bank(&Bank {
+        id: "life".into(),
+        name: "life".into(),
+    })?;
     for s in &sessions {
         store.put(&Memory {
             id: s.id.clone(),
@@ -107,34 +112,60 @@ fn main() -> anyhow::Result<()> {
         let t = Instant::now();
         let ranked = grep_rank(&q.question, &sessions);
         let ms = t.elapsed().as_micros();
-        let hits = ranked.iter().take(k).filter(|id| gold.contains(id.as_str())).count();
+        let hits = ranked
+            .iter()
+            .take(k)
+            .filter(|id| gold.contains(id.as_str()))
+            .count();
         let a = adapters.entry("grep".into()).or_default();
         a.n += 1;
         a.p += hits as f64 / k as f64;
-        a.r += if gold.is_empty() { 0.0 } else { hits as f64 / gold.len() as f64 };
+        a.r += if gold.is_empty() {
+            0.0
+        } else {
+            hits as f64 / gold.len() as f64
+        };
         a.hit += usize::from(hits > 0);
         a.lat.push(ms);
         let bt = by_type.entry(("grep".into(), q.qtype.clone())).or_default();
         bt.n += 1;
         bt.p += hits as f64 / k as f64;
-        bt.r += if gold.is_empty() { 0.0 } else { hits as f64 / gold.len() as f64 };
+        bt.r += if gold.is_empty() {
+            0.0
+        } else {
+            hits as f64 / gold.len() as f64
+        };
         bt.hit += usize::from(hits > 0);
         // memory-wire adapter
         let t = Instant::now();
         let hits_mw = svc.recall("life", &q.question, 2000)?;
         let ms = t.elapsed().as_micros();
         let ranked_mw: Vec<String> = hits_mw.into_iter().map(|h| h.memory.id).collect();
-        let hits = ranked_mw.iter().take(k).filter(|id| gold.contains(id.as_str())).count();
+        let hits = ranked_mw
+            .iter()
+            .take(k)
+            .filter(|id| gold.contains(id.as_str()))
+            .count();
         let a = adapters.entry("memory-wire".into()).or_default();
         a.n += 1;
         a.p += hits as f64 / k as f64;
-        a.r += if gold.is_empty() { 0.0 } else { hits as f64 / gold.len() as f64 };
+        a.r += if gold.is_empty() {
+            0.0
+        } else {
+            hits as f64 / gold.len() as f64
+        };
         a.hit += usize::from(hits > 0);
         a.lat.push(ms);
-        let bt = by_type.entry(("memory-wire".into(), q.qtype.clone())).or_default();
+        let bt = by_type
+            .entry(("memory-wire".into(), q.qtype.clone()))
+            .or_default();
         bt.n += 1;
         bt.p += hits as f64 / k as f64;
-        bt.r += if gold.is_empty() { 0.0 } else { hits as f64 / gold.len() as f64 };
+        bt.r += if gold.is_empty() {
+            0.0
+        } else {
+            hits as f64 / gold.len() as f64
+        };
         bt.hit += usize::from(hits > 0);
         if hits == 0 {
             misses.push(q.id.as_str());
@@ -153,9 +184,27 @@ fn main() -> anyhow::Result<()> {
     // phase does to it.
     let grid: Vec<(String, Option<FusionWeights>)> = vec![
         ("shipped".into(), None),
-        ("raw overlap=0.50".into(), Some(FusionWeights { overlap: 0.50, ..FusionWeights::SHIPPED })),
-        ("raw overlap=0.75".into(), Some(FusionWeights { overlap: 0.75, ..FusionWeights::SHIPPED })),
-        ("raw overlap=1.00".into(), Some(FusionWeights { overlap: 1.00, ..FusionWeights::SHIPPED })),
+        (
+            "raw overlap=0.50".into(),
+            Some(FusionWeights {
+                overlap: 0.50,
+                ..FusionWeights::SHIPPED
+            }),
+        ),
+        (
+            "raw overlap=0.75".into(),
+            Some(FusionWeights {
+                overlap: 0.75,
+                ..FusionWeights::SHIPPED
+            }),
+        ),
+        (
+            "raw overlap=1.00".into(),
+            Some(FusionWeights {
+                overlap: 1.00,
+                ..FusionWeights::SHIPPED
+            }),
+        ),
     ];
     #[derive(Default)]
     struct SweepRow {
@@ -164,7 +213,13 @@ fn main() -> anyhow::Result<()> {
     }
     let mut swept: Vec<(String, FusionWeights, SweepRow)> = grid
         .iter()
-        .map(|(label, w)| (label.clone(), w.unwrap_or(FusionWeights::SHIPPED), SweepRow::default()))
+        .map(|(label, w)| {
+            (
+                label.clone(),
+                w.unwrap_or(FusionWeights::SHIPPED),
+                SweepRow::default(),
+            )
+        })
         .collect();
     // Queries outer, configurations inner, so a load spike lands on every row in
     // the same pass and the latency column is comparable between them.
@@ -175,10 +230,18 @@ fn main() -> anyhow::Result<()> {
             let hits_mw = svc.recall_with_weights("life", &q.question, 2000, w)?;
             let ms = t.elapsed().as_micros();
             let ranked_mw: Vec<String> = hits_mw.into_iter().map(|h| h.memory.id).collect();
-            let hits = ranked_mw.iter().take(k).filter(|id| gold.contains(id.as_str())).count();
+            let hits = ranked_mw
+                .iter()
+                .take(k)
+                .filter(|id| gold.contains(id.as_str()))
+                .count();
             row.agg.n += 1;
             row.agg.p += hits as f64 / k as f64;
-            row.agg.r += if gold.is_empty() { 0.0 } else { hits as f64 / gold.len() as f64 };
+            row.agg.r += if gold.is_empty() {
+                0.0
+            } else {
+                hits as f64 / gold.len() as f64
+            };
             row.agg.hit += usize::from(hits > 0);
             row.agg.lat.push(ms);
             if hits == 0 {
@@ -236,7 +299,11 @@ fn main() -> anyhow::Result<()> {
     }
     md.push_str("\n### Missed query ids, per configuration\n\n");
     for (label, _, row) in &swept {
-        let m = if row.misses.is_empty() { "none".to_string() } else { row.misses.join(", ") };
+        let m = if row.misses.is_empty() {
+            "none".to_string()
+        } else {
+            row.misses.join(", ")
+        };
         md.push_str(&format!("- **{label}**: {m}\n"));
     }
     fs::write(&out_md, &md)?;

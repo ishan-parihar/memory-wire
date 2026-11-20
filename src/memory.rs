@@ -141,11 +141,9 @@ impl MemoryMeta {
         if self.scope_globs.is_empty() {
             return true;
         }
-        self.scope_globs.iter().any(|glob| {
-            active_paths
-                .iter()
-                .any(|p| p.starts_with(glob.as_str()))
-        })
+        self.scope_globs
+            .iter()
+            .any(|glob| active_paths.iter().any(|p| p.starts_with(glob.as_str())))
     }
 }
 

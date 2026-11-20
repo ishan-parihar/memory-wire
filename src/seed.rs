@@ -122,18 +122,28 @@ fn seed<S: Store>(
         id: bank.to_string(),
         name: bank.to_string(),
     }) {
-        out.notes.push(format!("skipped both sources: bank '{bank}': {e}"));
+        out.notes
+            .push(format!("skipped both sources: bank '{bank}': {e}"));
         return out;
     }
     let mut budget = MAX_MEMORIES;
-    match seed_git(svc, bank, dir, commits.unwrap_or(DEFAULT_COMMITS).min(MAX_COMMITS), &mut budget, &mut out.notes) {
+    match seed_git(
+        svc,
+        bank,
+        dir,
+        commits.unwrap_or(DEFAULT_COMMITS).min(MAX_COMMITS),
+        &mut budget,
+        &mut out.notes,
+    ) {
         Ok(n) => out.git = n,
         Err(why) => out.notes.push(why),
     }
     if transcripts {
         match projects {
             // A home that cannot be read is not an error, it is one fewer source.
-            None => out.notes.push("skipped transcripts: no home directory".to_string()),
+            None => out
+                .notes
+                .push("skipped transcripts: no home directory".to_string()),
             Some(root) => match seed_transcripts(svc, bank, root, &mut budget, &mut out.notes) {
                 Ok(n) => out.transcripts = n,
                 Err(why) => out.notes.push(why),
@@ -156,7 +166,9 @@ fn seed_git<S: Store>(
     let mut written = 0;
     for commit in parse_log(&raw) {
         if *budget == 0 {
-            notes.push(format!("stopped after {written} commits: the {MAX_MEMORIES}-memory cap"));
+            notes.push(format!(
+                "stopped after {written} commits: the {MAX_MEMORIES}-memory cap"
+            ));
             break;
         }
         // Merges stay: their bodies carry the decision that produced the branch.
@@ -417,7 +429,11 @@ mod tests {
             .current_dir(cwd)
             .output()
             .expect("git");
-        assert!(out.status.success(), "git {args:?} -> {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {args:?} -> {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     /// A commit with an identity of its own, so the fixture never depends on the
@@ -447,7 +463,12 @@ mod tests {
         git(&["init", "-q"], dir);
         commit(dir, "a.txt", "first commit", None);
         commit(dir, "b.txt", "second commit", None);
-        commit(dir, "c.txt", "third commit", Some("body line one\nbody line two"));
+        commit(
+            dir,
+            "c.txt",
+            "third commit",
+            Some("body line one\nbody line two"),
+        );
     }
 
     /// The service over a scratch store, using the same opener `serve` uses.
@@ -467,7 +488,9 @@ mod tests {
             .expect("query")
             .collect::<Result<_, _>>()
             .expect("rows");
-        let mut tags = conn.prepare("SELECT tag FROM memory_tags WHERE memory_id=?1").expect("tags");
+        let mut tags = conn
+            .prepare("SELECT tag FROM memory_tags WHERE memory_id=?1")
+            .expect("tags");
         memories
             .into_iter()
             .map(|(id, content, document_id)| {
@@ -499,12 +522,23 @@ mod tests {
 
         let landed = rows(&db, "demo");
         assert_eq!(landed.len(), 3, "{landed:?}");
-        let mut docs: Vec<String> = landed.iter().map(|(d, _, _)| d.clone().expect("document id")).collect();
+        let mut docs: Vec<String> = landed
+            .iter()
+            .map(|(d, _, _)| d.clone().expect("document id"))
+            .collect();
         docs.sort();
         assert!(docs.iter().all(|d| d.starts_with("git:")), "{docs:?}");
-        assert_eq!(docs.len(), 3, "one distinct document id per commit: {docs:?}");
+        assert_eq!(
+            docs.len(),
+            3,
+            "one distinct document id per commit: {docs:?}"
+        );
         for (_, _, tags) in &landed {
-            assert_eq!(tags, &["commit".to_string(), "git".to_string()], "{landed:?}");
+            assert_eq!(
+                tags,
+                &["commit".to_string(), "git".to_string()],
+                "{landed:?}"
+            );
         }
         assert!(
             landed.iter().any(|(_, c, _)| c.contains("body line one")),
@@ -516,7 +550,9 @@ mod tests {
         let second = seed(&svc, "demo", &repo, None, false, None);
         assert_eq!(second.git, 3, "{:?}", second.notes);
         assert_eq!(rows(&db, "demo").len(), 3);
-        assert!(second.render("demo").starts_with("seeded 3 git + 0 transcripts"));
+        assert!(second
+            .render("demo")
+            .starts_with("seeded 3 git + 0 transcripts"));
         std::fs::remove_dir_all(&base).ok();
     }
 
@@ -552,7 +588,9 @@ mod tests {
         assert_eq!(landed.len(), 2, "{landed:?}");
         for (document_id, _, tags) in &landed {
             assert!(
-                document_id.as_deref().is_some_and(|d| d.starts_with("transcript:")),
+                document_id
+                    .as_deref()
+                    .is_some_and(|d| d.starts_with("transcript:")),
                 "{landed:?}"
             );
             assert_eq!(tags, &["transcript".to_string()], "{landed:?}");
@@ -567,7 +605,10 @@ mod tests {
 
         // A second run replaces rather than duplicating: the document id is a
         // hash of the path, so it is stable across runs.
-        assert_eq!(seed(&svc, "demo", &base, Some(0), true, Some(&projects)).transcripts, 2);
+        assert_eq!(
+            seed(&svc, "demo", &base, Some(0), true, Some(&projects)).transcripts,
+            2
+        );
         assert_eq!(rows(&db, "demo").len(), 2);
         std::fs::remove_dir_all(&base).ok();
     }
@@ -608,7 +649,10 @@ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb two subject
         assert_eq!(commits.len(), 2, "{commits:?}");
         assert_eq!(commits[0].sha, "a".repeat(40));
         assert_eq!(commits[0].subject, "one subject");
-        assert_eq!(commits[0].body, vec!["body one", "", "body two after a break"]);
+        assert_eq!(
+            commits[0].body,
+            vec!["body one", "", "body two after a break"]
+        );
         assert_eq!(commits[1].sha, "b".repeat(40));
         assert!(commits[1].body.is_empty(), "{commits:?}");
     }

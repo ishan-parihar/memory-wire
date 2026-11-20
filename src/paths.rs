@@ -151,7 +151,9 @@ pub fn sanitize_bank(raw: &str) -> Option<String> {
             }
         })
         .collect();
-    let trimmed = mapped.trim_matches(|c: char| c == '-' || c == '.').to_string();
+    let trimmed = mapped
+        .trim_matches(|c: char| c == '-' || c == '.')
+        .to_string();
     if trimmed.is_empty() {
         None
     } else {
@@ -332,10 +334,7 @@ fn origin_url(config: &str) -> Option<&str> {
 /// Accepts both spellings git accepts: `remote "origin"` (what git writes) and
 /// the older `remote.origin`.
 fn is_origin_section(header: &str) -> bool {
-    let inner = header
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .trim();
+    let inner = header.trim_start_matches('[').trim_end_matches(']').trim();
     let Some((key, sub)) = inner
         .split_once('.')
         .or_else(|| inner.split_once(char::is_whitespace))
@@ -470,7 +469,10 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .filter(|n| n != "settings.json")
             .collect();
-        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -595,7 +597,11 @@ mod tests {
                 Some("acme/api"),
                 "{url}"
             );
-            assert_eq!(sanitize_bank(&owner_repo_from_url(url).expect(url)).as_deref(), Some("acme-api"), "{url}");
+            assert_eq!(
+                sanitize_bank(&owner_repo_from_url(url).expect(url)).as_deref(),
+                Some("acme-api"),
+                "{url}"
+            );
         }
     }
 
@@ -778,7 +784,11 @@ mod endpoint_tests {
             r#"{"addr":"   "}"#,
         ] {
             let p = state_file("bad", body);
-            assert_eq!(endpoint_from(None, &p), "http://127.0.0.1:8888", "for {body:?}");
+            assert_eq!(
+                endpoint_from(None, &p),
+                "http://127.0.0.1:8888",
+                "for {body:?}"
+            );
             std::fs::remove_dir_all(p.parent().unwrap()).ok();
         }
     }
@@ -799,12 +809,18 @@ mod endpoint_tests {
         let p = state_file("explicit-endpoint", RECORDED);
         assert_eq!(endpoint_with(None), endpoint());
         assert_eq!(endpoint_with(Some("  ")), endpoint());
-        assert_eq!(endpoint_with(Some("http://10.0.0.5:9999")), "http://10.0.0.5:9999");
+        assert_eq!(
+            endpoint_with(Some("http://10.0.0.5:9999")),
+            "http://10.0.0.5:9999"
+        );
         // The ambient env is off-limits in tests (see the module doc), so the
         // precedence against `MEMORY_WIRE_URL` is asserted through the pure
         // resolution instead: an explicit flag is the same "person telling us
         // where the server is" as the env var, and wins.
-        assert_eq!(endpoint_from(Some("http://10.0.0.5:9999"), &p), "http://10.0.0.5:9999");
+        assert_eq!(
+            endpoint_from(Some("http://10.0.0.5:9999"), &p),
+            "http://10.0.0.5:9999"
+        );
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 }

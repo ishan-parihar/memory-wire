@@ -269,7 +269,10 @@ fn no_usable_asset_should_name_the_glibc_floor_and_the_escape_hatch() {
         assert!(log.contains(must), "missing {must:?} in:\n{log}");
     }
     // Nothing may be left behind: a binary that cannot start is worse than none.
-    assert!(!bin(&dir).exists(), "a failed install wrote a binary anyway");
+    assert!(
+        !bin(&dir).exists(),
+        "a failed install wrote a binary anyway"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -283,10 +286,22 @@ fn version_report_should_say_which_direction_the_install_went() {
         said(&out)
     };
 
-    assert!(step("0.5.1").contains("version 0.5.1 (first install"), "first install");
-    assert!(step("0.6.0").contains("version 0.5.1 -> 0.6.0 (upgrade)"), "upgrade");
-    assert!(step("0.6.0").contains("version 0.6.0 -> 0.6.0 (no change)"), "no-op");
-    assert!(step("0.4.0").contains("version 0.6.0 -> 0.4.0 (DOWNGRADE)"), "downgrade");
+    assert!(
+        step("0.5.1").contains("version 0.5.1 (first install"),
+        "first install"
+    );
+    assert!(
+        step("0.6.0").contains("version 0.5.1 -> 0.6.0 (upgrade)"),
+        "upgrade"
+    );
+    assert!(
+        step("0.6.0").contains("version 0.6.0 -> 0.6.0 (no change)"),
+        "no-op"
+    );
+    assert!(
+        step("0.4.0").contains("version 0.6.0 -> 0.4.0 (DOWNGRADE)"),
+        "downgrade"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -301,7 +316,10 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
     let dir = scratch("serving");
     // Taken at the top so every path below — including an assertion failure —
     // kills the stand-in and removes the directory.
-    let mut cleanup = Cleanup { child: None, dir: dir.clone() };
+    let mut cleanup = Cleanup {
+        child: None,
+        dir: dir.clone(),
+    };
     // The stand-in must carry the real argv shape, because the installer decides what
     // is a "running server" from the process's arguments: `$3` must be `serve`.
     // A copied `/bin/sleep 600` had `$3 == "600"` and was therefore correctly
@@ -362,7 +380,8 @@ fn a_running_server_should_be_reported_as_still_on_the_old_binary() {
             Err(e) => panic!("start the old server: {e}"),
         }
     }
-    let server = server.unwrap_or_else(|| panic!("start the old server: ETXTBSY 50x: {last_err:?}"));
+    let server =
+        server.unwrap_or_else(|| panic!("start the old server: ETXTBSY 50x: {last_err:?}"));
     cleanup.child = Some(server);
     std::thread::sleep(std::time::Duration::from_millis(500));
 

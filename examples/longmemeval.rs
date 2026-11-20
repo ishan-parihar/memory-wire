@@ -100,7 +100,9 @@ fn shuffled_indices(len: usize, seed: u64) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..len).collect();
     let mut s = seed.wrapping_add(0x9E3779B97F4A7C15);
     for i in (1..len).rev() {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         idx.swap(i, (s >> 33) as usize % (i + 1));
     }
     idx
@@ -119,12 +121,22 @@ fn dcg(rels: &[bool], k: usize) -> f64 {
     rels.iter()
         .take(k)
         .enumerate()
-        .map(|(i, r)| if *r { 1.0 / ((i + 2) as f64).log2() } else { 0.0 })
+        .map(|(i, r)| {
+            if *r {
+                1.0 / ((i + 2) as f64).log2()
+            } else {
+                0.0
+            }
+        })
         .sum()
 }
 
 fn ndcg(retrieved: &[String], gold: &HashSet<String>, k: usize) -> f64 {
-    let rels: Vec<bool> = retrieved.iter().take(k).map(|id| gold.contains(id)).collect();
+    let rels: Vec<bool> = retrieved
+        .iter()
+        .take(k)
+        .map(|id| gold.contains(id))
+        .collect();
     let ideal = dcg(&vec![true; gold.len().min(k)], k);
     if ideal == 0.0 {
         return 0.0;
@@ -164,7 +176,11 @@ fn group_digits(n: usize) -> String {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    let data = arg("--data", "eval/data/longmemeval_s_cleaned.json".into(), &args);
+    let data = arg(
+        "--data",
+        "eval/data/longmemeval_s_cleaned.json".into(),
+        &args,
+    );
     let n: usize = arg("--n", "0".into(), &args).parse().unwrap_or(0);
     let seed: u64 = arg("--seed", "42".into(), &args).parse().unwrap_or(42);
     let out_json = arg("--out-json", "eval/results.json".into(), &args);
@@ -175,7 +191,11 @@ fn main() -> anyhow::Result<()> {
              to the committed artifacts"
         );
     }
-    let profile_token = if bench_common::profile() == "release" { "release" } else { "debug" };
+    let profile_token = if bench_common::profile() == "release" {
+        "release"
+    } else {
+        "debug"
+    };
 
     let raw = fs::read_to_string(&data)?;
     let entries: Vec<Entry> = serde_json::from_str(&raw)?;
@@ -223,8 +243,10 @@ fn main() -> anyhow::Result<()> {
             .zip(e.haystack_sessions.iter())
             .zip(e.haystack_dates.iter())
         {
-            let text: Vec<String> =
-                turns.iter().map(|t| format!("{}: {}", t.role, t.content)).collect();
+            let text: Vec<String> = turns
+                .iter()
+                .map(|t| format!("{}: {}", t.role, t.content))
+                .collect();
             store.put(&Memory {
                 id: sid.clone(),
                 bank_id: "eval".into(),
@@ -258,7 +280,7 @@ fn main() -> anyhow::Result<()> {
             answerable_agg,
         ]
         .into_iter()
-            .flatten()
+        .flatten()
         {
             agg.count += 1;
             agg.r1 += r["recall_any_at_1"].as_f64().unwrap_or(0.0);
@@ -278,7 +300,11 @@ fn main() -> anyhow::Result<()> {
     let pct = |x: f64, c: usize| if c == 0 { 0.0 } else { x / c as f64 * 100.0 };
     let date = chrono::Utc::now().format("%Y-%m-%d");
     let sess_min = if sess_min == usize::MAX { 0 } else { sess_min };
-    let sess_mean = if total.count == 0 { 0.0 } else { sess_sum as f64 / total.count as f64 };
+    let sess_mean = if total.count == 0 {
+        0.0
+    } else {
+        sess_sum as f64 / total.count as f64
+    };
     // The weights this run actually used, not a remembered copy of them: the
     // marker is only worth emitting if it tracks the build. Empty when the run
     // did not use a weight that was chosen by looking at the test set.

@@ -61,7 +61,9 @@ pub fn routes(svc: Arc<MemoryService<SqliteStore>>) -> Router<Arc<MemoryService<
     // router already in the caller's state type. The return type has to name
     // that state: `with_state` infers its target from the expected type, and a
     // bare `Router` would infer `()` and quietly hand back a state-free router.
-    Router::new().nest_service("/mcp", transport).with_state(svc)
+    Router::new()
+        .nest_service("/mcp", transport)
+        .with_state(svc)
 }
 
 /// The streamable-HTTP service, over the store this process already has open.
@@ -131,7 +133,7 @@ fn bank_from_path(path: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::{RETAIN, RECALL};
+    use crate::mcp::{RECALL, RETAIN};
     use serde_json::{json, Value};
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -155,8 +157,12 @@ mod tests {
     /// the session id, the SSE framing and the `Host` allow-list only exist on
     /// the wire.
     async fn serving() -> (String, Arc<MemoryService<SqliteStore>>) {
-        let svc = Arc::new(MemoryService::new(SqliteStore::open_in_memory().expect("store")));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let svc = Arc::new(MemoryService::new(
+            SqliteStore::open_in_memory().expect("store"),
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
         let addr = listener.local_addr().expect("addr");
         let app = crate::router(svc.clone());
         tokio::spawn(async move {
@@ -205,13 +211,20 @@ mod tests {
                 .expect("MCP over HTTP timed out")
                 .expect("read");
             if read == 0 {
-                panic!("connection closed before a reply arrived: {}", String::from_utf8_lossy(&raw));
+                panic!(
+                    "connection closed before a reply arrived: {}",
+                    String::from_utf8_lossy(&raw)
+                );
             }
             raw.extend_from_slice(&buf[..read]);
             let text = String::from_utf8_lossy(&raw).into_owned();
             for line in text.lines() {
-                let Some(payload) = line.strip_prefix("data:") else { continue };
-                let Ok(message) = serde_json::from_str::<Value>(payload.trim()) else { continue };
+                let Some(payload) = line.strip_prefix("data:") else {
+                    continue;
+                };
+                let Ok(message) = serde_json::from_str::<Value>(payload.trim()) else {
+                    continue;
+                };
                 if message.get("id").and_then(Value::as_u64) == Some(id) {
                     let head = text.split("\r\n\r\n").next().unwrap_or("").to_string();
                     return (head, message);
@@ -222,9 +235,11 @@ mod tests {
 
     /// The `data:` payload of a `tools/call` reply, as the caller reads it.
     fn call_text(reply: &Value) -> &str {
-        reply["result"]["content"][0]["text"].as_str().unwrap_or_else(|| {
-            panic!("not a tool result: {reply}");
-        })
+        reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_else(|| {
+                panic!("not a tool result: {reply}");
+            })
     }
 
     fn is_error(reply: &Value) -> bool {
@@ -254,8 +269,15 @@ mod tests {
             !head.to_ascii_lowercase().contains("mcp-session-id"),
             "a stateless mount issues no session id: {head}"
         );
-        assert_eq!(reply["result"]["serverInfo"]["name"], json!("memory-wire"), "{reply}");
-        assert!(reply["result"]["capabilities"]["tools"].is_object(), "{reply}");
+        assert_eq!(
+            reply["result"]["serverInfo"]["name"],
+            json!("memory-wire"),
+            "{reply}"
+        );
+        assert!(
+            reply["result"]["capabilities"]["tools"].is_object(),
+            "{reply}"
+        );
 
         // tools/list -> the same definitions `memory-wire mcp` serves, byte for
         // byte. This is the parity assertion: a second implementation of the
@@ -277,7 +299,10 @@ mod tests {
         let over_stdio =
             serde_json::to_value(crate::mcp::Server::<memory_wire::store::SqliteStore>::tools())
                 .expect("tools serialize");
-        assert_eq!(over_http, over_stdio, "HTTP and stdio must serve one tool set");
+        assert_eq!(
+            over_http, over_stdio,
+            "HTTP and stdio must serve one tool set"
+        );
 
         // retain, with no `bank` argument: the URL decides.
         let (head, reply) = post(
@@ -316,7 +341,10 @@ mod tests {
         // The memory really is in the bank the URL named, and in no other.
         let svc = _svc;
         assert_eq!(svc.recall("demo", "jose", 2000).expect("recall").len(), 1);
-        assert!(svc.recall("other", "jose", 2000).expect("recall").is_empty());
+        assert!(svc
+            .recall("other", "jose", 2000)
+            .expect("recall")
+            .is_empty());
     }
 
     // The reason the mount exists in this shape: the 2026-07-28 revision has no
@@ -326,7 +354,11 @@ mod tests {
     #[tokio::test]
     async fn a_method_posted_with_no_handshake_and_no_session_id_is_served() {
         let (addr, _svc) = serving().await;
-        for (id, method) in [(1, "tools/list"), (2, "resources/list"), (3, "prompts/list")] {
+        for (id, method) in [
+            (1, "tools/list"),
+            (2, "resources/list"),
+            (3, "prompts/list"),
+        ] {
             let (head, reply) = post(
                 &addr,
                 "/mcp",
@@ -335,12 +367,18 @@ mod tests {
                 None,
             )
             .await;
-            assert!(head.starts_with("HTTP/1.1 200"), "{method} without a handshake: {head}");
+            assert!(
+                head.starts_with("HTTP/1.1 200"),
+                "{method} without a handshake: {head}"
+            );
             assert!(
                 !head.to_ascii_lowercase().contains("mcp-session-id"),
                 "{method} was issued a session id: {head}"
             );
-            assert!(reply.get("result").is_some(), "{method} produced no result: {reply}");
+            assert!(
+                reply.get("result").is_some(),
+                "{method} produced no result: {reply}"
+            );
             assert!(reply.get("error").is_none(), "{method} failed: {reply}");
         }
         // And the tools are the contract six, not a subset or a superset.
@@ -389,7 +427,10 @@ mod tests {
         )
         .await;
         assert!(!is_error(&reply), "a matching bank must be served: {reply}");
-        assert_eq!(_svc.recall("pinned", "agreed", 2000).expect("recall").len(), 1);
+        assert_eq!(
+            _svc.recall("pinned", "agreed", 2000).expect("recall").len(),
+            1
+        );
 
         // Disagreeing: refused, and nothing lands anywhere.
         let (_, reply) = post(
@@ -403,11 +444,23 @@ mod tests {
             None,
         )
         .await;
-        assert!(is_error(&reply), "a mismatched bank must be refused: {reply}");
+        assert!(
+            is_error(&reply),
+            "a mismatched bank must be refused: {reply}"
+        );
         let text = call_text(&reply);
-        assert!(text.contains("pinned") && text.contains("elsewhere"), "the message names both: {text}");
-        assert!(_svc.recall("elsewhere", "smuggled", 2000).expect("recall").is_empty());
-        assert!(_svc.recall("pinned", "smuggled", 2000).expect("recall").is_empty());
+        assert!(
+            text.contains("pinned") && text.contains("elsewhere"),
+            "the message names both: {text}"
+        );
+        assert!(_svc
+            .recall("elsewhere", "smuggled", 2000)
+            .expect("recall")
+            .is_empty());
+        assert!(_svc
+            .recall("pinned", "smuggled", 2000)
+            .expect("recall")
+            .is_empty());
     }
 
     // The bare mount is the other half of the feature: no bank in the URL, so
@@ -437,7 +490,12 @@ mod tests {
         )
         .await;
         assert!(!is_error(&reply), "{reply}");
-        assert_eq!(_svc.recall("chosen", "argument", 2000).expect("recall").len(), 1);
+        assert_eq!(
+            _svc.recall("chosen", "argument", 2000)
+                .expect("recall")
+                .len(),
+            1
+        );
     }
 
     // rmcp's DNS-rebinding guard is left at its default, which is a second stop

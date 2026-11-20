@@ -390,8 +390,25 @@ function setup(ctx) {
         RECALL_TIMEOUT_MS
       );
       var block = Array.isArray(items) ? formatRecall(items) : "";
-      injectedQuery = query;
-      injectedBlock = block;
+      // Only cache a recall that SUCCEEDED. A failed `post` yields a
+      // non-array, so `block` is "" -- and caching that under `query` meant
+      // the next turn with the same prompt hit the `query === injectedQuery`
+      // short-circuit and injected nothing, forever, until the user happened
+      // to type something different. A transient outage froze recall for that
+      // query. (Found by the round-5 review of this file, 2026-11-20, which
+      // read the failure path this rewrite had never exercised: the rewrite
+      // verified that the door LOADS and that injection works, not what
+      // happens when the server is down.)
+      if (Array.isArray(items)) {
+        injectedQuery = query;
+        injectedBlock = block;
+      } else {
+        // Drop the cache rather than keeping it. Clearing `injectedQuery` means
+        // the next turn with the same prompt re-asks, so a recovered server is
+        // picked up on the very next turn instead of after the user retypes.
+        injectedQuery = "";
+        injectedBlock = "";
+      }
       if (block) ev.system.push(block);
     });
   }

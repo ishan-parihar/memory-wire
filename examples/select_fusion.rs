@@ -105,7 +105,15 @@ const CONTROL: [(&str, f64); 7] = [
 const CONTROL_N: usize = 1531;
 
 /// The columns of [`Agg::all`], in the order every table prints them.
-const METRIC_NAMES: [&str; 7] = ["R@1", "R@5", "R@10", "R@20", "NDCG@10", "MRR", "recall_all@10"];
+const METRIC_NAMES: [&str; 7] = [
+    "R@1",
+    "R@5",
+    "R@10",
+    "R@20",
+    "NDCG@10",
+    "MRR",
+    "recall_all@10",
+];
 
 /// The weight on the token-overlap stream, swept **first and as a control**: the
 /// shipped value is `0.25`, `1.00` is the unfitted equal-weight baseline every
@@ -232,10 +240,7 @@ fn axes() -> Vec<Axis> {
             name: "agreement",
             values: AGREEMENT,
             get: |w| w.agreement,
-            set: |w, v| FusionWeights {
-                agreement: v,
-                ..*w
-            },
+            set: |w, v| FusionWeights { agreement: v, ..*w },
             applies: |_| true,
         },
         Axis {
@@ -334,10 +339,12 @@ fn eval_one(
     coverage: &mut Option<(Coverage, Embedder)>,
 ) -> anyhow::Result<Run> {
     let (_, embedder) = coverage.as_mut().ok_or_else(|| {
-        anyhow::anyhow!("select_fusion: internal — the embedder is missing after \
+        anyhow::anyhow!(
+            "select_fusion: internal — the embedder is missing after \
                          `ensure_embedded` succeeded, which cannot happen; refusing to score a \
                          configuration with no session rather than silently dropping the dense \
-                         stream")
+                         stream"
+        )
     })?;
     evaluate(corpus, planned, weights, phase, embedder)
 }
@@ -528,7 +535,10 @@ fn check_lexical_path_equivalence(
                 control.count
             )
         } else {
-            format!("The two paths disagree, so every `vector` row is confounded: {}", bad.join("; "))
+            format!(
+                "The two paths disagree, so every `vector` row is confounded: {}",
+                bad.join("; ")
+            )
         },
     ))
 }
@@ -547,7 +557,12 @@ fn vector_stream_reach(
     planned: &[dev::PlannedQuery],
     embedder: &mut Embedder,
 ) -> anyhow::Result<(Agg, Vec<String>)> {
-    let solo = FusionWeights { bm25: 0.0, overlap: 0.0, vector: 1.0, ..FusionWeights::SHIPPED };
+    let solo = FusionWeights {
+        bm25: 0.0,
+        overlap: 0.0,
+        vector: 1.0,
+        ..FusionWeights::SHIPPED
+    };
     let mut agg = Agg::default();
     // The queries whose gold the dense stream did not return, **measured rather than
     // assumed**. A sub-1pp R@pool gap on 1531 queries is one query, and "one query"
@@ -741,8 +756,7 @@ fn evaluate(
 /// [`label`] needs it and takes no argument: the label is printed from a dozen places,
 /// and threading a flag through all of them to keep a *display* string correct is the
 /// kind of change that eventually makes the display string the wrong one.
-static SWEEPS_VECTOR: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static SWEEPS_VECTOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The configuration as one table cell: every swept coordinate, nothing else.
 fn label(w: &FusionWeights) -> String {
@@ -786,7 +800,9 @@ fn main() -> anyhow::Result<()> {
     let docs_path = bench_common::arg(&args, "--docs", "eval/data/locomo/documents.json");
     let queries_path = bench_common::arg(&args, "--data", "eval/data/locomo/queries.json");
     let n: usize = bench_common::arg(&args, "--n", "0").parse().unwrap_or(0);
-    let seed: u64 = bench_common::arg(&args, "--seed", "42").parse().unwrap_or(42);
+    let seed: u64 = bench_common::arg(&args, "--seed", "42")
+        .parse()
+        .unwrap_or(42);
     let out_md = bench_common::out_md(&args, "SELECTION.md");
     // Temp-defaulted, like `locomo`: a grid's per-question dump is not this suite's
     // reviewable record, and two harnesses defaulting to one committed path is the
@@ -799,8 +815,12 @@ fn main() -> anyhow::Result<()> {
             p.display().to_string()
         }
     };
-    let rounds: usize = bench_common::arg(&args, "--rounds", "2").parse().unwrap_or(2);
-    let budget: f64 = bench_common::arg(&args, "--budget-seconds", "0").parse().unwrap_or(0.0);
+    let rounds: usize = bench_common::arg(&args, "--rounds", "2")
+        .parse()
+        .unwrap_or(2);
+    let budget: f64 = bench_common::arg(&args, "--budget-seconds", "0")
+        .parse()
+        .unwrap_or(0.0);
     let axis_spec = bench_common::arg(&args, "--axes", "all");
     if bench_common::profile() != "release" {
         eprintln!(
@@ -875,8 +895,10 @@ fn main() -> anyhow::Result<()> {
     let mut coverage: Option<(Coverage, Embedder)> = {
         eprintln!("select_fusion: loading the vendored MiniLM session (23 MB, no network)");
         let mut e = Embedder::new().map_err(|err| {
-            anyhow::anyhow!("select_fusion: cannot build the embedder: {err}. The `vector` axis \
-                             needs `--features embed`; the lexical axes do not.")
+            anyhow::anyhow!(
+                "select_fusion: cannot build the embedder: {err}. The `vector` axis \
+                             needs `--features embed`; the lexical axes do not."
+            )
         })?;
         let cov = ensure_embedded(&corpus, &mut e)?;
         let (m, v) = cov.totals();
@@ -920,8 +942,13 @@ fn main() -> anyhow::Result<()> {
     // `eval_one!` is the one call the sweep makes, so the `embed`/no-`embed` split lives
     // in exactly one place rather than at each of the three call sites below.
     let mut t0 = Instant::now();
-    let mut control =
-        eval_one!(&corpus, &planned, &FusionWeights::SHIPPED, "control", &mut coverage)?;
+    let mut control = eval_one!(
+        &corpus,
+        &planned,
+        &FusionWeights::SHIPPED,
+        "control",
+        &mut coverage
+    )?;
     control.seconds = t0.elapsed().as_secs_f64();
     mean_seconds = control.seconds;
     evals = 1;
@@ -965,12 +992,16 @@ fn main() -> anyhow::Result<()> {
             }
             let candidate = (axis.set)(&FusionWeights::SHIPPED, *value);
             t0 = Instant::now();
-            let mut run =
-                eval_one!(&corpus, &planned, &candidate, "axis-at-shipped", &mut coverage)?;
+            let mut run = eval_one!(
+                &corpus,
+                &planned,
+                &candidate,
+                "axis-at-shipped",
+                &mut coverage
+            )?;
             run.seconds = t0.elapsed().as_secs_f64();
             run.axis = Some(axis.name);
-            mean_seconds =
-                (mean_seconds * evals as f64 + run.seconds) / (evals as f64 + 1.0);
+            mean_seconds = (mean_seconds * evals as f64 + run.seconds) / (evals as f64 + 1.0);
             evals += 1;
             eprintln!(
                 "  [{}] axis-at-shipped {} = {value}  R@5 {:.1}%  ({:.1}s)",
@@ -1013,8 +1044,7 @@ fn main() -> anyhow::Result<()> {
                 run.seconds = t0.elapsed().as_secs_f64();
                 run.round = round;
                 run.axis = Some(axis.name);
-                mean_seconds =
-                    (mean_seconds * evals as f64 + run.seconds) / (evals as f64 + 1.0);
+                mean_seconds = (mean_seconds * evals as f64 + run.seconds) / (evals as f64 + 1.0);
                 evals += 1;
                 eprintln!(
                     "  [{}] round {round} {} = {value}  R@5 {:.1}%  ({:.1}s)",
@@ -1129,12 +1159,19 @@ fn main() -> anyhow::Result<()> {
         let mut axis_rows: Vec<(f64, usize)> = runs
             .iter()
             .filter(|r| r.phase == "axis-at-shipped" && r.axis == Some("vector"))
-            .map(|r| (r.weights.vector, runs.iter().position(|x| std::ptr::eq(x, r)).unwrap_or(0)))
+            .map(|r| {
+                (
+                    r.weights.vector,
+                    runs.iter().position(|x| std::ptr::eq(x, r)).unwrap_or(0),
+                )
+            })
             .collect();
         axis_rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let control_r5 = runs[0].agg.r5();
-        let not_worse =
-            axis_rows.iter().copied().find(|(_, i)| runs[*i].agg.r5() >= control_r5);
+        let not_worse = axis_rows
+            .iter()
+            .copied()
+            .find(|(_, i)| runs[*i].agg.r5() >= control_r5);
         let widest = axis_rows.last().copied();
         let mut picked: Vec<(f64, usize)> = Vec::new();
         for c in [not_worse, widest].into_iter().flatten() {
@@ -1236,7 +1273,11 @@ harness is validated against: the numbers `eval/LOCOMO.md` already committed for
         }
     );
     for ((name, want), got) in CONTROL.iter().zip(c.agg.all()) {
-        let _ = writeln!(md, "| {name} | {got:.1}% | {want:.1}% | {:+.1} |", got - want);
+        let _ = writeln!(
+            md,
+            "| {name} | {got:.1}% | {want:.1}% | {:+.1} |",
+            got - want
+        );
     }
     let _ = writeln!(
         md,
@@ -1845,10 +1886,7 @@ start point** | — |\n",
         );
     }
     for (round, axis, from, to, delta, up) in &moves {
-        let _ = writeln!(
-            md,
-            "| {round} | {axis} | {from} | {to} | {delta} | {up} |"
-        );
+        let _ = writeln!(md, "| {round} | {axis} | {from} | {to} | {delta} | {up} |");
     }
     md.push_str("\n| round | coordinates swept | configuration at round end | Δ over the round |\n|---|---|---|---|\n");
     let mut previous: Option<(&Agg, String)> = None;
@@ -1925,7 +1963,10 @@ moving in opposite directions.\n"
         md.push('\n');
         for (row_name, run) in [
             ("shipped (`overlap: 0.25`)", &runs[0]),
-            ("coordinate-descent endpoint — **not a selected configuration**", &runs[endpoint]),
+            (
+                "coordinate-descent endpoint — **not a selected configuration**",
+                &runs[endpoint],
+            ),
         ] {
             let _ = write!(md, "| {row_name} |");
             for c in &cats {
@@ -1937,12 +1978,7 @@ moving in opposite directions.\n"
                     None => md.push_str(" — |"),
                 }
             }
-            let _ = writeln!(
-                md,
-                " {:.1}% | {} |",
-                pick(&run.agg),
-                run.agg.count
-            );
+            let _ = writeln!(md, " {:.1}% | {} |", pick(&run.agg), run.agg.count);
         }
     }
 
@@ -1961,7 +1997,11 @@ moving in opposite directions.\n"
              two collapse onto one row and the table says so. `n` is printed per cell, because a \
              category percentage without its denominator is not a number.\n\n\
              | weight | metric |{cat_head} overall | n |\n|---|---|{cat_rule}---|---|\n",
-            cat_head = cats.iter().map(|c| format!(" {c} |")).collect::<Vec<_>>().join(""),
+            cat_head = cats
+                .iter()
+                .map(|c| format!(" {c} |"))
+                .collect::<Vec<_>>()
+                .join(""),
             cat_rule = cats.iter().map(|_| "---|").collect::<Vec<_>>().join(""),
         );
         let mut rows: Vec<(f64, usize)> = vec![(0.0, 0)];
@@ -2240,8 +2280,8 @@ ran. This file is the one-axis-at-a-time sweep only.**")
                 "identical": lexical_equivalence.as_ref().map(|(ok, _)| *ok),
                 "detail": lexical_equivalence.as_ref().map(|(_, d)| d.clone()),
                 "note": "scores the shipped configuration through `vector::recall` at \
-`vector: 0.0` and compares the full metric vector to the control, so a `vector` row can be \
-claimed to differ by the dense stream alone",
+        `vector: 0.0` and compares the full metric vector to the control, so a `vector` row can be \
+        claimed to differ by the dense stream alone",
             },
             "vector_stream_reach": {
                 "config": { "bm25": 0.0, "overlap": 0.0, "vector": 1.0 },
@@ -2289,7 +2329,11 @@ wrote {out_md} + {out_json}",
         rounds_done = round_open.len(),
         elapsed = elapsed,
         budget = budget,
-        trunc = if truncated { "TRUNCATED by budget" } else { "complete" },
+        trunc = if truncated {
+            "TRUNCATED by budget"
+        } else {
+            "complete"
+        },
         load_start = load_start,
         load_end = load_end,
         start_cfg = label(&runs[0].weights),
@@ -2359,7 +2403,8 @@ do not apply and the control check was not applied"
         ControlCheck {
             ok: true,
             detail: format!(
-                "Reproduced all six metrics and the n exactly, at `loadavg {}.", loadavg()
+                "Reproduced all six metrics and the n exactly, at `loadavg {}.",
+                loadavg()
             ),
         }
     } else {
@@ -2504,15 +2549,12 @@ fn select_axes(spec: &str) -> anyhow::Result<Vec<Axis>> {
     }
     let mut out = Vec::new();
     for want in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        let axis = all
-            .iter()
-            .find(|a| a.name == want)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "select_fusion: no axis named {want:?}; known axes: {}",
-                    all.iter().map(|a| a.name).collect::<Vec<_>>().join(", ")
-                )
-            })?;
+        let axis = all.iter().find(|a| a.name == want).ok_or_else(|| {
+            anyhow::anyhow!(
+                "select_fusion: no axis named {want:?}; known axes: {}",
+                all.iter().map(|a| a.name).collect::<Vec<_>>().join(", ")
+            )
+        })?;
         out.push(*axis);
     }
     anyhow::ensure!(!out.is_empty(), "select_fusion: --axes selected nothing");

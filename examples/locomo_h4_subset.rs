@@ -56,7 +56,12 @@ fn main() -> anyhow::Result<()> {
     for pq in &planned {
         let q = pq.query;
         let svc = &corpus.banks[&q.user_id];
-        let hits = svc.recall_with_weights(&q.user_id, &q.query, corpus.budget_tokens, &FusionWeights::SHIPPED)?;
+        let hits = svc.recall_with_weights(
+            &q.user_id,
+            &q.query,
+            corpus.budget_tokens,
+            &FusionWeights::SHIPPED,
+        )?;
         let retrieved = dev::session_of(hits.into_iter().map(|h| h.memory.id));
         let top3: std::collections::HashSet<&str> =
             retrieved.iter().take(3).map(String::as_str).collect();
@@ -72,7 +77,10 @@ fn main() -> anyhow::Result<()> {
         "locomo_h4_subset: {} evaluated, {} eligible (all gold in top 3); per category: {:?}",
         planned.len(),
         total_eligible,
-        eligible.iter().map(|(k, v)| (k, v.len())).collect::<Vec<_>>()
+        eligible
+            .iter()
+            .map(|(k, v)| (k, v.len()))
+            .collect::<Vec<_>>()
     );
     anyhow::ensure!(
         total_eligible >= N_SUBSET,

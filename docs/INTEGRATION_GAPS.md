@@ -466,7 +466,7 @@ Verified per capability against this tree:
 
 | capability | HTTP | MCP | CLI | hook |
 |---|---|---|---|---|
-| redact (W3) | no route | no tool | **yes** (`Cmd::Redact`) | no |
+| redact (W3) | no route | **yes** (6th tool, 2026-11-20) | **yes** (`Cmd::Redact`) | no |
 | grounding (W5) | no route | no tool | **yes** (`Cmd::Grounding`) | SessionStart, default off |
 | hygiene (W4) | **yes** (`GET /banks/:id/hygiene`) | no tool | no | no |
 | recall | yes | `memory_recall` | no | yes |

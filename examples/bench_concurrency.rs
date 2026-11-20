@@ -67,7 +67,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{bail, Result};
-use bench_common::{arg, db_bytes, pct, profile, rss_kb, rm_db, shuffle};
+use bench_common::{arg, db_bytes, pct, profile, rm_db, rss_kb, shuffle};
 use memory_wire::api::MemoryService;
 use memory_wire::memory::{Bank, Memory};
 use memory_wire::store::{SqliteStore, Store};
@@ -122,9 +122,7 @@ fn main() -> Result<()> {
     let ops: u64 = arg(&args, "--ops-per-client", "200")
         .parse()
         .expect("--ops-per-client N");
-    let repeats: usize = arg(&args, "--repeats", "3")
-        .parse()
-        .expect("--repeats N");
+    let repeats: usize = arg(&args, "--repeats", "3").parse().expect("--repeats N");
     let out_md = bench_common::out_md(&args, "BENCH_CONCURRENCY.md");
     let op = match arg(&args, "--op", "recall").as_str() {
         "recall" => Op::Recall,
@@ -148,8 +146,7 @@ fn main() -> Result<()> {
     // Built and seeded once, outside every timed region.
     let seeded = seed(&db, memories)?;
     let biggest = *sweep.last().expect("non-empty sweep");
-    let ceiling =
-        page_cache_bytes(&db)? + biggest as u64 * RSS_PER_CLIENT_MB * 1_048_576;
+    let ceiling = page_cache_bytes(&db)? + biggest as u64 * RSS_PER_CLIENT_MB * 1_048_576;
     let rss_before = rss_kb();
     let store = SqliteStore::open(&db)?;
     let svc = MemoryService::new(store);
@@ -176,10 +173,7 @@ fn main() -> Result<()> {
     for &clients in &sweep {
         let steps = &rows[&clients];
         let mean = mean_ops(steps);
-        let lo = steps
-            .iter()
-            .map(|s| s.ops_per_s)
-            .fold(f64::MAX, f64::min);
+        let lo = steps.iter().map(|s| s.ops_per_s).fold(f64::MAX, f64::min);
         let hi = steps.iter().map(|s| s.ops_per_s).fold(0.0f64, f64::max);
         if base == 0.0 {
             base = mean;
@@ -279,7 +273,9 @@ fn main() -> Result<()> {
     println!("db {} · seeded {seeded} rows", db.display());
     println!("rss ceiling {ceiling_mb:.1} MB (page cache + {RSS_PER_CLIENT_MB} MB/client)");
     println!();
-    println!("| clients | ops/s (min-max) | p50 us | p95 us | p99 us | rss MB | vs 1 client | Eff |");
+    println!(
+        "| clients | ops/s (min-max) | p50 us | p95 us | p99 us | rss MB | vs 1 client | Eff |"
+    );
     println!("|---|---|---|---|---|---|---|---|");
     for l in &lines {
         println!("{l}");
@@ -294,7 +290,10 @@ fn main() -> Result<()> {
         "scaling   gate at {biggest} clients: {big_gain:.2}x vs floor {floor:.2}x · {}",
         verdict(big_gain, floor)
     );
-    println!("rss       {} (ceiling {ceiling_mb:.1} MB)", rss_line(rss_before, rss_after));
+    println!(
+        "rss       {} (ceiling {ceiling_mb:.1} MB)",
+        rss_line(rss_before, rss_after)
+    );
     println!("storage   main {main} B · wal {wal} B · shm {shm} B (WAL unflushed while the store holds the file open)");
     println!("panics    {panics}");
     println!();
@@ -341,7 +340,12 @@ struct Step {
 /// store is a finding, and dropping the sample silently would count it as a
 /// success. Each client's op order is an LCG permutation, so its work is
 /// identical run to run and differs between clients.
-fn step<S: memory_wire::store::Store>(svc: &MemoryService<S>, clients: usize, ops: u64, op: Op) -> Step {
+fn step<S: memory_wire::store::Store>(
+    svc: &MemoryService<S>,
+    clients: usize,
+    ops: u64,
+    op: Op,
+) -> Step {
     let mut lat: Vec<u64> = Vec::with_capacity(clients * ops as usize);
     let mut panics = 0u64;
     let start = Instant::now();

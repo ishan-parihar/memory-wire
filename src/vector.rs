@@ -102,10 +102,6 @@
 
 use std::collections::HashMap;
 
-use fastembed::{
-    InitOptionsUserDefined, Pooling, QuantizationMode, TextEmbedding, TokenizerFiles,
-    UserDefinedEmbeddingModel,
-};
 use crate::api::{normalize_tags, ApiError, ScoredMemory, FTS_LIMIT, MAX_RESULTS, OVERLAP_LIMIT};
 use crate::capture::redact_pii;
 use crate::embed::rank_by_cosine;
@@ -115,6 +111,10 @@ use crate::recall::{
     RankedHit,
 };
 use crate::store::{Store, StoreError};
+use fastembed::{
+    InitOptionsUserDefined, Pooling, QuantizationMode, TextEmbedding, TokenizerFiles,
+    UserDefinedEmbeddingModel,
+};
 
 /// Dimensionality of the vendored model, and therefore of every vector this
 /// module produces or stores.
@@ -373,7 +373,10 @@ pub fn recall(
     let fts_stream: Vec<RankedHit> = keyword_hits
         .iter()
         .enumerate()
-        .map(|(i, (id, _))| RankedHit { id: id.clone(), rank: i + 1 })
+        .map(|(i, (id, _))| RankedHit {
+            id: id.clone(),
+            rank: i + 1,
+        })
         .collect();
     // Built only when the term can be added, so a default-weight call allocates
     // nothing for it. An exact `+ 0.0` is bit-identity anyway, but not building
@@ -381,15 +384,24 @@ pub fn recall(
     let magnitudes: HashMap<String, f64> = if weights.bm25_magnitude == 0.0 {
         HashMap::new()
     } else {
-        keyword_hits.iter().map(|(id, rank)| (id.clone(), *rank)).collect()
+        keyword_hits
+            .iter()
+            .map(|(id, rank)| (id.clone(), *rank))
+            .collect()
     };
-    let ranked =
-        rank_candidates_scoped(query, all.iter().map(|m| m.content.as_str()), weights.overlap_scope);
+    let ranked = rank_candidates_scoped(
+        query,
+        all.iter().map(|m| m.content.as_str()),
+        weights.overlap_scope,
+    );
     let overlap_stream: Vec<RankedHit> = ranked
         .iter()
         .take(OVERLAP_LIMIT)
         .enumerate()
-        .map(|(i, (idx, _))| RankedHit { id: all[*idx].id.clone(), rank: i + 1 })
+        .map(|(i, (idx, _))| RankedHit {
+            id: all[*idx].id.clone(),
+            rank: i + 1,
+        })
         .collect();
 
     // Slot 2 is always occupied; see the doc comment. The recency branch is the
@@ -407,13 +419,13 @@ pub fn recall(
         Vec::new()
     } else {
         let stored: HashMap<String, Vec<f32>> = store.bank_vectors(bank_id)?.into_iter().collect();
-        let qv = embedder.embed(query).map_err(|e| StoreError::Unsupported(
-            match e {
+        let qv = embedder.embed(query).map_err(|e| {
+            StoreError::Unsupported(match e {
                 EmbedError::Model(_) => "embed session",
                 EmbedError::Dimension { .. } => "embed dimension",
                 EmbedError::Unusable(_) => "embed output",
-            },
-        ))?;
+            })
+        })?;
         vector_stream(&ids, &qv, &stored)
     };
     let fused = rrf_fuse_with_magnitudes(
@@ -518,7 +530,10 @@ mod tests {
     use std::sync::Mutex;
 
     fn bank(id: &str) -> crate::memory::Bank {
-        crate::memory::Bank { id: id.to_string(), name: id.to_string() }
+        crate::memory::Bank {
+            id: id.to_string(),
+            name: id.to_string(),
+        }
     }
 
     fn mem(id: &str, bank_id: &str, content: &str) -> Memory {
@@ -550,8 +565,14 @@ mod tests {
     #[test]
     fn the_vendored_model_is_the_file_the_provenance_records() {
         let digest = Sha256::digest(MODEL_BYTES);
-        let got = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
-        assert_eq!(got, MODEL_SHA256, "the vendored ONNX file is not the recorded one");
+        let got = digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        assert_eq!(
+            got, MODEL_SHA256,
+            "the vendored ONNX file is not the recorded one"
+        );
         // And it is the int8 build, not the 90 MB fp32 one this must never use.
         assert_eq!(
             MODEL_BYTES.len(),
@@ -586,9 +607,15 @@ mod tests {
         let mut e = embedder().lock().expect("embedder mutex");
         let v = e.embed("auth uses jose").expect("embed");
         assert_eq!(v.len(), EMBED_DIM, "the constant must match the graph");
-        assert!(v.iter().all(|x| x.is_finite()), "a NaN would reorder the fused list");
+        assert!(
+            v.iter().all(|x| x.is_finite()),
+            "a NaN would reorder the fused list"
+        );
         let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!((norm - 1.0).abs() < 1e-3, "mean-pooled rows are L2-normalised, got ‖v‖={norm}");
+        assert!(
+            (norm - 1.0).abs() < 1e-3,
+            "mean-pooled rows are L2-normalised, got ‖v‖={norm}"
+        );
     }
 
     /// The property the whole arm rests on, asserted rather than hoped for: two
@@ -601,8 +628,12 @@ mod tests {
         let paraphrase = e
             .embed("SSO redirect loop fixed by clearing the stale session cookie")
             .expect("embed");
-        let about_it = e.embed("how did we handle a user who could not log in").expect("embed");
-        let unrelated = e.embed("quarterly revenue by region and segment").expect("embed");
+        let about_it = e
+            .embed("how did we handle a user who could not log in")
+            .expect("embed");
+        let unrelated = e
+            .embed("quarterly revenue by region and segment")
+            .expect("embed");
         let near = crate::embed::cosine(&paraphrase, &about_it);
         let far = crate::embed::cosine(&paraphrase, &unrelated);
         assert!(
@@ -673,7 +704,10 @@ mod tests {
         let a = store.bank_vectors("a").expect("read a");
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].0, "ma");
-        assert!(a.iter().all(|(id, _)| id == "ma"), "bank a must not see bank b");
+        assert!(
+            a.iter().all(|(id, _)| id == "ma"),
+            "bank a must not see bank b"
+        );
         let b = store.bank_vectors("b").expect("read b");
         assert_eq!(b.len(), 1);
         assert_eq!(b[0].0, "mb");
@@ -708,12 +742,21 @@ mod tests {
     /// it and silently drop the fused list onto its id tiebreak.
     #[test]
     fn an_unreadable_vector_row_is_dropped_rather_than_scored() {
-        assert!(decode_vector(&[0u8; 15], 3).is_none(), "length not a whole f32 count");
-        assert!(decode_vector(&[0u8; 16], 5).is_none(), "dim disagrees with the blob");
+        assert!(
+            decode_vector(&[0u8; 15], 3).is_none(),
+            "length not a whole f32 count"
+        );
+        assert!(
+            decode_vector(&[0u8; 16], 5).is_none(),
+            "dim disagrees with the blob"
+        );
         assert!(decode_vector(&[0u8; 16], 0).is_none(), "no width");
         let mut nan = f32::NAN.to_le_bytes().to_vec();
         nan[3] = 0x7f; // pin the payload so this is a NaN and not a denormal
-        assert!(decode_vector(&nan, 1).is_none(), "a non-finite component is refused");
+        assert!(
+            decode_vector(&nan, 1).is_none(),
+            "a non-finite component is refused"
+        );
         assert_eq!(decode_vector(&1.5f32.to_le_bytes(), 1), Some(vec![1.5]));
     }
 
@@ -742,7 +785,9 @@ mod tests {
         let store = SqliteStore::open_in_memory().expect("open");
         store.put_bank(&bank("b")).expect("bank");
         store.put(&mem("m1", "b", "auth uses jose")).expect("put 1");
-        store.put(&mem("m2", "b", "rate limiting notes")).expect("put 2");
+        store
+            .put(&mem("m2", "b", "rate limiting notes"))
+            .expect("put 2");
         let mut e = embedder().lock().expect("embedder mutex");
         // Real 384-d vectors, stored through the same path a retain uses. A toy
         // 2-d vector would score `0.0` against a 384-d query by
@@ -753,8 +798,16 @@ mod tests {
             store.put_vector("b", id, &v).expect("vector");
         }
 
-        let off = recall(&store, "b", "jose auth", 2000, &[], &FusionWeights::SHIPPED, &mut e)
-            .expect("recall at the shipped weight");
+        let off = recall(
+            &store,
+            "b",
+            "jose auth",
+            2000,
+            &[],
+            &FusionWeights::SHIPPED,
+            &mut e,
+        )
+        .expect("recall at the shipped weight");
         // With the vector weight live and the two lexical streams the only voters,
         // the ordering is the lexical one — which is the point: the dense stream
         // is fused as a voter, it does not take over.
@@ -782,8 +835,16 @@ mod tests {
         // because cosine does not care about tokens. That is the whole argument
         // for the arm in one assertion, and no weight of the other two could have
         // produced it.
-        assert_eq!(ids(&off), ["m1"], "at the shipped weight the lexical pair answers alone");
-        assert_eq!(ids(&on), ["m1", "m2"], "the dense stream reaches a tokenless match");
+        assert_eq!(
+            ids(&off),
+            ["m1"],
+            "at the shipped weight the lexical pair answers alone"
+        );
+        assert_eq!(
+            ids(&on),
+            ["m1", "m2"],
+            "the dense stream reaches a tokenless match"
+        );
         // And `m1` is still first, so the arm is a voter rather than a takeover.
         // The two differ in score, because the dense stream really was read.
         let score = |rows: &[ScoredMemory], id: &str| {
@@ -814,16 +875,29 @@ mod tests {
             store.put(&mem(id, "b", c)).expect("put");
         }
         let mut e = embedder().lock().expect("embedder mutex");
-        let armed = recall(&store, "b", "jose auth", 2000, &[], &FusionWeights::SHIPPED, &mut e)
-            .expect("recall");
+        let armed = recall(
+            &store,
+            "b",
+            "jose auth",
+            2000,
+            &[],
+            &FusionWeights::SHIPPED,
+            &mut e,
+        )
+        .expect("recall");
         // The same fusion with no dense stream at all, which is what the arm
         // reduces to at 0.0.
         let bare = {
-            let (all, hits) = store.recall_inputs("b", "jose auth", &[], FTS_LIMIT).expect("inputs");
+            let (all, hits) = store
+                .recall_inputs("b", "jose auth", &[], FTS_LIMIT)
+                .expect("inputs");
             let fts: Vec<RankedHit> = hits
                 .iter()
                 .enumerate()
-                .map(|(i, (id, _))| RankedHit { id: id.clone(), rank: i + 1 })
+                .map(|(i, (id, _))| RankedHit {
+                    id: id.clone(),
+                    rank: i + 1,
+                })
                 .collect();
             let ranked = rank_candidates_scoped(
                 "jose auth",
@@ -834,7 +908,10 @@ mod tests {
                 .iter()
                 .take(OVERLAP_LIMIT)
                 .enumerate()
-                .map(|(i, (idx, _))| RankedHit { id: all[*idx].id.clone(), rank: i + 1 })
+                .map(|(i, (idx, _))| RankedHit {
+                    id: all[*idx].id.clone(),
+                    rank: i + 1,
+                })
                 .collect();
             let fused = rrf_fuse_with_magnitudes(
                 &[fts, ov, Vec::new(), Vec::new()],
@@ -867,7 +944,15 @@ mod tests {
         let store = SqliteStore::open_in_memory().expect("open");
         let mut e = embedder().lock().expect("embedder mutex");
         assert!(matches!(
-            recall(&store, "  ", "q", 2000, &[], &FusionWeights::SHIPPED, &mut e),
+            recall(
+                &store,
+                "  ",
+                "q",
+                2000,
+                &[],
+                &FusionWeights::SHIPPED,
+                &mut e
+            ),
             Err(StoreError::InvalidBank)
         ));
     }
@@ -895,7 +980,10 @@ mod tests {
             assert_eq!(once, twice, "redaction must be idempotent for {secret:?}");
         }
         // And it really does remove something, or the test above proves nothing.
-        assert_ne!(redact_pii("mail ishan@example.com"), "mail ishan@example.com");
+        assert_ne!(
+            redact_pii("mail ishan@example.com"),
+            "mail ishan@example.com"
+        );
     }
 
     /// The pairing itself: the vector in the table is the embedding of the text
@@ -910,8 +998,13 @@ mod tests {
         let id = retain(&store, "b", content, &[], None, &mut e).expect("retain");
 
         let stored = store.get("b", &id).expect("get").expect("row exists");
-        assert!(!stored.content.contains("ishan@example.com"), "the row must be redacted");
-        assert!(!stored.content.contains("sk-abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(
+            !stored.content.contains("ishan@example.com"),
+            "the row must be redacted"
+        );
+        assert!(!stored
+            .content
+            .contains("sk-abcdefghijklmnopqrstuvwxyz012345"));
 
         let expected = e.embed(&stored.content).expect("embed the stored text");
         let got = store.bank_vectors("b").expect("read");

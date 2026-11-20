@@ -178,15 +178,30 @@ struct Event {
 }
 
 const EVENTS: [Event; 5] = [
-    Event { name: "SessionStart", lifecycle: "session-start" },
-    Event { name: "UserPromptSubmit", lifecycle: "prompt" },
-    Event { name: "Stop", lifecycle: "stop" },
+    Event {
+        name: "SessionStart",
+        lifecycle: "session-start",
+    },
+    Event {
+        name: "UserPromptSubmit",
+        lifecycle: "prompt",
+    },
+    Event {
+        name: "Stop",
+        lifecycle: "stop",
+    },
     // The two moments a session's words stop being available. `PreCompact`
     // fires immediately before compaction discards the conversation;
     // `SessionEnd` fires once, at the end. agentmemory registers the first and
     // hindsight the second — see `docs/INTEGRATION_GAPS.md` §G2.
-    Event { name: "PreCompact", lifecycle: "pre-compact" },
-    Event { name: "SessionEnd", lifecycle: "session-end" },
+    Event {
+        name: "PreCompact",
+        lifecycle: "pre-compact",
+    },
+    Event {
+        name: "SessionEnd",
+        lifecycle: "session-end",
+    },
 ];
 
 /// The JSON shape a host expects for one hook entry.
@@ -336,18 +351,13 @@ impl Host {
         match self {
             Host::Cursor => Some((
                 "mcpServers",
-                |exe: &str, bank: Option<&str>| {
-                    json!({ "command": exe, "args": mcp_args(bank) })
-                },
+                |exe: &str, bank: Option<&str>| json!({ "command": exe, "args": mcp_args(bank) }),
             )),
-            Host::Opencode => Some((
-                "mcp",
-                |exe: &str, bank: Option<&str>| {
-                    let mut argv = vec![exe.to_string()];
-                    argv.extend(mcp_args(bank));
-                    json!({ "type": "local", "command": argv, "enabled": true })
-                },
-            )),
+            Host::Opencode => Some(("mcp", |exe: &str, bank: Option<&str>| {
+                let mut argv = vec![exe.to_string()];
+                argv.extend(mcp_args(bank));
+                json!({ "type": "local", "command": argv, "enabled": true })
+            })),
             // `type` is what omp's own mcp-schema asks for (every live stdio entry
             // carries it), and `command` is the absolute install path rather than a
             // bare name: omp does not inherit memory-wire's install dir onto its
@@ -355,9 +365,7 @@ impl Host {
             // `cloakctl` entry is spelled the same way.
             Host::Omp => Some((
                 "mcpServers",
-                |exe: &str, bank: Option<&str>| {
-                    json!({ "type": "stdio", "command": exe, "args": mcp_args(bank) })
-                },
+                |exe: &str, bank: Option<&str>| json!({ "type": "stdio", "command": exe, "args": mcp_args(bank) }),
             )),
             _ => None,
         }
@@ -431,8 +439,7 @@ impl Style {
 /// accept an MCP server entry, and the other three take hooks. The case is kept
 /// so a future MCP-only host with no known writable key reports why instead of
 /// silently doing nothing.
-const MCP_ONLY_REASON: &str =
-    "mcp-config-only host: no writable MCP key is known for it";
+const MCP_ONLY_REASON: &str = "mcp-config-only host: no writable MCP key is known for it";
 
 /// Quote an executable path for a shell-run field.
 ///
@@ -473,7 +480,9 @@ fn is_executable(p: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+        std::fs::metadata(p)
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -501,12 +510,20 @@ pub fn listing(host: Host, home: &Path, on_path: fn(&str) -> bool) -> String {
     } else {
         yes_no(wired)
     };
-    format!("{:<12} detected={:<3} wired={state}", host.id(), yes_no(detected))
+    format!(
+        "{:<12} detected={:<3} wired={state}",
+        host.id(),
+        yes_no(detected)
+    )
 }
 
 /// `yes` / `no`, so a line is greppable without a parser.
 fn yes_no(b: bool) -> &'static str {
-    if b { "yes" } else { "no" }
+    if b {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 /// Is Claude Code's MCP entry present? `connect` writes it to `~/.claude.json`
@@ -566,7 +583,9 @@ fn wired_with(host: Host, home: &Path) -> bool {
             // would be a false negative the user has no way to act on.
             // `connect` still installs both.
             host.mcp_spec().is_some_and(|(key, _)| {
-                root.get(key).and_then(Value::as_object).is_some_and(|m| m.contains_key(MARKER))
+                root.get(key)
+                    .and_then(Value::as_object)
+                    .is_some_and(|m| m.contains_key(MARKER))
             }) || crate::connect_ext::installed(host, home)
                 || crate::connect_opencode::installed(host, home)
         }
@@ -574,14 +593,15 @@ fn wired_with(host: Host, home: &Path) -> bool {
         // entry in `mcp-config.json` (a later build added the second pass),
         // so "or" again — an install carrying either is wired.
         Style::Copilot => {
-            EVENTS
-                .iter()
-                .any(|ev| root.pointer(&format!("/hooks/{}", ev.name)).is_some_and(is_ours))
-                || crate::connect_copilot::installed(home)
+            EVENTS.iter().any(|ev| {
+                root.pointer(&format!("/hooks/{}", ev.name))
+                    .is_some_and(is_ours)
+            }) || crate::connect_copilot::installed(home)
         }
-        _ => EVENTS
-            .iter()
-            .any(|ev| root.pointer(&format!("/hooks/{}", ev.name)).is_some_and(is_ours)),
+        _ => EVENTS.iter().any(|ev| {
+            root.pointer(&format!("/hooks/{}", ev.name))
+                .is_some_and(is_ours)
+        }),
     }
 }
 
@@ -633,16 +653,30 @@ pub enum Outcome {
 impl Outcome {
     /// One aligned report line.
     pub fn render(self, host: Host) -> String {
-        let joined = |v: &[String]| if v.is_empty() { String::new() } else { v.join(", ") };
+        let joined = |v: &[String]| {
+            if v.is_empty() {
+                String::new()
+            } else {
+                v.join(", ")
+            }
+        };
         let (verb, mut detail) = match self {
-            Outcome::Wired { backup, events, notes } => {
+            Outcome::Wired {
+                backup,
+                events,
+                notes,
+            } => {
                 let mut d = format!("{}{}", joined(&events), backup_suffix(backup.as_deref()));
                 if !notes.is_empty() {
                     d.push_str(&format!("  | left alone: {}", joined(&notes)));
                 }
                 ("wired", d)
             }
-            Outcome::Unwired { backup, events, notes } => {
+            Outcome::Unwired {
+                backup,
+                events,
+                notes,
+            } => {
                 let mut d = format!("{}{}", joined(&events), backup_suffix(backup.as_deref()));
                 if !notes.is_empty() {
                     d.push_str(&format!("  | left alone: {}", joined(&notes)));
@@ -692,7 +726,13 @@ pub fn backup(
 ) -> Result<Option<PathBuf>, String> {
     let src = home.join(rel);
     if src.is_dir() {
-        return copy_tree(&src, &data_root.join("backups").join(format!("{}-{ts}", host.id())), rel);
+        return copy_tree(
+            &src,
+            &data_root
+                .join("backups")
+                .join(format!("{}-{ts}", host.id())),
+            rel,
+        );
     }
     if !src.is_file() {
         return Ok(None);
@@ -863,7 +903,9 @@ pub(crate) fn bank_in_mcp_entry(entry: &Value) -> Option<String> {
 /// construction, so this is correctness for the case that should not exist
 /// rather than a parser that handles hostile input.
 pub(crate) fn bank_from_extension(text: &str) -> Option<String> {
-    let line = text.lines().find(|l| l.trim_start().starts_with("var DEFAULT_BANK"))?;
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("var DEFAULT_BANK"))?;
     let quoted = line.split('"').nth(1)?;
     let mut out = String::new();
     let mut esc = false;
@@ -908,9 +950,7 @@ pub(crate) fn wired_exe(host: Host, home: &Path) -> Option<String> {
     let raw = paths::read_or_empty(&home.join(host.config_rel())).ok()?;
     let root: Value = serde_json::from_str(&raw).ok()?;
     match style {
-        Style::Claude | Style::Copilot => {
-            our_hook_command(&root).and_then(|cmd| exe_token(&cmd))
-        }
+        Style::Claude | Style::Copilot => our_hook_command(&root).and_then(|cmd| exe_token(&cmd)),
         Style::Mcp => host
             .mcp_spec()
             .and_then(|(key, _)| root.get(key)?.get(MARKER))
@@ -930,9 +970,9 @@ pub(crate) fn wired_exe(host: Host, home: &Path) -> Option<String> {
 fn bank_baked_in(root: &Value, host: Host, style: &Style) -> Option<String> {
     match style {
         Style::Claude | Style::Copilot => bank_in_hooks(root),
-        Style::Mcp => host.mcp_spec().and_then(|(key, _)| {
-            root.get(key)?.get(MARKER).and_then(bank_in_mcp_entry)
-        }),
+        Style::Mcp => host
+            .mcp_spec()
+            .and_then(|(key, _)| root.get(key)?.get(MARKER).and_then(bank_in_mcp_entry)),
         Style::Plugin | Style::Extension => None,
     }
 }
@@ -1047,7 +1087,11 @@ pub(crate) fn apply(
     } else {
         edit_hooks(&mut root, style, exe, uninstall, bank)
     };
-    let Edit { events, notes, already } = match edit {
+    let Edit {
+        events,
+        notes,
+        already,
+    } = match edit {
         Ok(e) => e,
         Err(why) => return Outcome::Failed(format!("{}: {why}", path.display())),
     };
@@ -1079,7 +1123,11 @@ pub(crate) fn apply(
         // content keeps the file alive, untouched by this branch.
         if uninstall && root.as_object().is_some_and(|o| o.is_empty()) {
             return match std::fs::remove_file(&path) {
-                Ok(()) => Outcome::Unwired { backup, events, notes },
+                Ok(()) => Outcome::Unwired {
+                    backup,
+                    events,
+                    notes,
+                },
                 Err(e) => Outcome::Failed(format!("{}: {e}", path.display())),
             };
         }
@@ -1089,9 +1137,17 @@ pub(crate) fn apply(
             return Outcome::Failed(e);
         }
         if uninstall {
-            Outcome::Unwired { backup, events, notes }
+            Outcome::Unwired {
+                backup,
+                events,
+                notes,
+            }
         } else {
-            Outcome::Wired { backup, events, notes }
+            Outcome::Wired {
+                backup,
+                events,
+                notes,
+            }
         }
     })();
 
@@ -1116,15 +1172,26 @@ pub(crate) fn apply(
     // the injection, because an MCP tool exists only when the model decides to
     // call it.
     outcome = match host {
-        Host::ClaudeCode => {
-            merge(outcome, crate::connect_claude::apply(home, uninstall, data_root, bank))
-        }
-        Host::Codex => merge(outcome, crate::connect_codex::apply(home, uninstall, data_root, bank)),
-        Host::CopilotCli => {
-            merge(outcome, crate::connect_copilot::apply(home, uninstall, data_root, bank))
-        }
-        Host::Omp => merge(outcome, crate::connect_ext::apply(host, home, uninstall, data_root, bank)),
-        Host::Opencode => merge(outcome, crate::connect_opencode::apply(host, home, uninstall, data_root, bank)),
+        Host::ClaudeCode => merge(
+            outcome,
+            crate::connect_claude::apply(home, uninstall, data_root, bank),
+        ),
+        Host::Codex => merge(
+            outcome,
+            crate::connect_codex::apply(home, uninstall, data_root, bank),
+        ),
+        Host::CopilotCli => merge(
+            outcome,
+            crate::connect_copilot::apply(home, uninstall, data_root, bank),
+        ),
+        Host::Omp => merge(
+            outcome,
+            crate::connect_ext::apply(host, home, uninstall, data_root, bank),
+        ),
+        Host::Opencode => merge(
+            outcome,
+            crate::connect_opencode::apply(host, home, uninstall, data_root, bank),
+        ),
         _ => outcome,
     };
     outcome
@@ -1153,9 +1220,17 @@ fn merge(a: Outcome, b: Outcome) -> Outcome {
     // about the verb; the second clause only covers the case where the pass
     // carrying the verb is the one that was already in place.
     if a_unwired || (!a_changed && b_unwired) {
-        Outcome::Unwired { backup: a_backup.or(b_backup), events, notes }
+        Outcome::Unwired {
+            backup: a_backup.or(b_backup),
+            events,
+            notes,
+        }
     } else {
-        Outcome::Wired { backup: a_backup.or(b_backup), events, notes }
+        Outcome::Wired {
+            backup: a_backup.or(b_backup),
+            events,
+            notes,
+        }
     }
 }
 
@@ -1166,8 +1241,16 @@ fn merge(a: Outcome, b: Outcome) -> Outcome {
 /// the user is looking at than a bare `wired`.
 fn parts(o: Outcome) -> (bool, bool, Option<PathBuf>, Vec<String>, Vec<String>) {
     match o {
-        Outcome::Wired { backup, events, notes } => (true, false, backup, events, notes),
-        Outcome::Unwired { backup, events, notes } => (true, true, backup, events, notes),
+        Outcome::Wired {
+            backup,
+            events,
+            notes,
+        } => (true, false, backup, events, notes),
+        Outcome::Unwired {
+            backup,
+            events,
+            notes,
+        } => (true, true, backup, events, notes),
         Outcome::Already { notes } => (false, false, None, Vec::new(), notes),
         Outcome::Skipped(why) => (false, false, None, Vec::new(), vec![why]),
         Outcome::Failed(_) => (false, false, None, Vec::new(), Vec::new()),
@@ -1237,10 +1320,7 @@ fn edit_hooks(
                         events.push(ev.name.to_string());
                     }
                 }
-                Some(_) => notes.push(format!(
-                    "{} (existing value is not a hook list)",
-                    ev.name
-                )),
+                Some(_) => notes.push(format!("{} (existing value is not a hook list)", ev.name)),
             }
         }
         // A host we emptied out entirely should not keep an empty `hooks` key.
@@ -1250,10 +1330,14 @@ fn edit_hooks(
             }
         }
     }
-    Ok(Edit { events, notes, already })
+    Ok(Edit {
+        events,
+        notes,
+        already,
+    })
 }
 
-    /// Add or remove our MCP server entry under the host's `key`.
+/// Add or remove our MCP server entry under the host's `key`.
 ///
 /// MCP maps key servers by name, so ours is recognised by its key as well as by
 /// the [`MARKER`] substring — an entry registered under another name still gets
@@ -1308,9 +1392,17 @@ fn edit_mcp(root: &mut Value, key: &str, entry: Option<Value>) -> Result<Edit, R
     }
     let after = root.get(key).cloned();
     Ok(if before == after {
-        Edit { events: Vec::new(), notes: Vec::new(), already: 1 }
+        Edit {
+            events: Vec::new(),
+            notes: Vec::new(),
+            already: 1,
+        }
     } else {
-        Edit { events: vec![key.to_string()], notes: Vec::new(), already: 0 }
+        Edit {
+            events: vec![key.to_string()],
+            notes: Vec::new(),
+            already: 0,
+        }
     })
 }
 
@@ -1493,10 +1585,9 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             ),
             (
                 Host::Cursor,
-                vec![
-                    (
-                        ".cursor/mcp.json",
-                        r#"{
+                vec![(
+                    ".cursor/mcp.json",
+                    r#"{
   "mcpServers": {
     "memory-wire": {
       "args": [
@@ -1508,15 +1599,13 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     }
   }
 }"#,
-                    ),
-                ],
+                )],
             ),
             (
                 Host::Opencode,
-                vec![
-                    (
-                        ".config/opencode/opencode.json",
-                        r#"{
+                vec![(
+                    ".config/opencode/opencode.json",
+                    r#"{
   "mcp": {
     "memory-wire": {
       "command": [
@@ -1530,15 +1619,13 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     }
   }
 }"#,
-                    ),
-                ],
+                )],
             ),
             (
                 Host::Omp,
-                vec![
-                    (
-                        ".omp/agent/mcp.json",
-                        r#"{
+                vec![(
+                    ".omp/agent/mcp.json",
+                    r#"{
   "mcpServers": {
     "memory-wire": {
       "args": [
@@ -1551,18 +1638,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     }
   }
 }"#,
-                    ),
-                ],
+                )],
             ),
             (
                 Host::Hermes,
-                vec![
-                    (
-                        ".hermes/config.yaml",
-                        r#"memory:
+                vec![(
+                    ".hermes/config.yaml",
+                    r#"memory:
   provider: memory-wire"#,
-                    ),
-                ],
+                )],
             ),
         ];
 
@@ -1573,7 +1657,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         for (host, files) in &cases {
             let home = tmp_home(&format!("golden-{}", host.id()));
             std::fs::create_dir_all(home.join(host.detect_rel())).expect("detection directory");
-            let out = apply(*host, exe, &home, false, no_path, &home.join("data"), Some(bank));
+            let out = apply(
+                *host,
+                exe,
+                &home,
+                false,
+                no_path,
+                &home.join("data"),
+                Some(bank),
+            );
             assert!(
                 matches!(out, Outcome::Wired { .. }),
                 "{host:?}: unexpected outcome {out:?}"
@@ -1594,8 +1686,17 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         // pristine home: `~/.claude.json` belongs to the CLI and it creates it
         // itself, so the golden scenario asserts the skip, not just its note.
         let home = tmp_home("golden-claude-json");
-        std::fs::create_dir_all(home.join(Host::ClaudeCode.detect_rel())).expect("detection directory");
-        let out = apply(Host::ClaudeCode, exe, &home, false, no_path, &home.join("data"), Some(bank));
+        std::fs::create_dir_all(home.join(Host::ClaudeCode.detect_rel()))
+            .expect("detection directory");
+        let out = apply(
+            Host::ClaudeCode,
+            exe,
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            Some(bank),
+        );
         assert!(matches!(&out, Outcome::Wired { notes, .. } if notes
             .iter()
             .any(|n| n.contains("absent; the CLI creates it"))));
@@ -1612,7 +1713,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("hermes-husk");
         let dir = home.join(".hermes/plugins/memory-wire");
         std::fs::create_dir_all(dir.join("__pycache__")).expect("mkdir");
-        assert!(!wired_with(Host::Hermes, &home), "residue must read as not wired");
+        assert!(
+            !wired_with(Host::Hermes, &home),
+            "residue must read as not wired"
+        );
 
         // The same directory with our `plugin.yaml` in it is wired.
         std::fs::write(dir.join("plugin.yaml"), "name: memory-wire\n").expect("write");
@@ -1665,8 +1769,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             !IMPLICIT.contains(&Host::Hermes),
             "a bare `connect` must not activate a memory provider over another"
         );
-        assert!(ALL.contains(&Host::Hermes), "hermes is still reachable by name");
-        assert_eq!(ALL.len(), IMPLICIT.len() + 1, "every other host stays implicit");
+        assert!(
+            ALL.contains(&Host::Hermes),
+            "hermes is still reachable by name"
+        );
+        assert_eq!(
+            ALL.len(),
+            IMPLICIT.len() + 1,
+            "every other host stays implicit"
+        );
     }
 
     /// The rule the [`IMPLICIT`] doc is derived from, stated as a test so adding a
@@ -1716,7 +1827,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let Outcome::Wired { events, .. } = &out else {
             panic!("{out:?}");
         };
-        assert!(events.iter().any(|e| e == "mcp"), "MCP entry still written: {events:?}");
+        assert!(
+            events.iter().any(|e| e == "mcp"),
+            "MCP entry still written: {events:?}"
+        );
         // The opencode plugin is a directory now (`plugins/memory-wire/index.ts`),
         // because 2.x only discovers local plugins as directories. The event
         // names the file that was written, so it ends in `index.ts`.
@@ -1728,7 +1842,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             home.join(crate::connect_opencode::plugin_rel(Host::Opencode).expect("rel")),
         )
         .expect("plugin");
-        assert!(plugin.contains("var DEFAULT_BANK = \"omp\";"), "bank baked: {plugin}");
+        assert!(
+            plugin.contains("var DEFAULT_BANK = \"omp\";"),
+            "bank baked: {plugin}"
+        );
         // Uninstall takes both back and leaves the third party alone.
         let out = apply(
             Host::Opencode,
@@ -1741,8 +1858,14 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         );
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         let doc = read_config(&home, &Host::Opencode.config_rel());
-        assert!(!doc.to_string().contains(MARKER), "our MCP entry gone: {doc}");
-        assert!(doc.to_string().contains("cloakctl"), "foreign server survives: {doc}");
+        assert!(
+            !doc.to_string().contains(MARKER),
+            "our MCP entry gone: {doc}"
+        );
+        assert!(
+            doc.to_string().contains("cloakctl"),
+            "foreign server survives: {doc}"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -1769,7 +1892,7 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             false,
             no_path,
             &home.join("data"),
-            None
+            None,
         );
         let Outcome::Wired { events, .. } = &out else {
             panic!("{out:?}");
@@ -1789,7 +1912,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             "a foreign server is untouched: {doc}"
         );
         let ext = home.join(crate::connect_ext::extension_rel(Host::Omp).expect("rel"));
-        assert_eq!(std::fs::read_to_string(&ext).expect("read"), crate::connect_ext::SOURCE);
+        assert_eq!(
+            std::fs::read_to_string(&ext).expect("read"),
+            crate::connect_ext::SOURCE
+        );
 
         // And uninstall takes back only our two, leaving the foreign one.
         let out = apply(
@@ -1799,7 +1925,7 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             true,
             no_path,
             &home.join("data"),
-            None
+            None,
         );
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         assert!(!ext.exists(), "the extension is removed");
@@ -1828,7 +1954,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             &rel,
             r#"{"mcpServers":{"memory-wire":{"type":"stdio","command":"/old/memory-wire","args":["mcp"]}}}"#,
         );
-        assert_eq!(listing_fields(&home, Host::Omp), ["detected=yes", "wired=yes"]);
+        assert_eq!(
+            listing_fields(&home, Host::Omp),
+            ["detected=yes", "wired=yes"]
+        );
         assert_eq!(listing_fields(&home, Host::Pi), ["detected=no", "wired=no"]);
         std::fs::remove_dir_all(&home).ok();
     }
@@ -1851,10 +1980,13 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             false,
             no_path,
             &home.join("data"),
-            None
+            None,
         );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
-        assert_eq!(listing_fields(&home, Host::Pi), ["detected=yes", "wired=yes"]);
+        assert_eq!(
+            listing_fields(&home, Host::Pi),
+            ["detected=yes", "wired=yes"]
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -1867,7 +1999,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let path = home.join(crate::connect_ext::extension_rel(Host::Pi).expect("rel"));
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
         std::fs::write(&path, "// my own extension\n").expect("write");
-        assert_eq!(listing_fields(&home, Host::Pi), ["detected=yes", "wired=no"]);
+        assert_eq!(
+            listing_fields(&home, Host::Pi),
+            ["detected=yes", "wired=no"]
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -1902,10 +2037,19 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     #[test]
     fn a_host_list_should_take_commas_spaces_and_repetition() {
         assert_eq!(parse(&["codex"]), Ok(vec![Host::Codex]));
-        assert_eq!(parse(&["codex,cursor"]), Ok(vec![Host::Codex, Host::Cursor]));
-        assert_eq!(parse(&["codex", "cursor"]), Ok(vec![Host::Codex, Host::Cursor]));
+        assert_eq!(
+            parse(&["codex,cursor"]),
+            Ok(vec![Host::Codex, Host::Cursor])
+        );
+        assert_eq!(
+            parse(&["codex", "cursor"]),
+            Ok(vec![Host::Codex, Host::Cursor])
+        );
         // The spaced comma form is what a shell script actually writes.
-        assert_eq!(parse(&["codex, cursor"]), Ok(vec![Host::Codex, Host::Cursor]));
+        assert_eq!(
+            parse(&["codex, cursor"]),
+            Ok(vec![Host::Codex, Host::Cursor])
+        );
         assert_eq!(parse(&["hermes"]), Ok(vec![Host::Hermes]));
         // A name repeated inside one call is still one host.
         assert_eq!(parse(&["codex,codex", "codex"]), Ok(vec![Host::Codex]));
@@ -1934,7 +2078,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             assert!(line.contains("detected=no"), "{line}");
             assert!(line.contains("wired=no"), "{line}");
         }
-        assert!(!home.join("data").exists(), "a listing must not create a data dir");
+        assert!(
+            !home.join("data").exists(),
+            "a listing must not create a data dir"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -1948,7 +2095,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, "{}\n");
         std::fs::write(home.join(".claude.json"), "{}\n").expect("seed the CLI config");
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=yes"));
 
@@ -1975,7 +2130,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
 
         // Claude Code creates `~/.claude.json` on its first run; without it `connect` skips the MCP entry.
         std::fs::write(home.join(".claude.json"), "{}\n").expect("seed the CLI config");
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let wired = std::fs::read_to_string(home.join(&rel)).expect("read");
         assert!(listing(Host::ClaudeCode, &home, no_path).contains("detected=yes wired=yes"));
@@ -1993,17 +2156,39 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
 
-        let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let first = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(first, Outcome::Wired { .. }), "{:?}", first);
         assert_eq!(count_ours(&home, &rel), 5, "exactly one entry per event");
         let doc = read_config(&home, &rel);
         let entries = doc["hooks"]["SessionStart"].as_array().expect("array");
         assert_eq!(entries.len(), 2, "foreign hook kept, ours added");
-        assert!(entries.iter().any(|e| e.to_string().contains("/opt/other/hook.sh")));
+        assert!(entries
+            .iter()
+            .any(|e| e.to_string().contains("/opt/other/hook.sh")));
 
-        let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let second = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
-        assert_eq!(count_ours(&home, &rel), 5, "re-install must not stack entries");
+        assert_eq!(
+            count_ours(&home, &rel),
+            5,
+            "re-install must not stack entries"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -2016,11 +2201,22 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             &rel,
             r#"{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/old/dir/memory-wire hook stop","timeout":5}]}]}}"#,
         );
-        let out = apply(Host::ClaudeCode, "/new/dir/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/new/dir/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         let Outcome::Wired { events, .. } = &out else {
             panic!("{out:?}");
         };
-        assert!(events.iter().any(|e| e.contains("replaced stale")), "{events:?}");
+        assert!(
+            events.iter().any(|e| e.contains("replaced stale")),
+            "{events:?}"
+        );
         assert_eq!(count_ours(&home, &rel), 5);
         assert!(std::fs::read_to_string(home.join(&rel))
             .expect("read")
@@ -2041,7 +2237,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             &rel,
             r#"{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/bin/memory-wire hook stop --bank palimpsest","timeout":5}]}]}}"#,
         );
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         // Asserted through the production reader: the same extraction the next
@@ -2055,7 +2259,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         );
         // And the pin survives the *next* bare pass too, as idempotence rather
         // than as a second rewrite.
-        let again = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let again = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(again, Outcome::Already { .. }), "{again:?}");
         std::fs::remove_dir_all(&home).ok();
     }
@@ -2068,9 +2280,19 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("bare-nopin");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
-        assert!(!std::fs::read_to_string(home.join(&rel)).expect("read").contains("--bank"));
+        assert!(!std::fs::read_to_string(home.join(&rel))
+            .expect("read")
+            .contains("--bank"));
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -2088,7 +2310,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         );
         // Byte-identical to what a `--bank palimpsest` install produces, so
         // preserving the pin reports `Already` — the pin was kept, not moved.
-        let out = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::Cursor,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Already { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         assert_eq!(
@@ -2110,25 +2340,49 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     fn a_foreign_server_under_our_name_is_refused_in_both_directions() {
         let foreign = r#"{"mcpServers":{"memory-wire":{"url":"http://elsewhere.example/mcp","type":"http"}}}"#;
         for uninstall in [false, true] {
-            let home = tmp_home(if uninstall { "foreign-un" } else { "foreign-in" });
+            let home = tmp_home(if uninstall {
+                "foreign-un"
+            } else {
+                "foreign-in"
+            });
             let rel = Host::Cursor.config_rel();
             write_config(&home, &rel, foreign);
-            let out = apply(Host::Cursor, "/bin/memory-wire", &home, uninstall, no_path, &home.join("data"), None);
-            assert!(matches!(&out, Outcome::Failed(why) if why.contains("is not ours; left untouched")), "{out:?}");
+            let out = apply(
+                Host::Cursor,
+                "/bin/memory-wire",
+                &home,
+                uninstall,
+                no_path,
+                &home.join("data"),
+                None,
+            );
+            assert!(
+                matches!(&out, Outcome::Failed(why) if why.contains("is not ours; left untouched")),
+                "{out:?}"
+            );
             assert_eq!(
                 std::fs::read_to_string(home.join(&rel)).expect("read"),
                 foreign,
                 "the refusal must leave the file byte-identical"
             );
-            assert!(!home.join("data/backups").exists(), "no backup for a refusal");
+            assert!(
+                !home.join("data/backups").exists(),
+                "no backup for a refusal"
+            );
             std::fs::remove_dir_all(&home).ok();
         }
     }
 
     #[test]
     fn bank_token_should_read_both_quoting_forms() {
-        assert_eq!(bank_token("/bin/memory-wire hook stop --bank palimpsest"), Some("palimpsest".into()));
-        assert_eq!(bank_token("'/bin/my memory-wire' hook stop --bank 'two words'"), Some("two words".into()));
+        assert_eq!(
+            bank_token("/bin/memory-wire hook stop --bank palimpsest"),
+            Some("palimpsest".into())
+        );
+        assert_eq!(
+            bank_token("'/bin/my memory-wire' hook stop --bank 'two words'"),
+            Some("two words".into())
+        );
         assert_eq!(bank_token("--bank"), None);
         assert_eq!(bank_token("nothing here"), None);
     }
@@ -2139,7 +2393,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let rel = Host::ClaudeCode.config_rel();
         let broken = "{ \"hooks\": { oops";
         write_config(&home, &rel, broken);
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
         assert!(out.is_failure());
         assert_eq!(
@@ -2161,21 +2423,54 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("unwire");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
-        apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
 
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            true,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         assert_eq!(count_ours(&home, &rel), 0, "all our entries removed");
         let doc = read_config(&home, &rel);
-        assert_eq!(doc["hooks"]["SessionStart"].as_array().expect("array").len(), 1);
+        assert_eq!(
+            doc["hooks"]["SessionStart"]
+                .as_array()
+                .expect("array")
+                .len(),
+            1
+        );
         assert!(doc["hooks"]["SessionStart"]
             .to_string()
             .contains("/opt/other/hook.sh"));
         // The event keys we created and emptied are pruned.
         assert!(doc["hooks"].get("Stop").is_none(), "{doc}");
 
-        let again = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &home.join("data"), None);
-        assert!(matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }), "{again:?}");
+        let again = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            true,
+            no_path,
+            &home.join("data"),
+            None,
+        );
+        assert!(
+            matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }),
+            "{again:?}"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -2245,7 +2540,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("bank-default");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, "{}");
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         let cmd = cmd_of(&our_entry(&doc, "SessionStart"), "command");
@@ -2261,7 +2564,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("bank-blank");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, "{}");
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), Some("   "));
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            Some("   "),
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         let cmd = cmd_of(&our_entry(&doc, "SessionStart"), "command");
@@ -2314,7 +2625,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
                 joined.contains("--bank omp"),
                 "{host:?} wrote {joined:?} with no bank in the argv"
             );
-            assert!(joined.contains("mcp"), "{host:?} lost the subcommand: {joined:?}");
+            assert!(
+                joined.contains("mcp"),
+                "{host:?} lost the subcommand: {joined:?}"
+            );
             std::fs::remove_dir_all(&home).ok();
         }
     }
@@ -2326,7 +2640,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("mcpbank-default");
         let rel = Host::Omp.config_rel();
         write_config(&home, &rel, "{}");
-        let out = apply(Host::Omp, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::Omp,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         assert_eq!(doc["mcpServers"]["memory-wire"]["args"], json!(["mcp"]));
@@ -2337,8 +2659,20 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     fn copilot_style_should_use_a_flat_bash_entry() {
         let home = tmp_home("copilot");
         let rel = Host::CopilotCli.config_rel();
-        write_config(&home, &rel, r#"{"hooks":{"SessionStart":[{"type":"command","bash":"bash '/x.sh'","timeoutSec":10}]}}"#);
-        let out = apply(Host::CopilotCli, "/opt/my tools/memory-wire", &home, false, no_path, &home.join("data"), None);
+        write_config(
+            &home,
+            &rel,
+            r#"{"hooks":{"SessionStart":[{"type":"command","bash":"bash '/x.sh'","timeoutSec":10}]}}"#,
+        );
+        let out = apply(
+            Host::CopilotCli,
+            "/opt/my tools/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         let ours = doc["hooks"]["SessionStart"]
@@ -2348,7 +2682,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             .find(|e| e.to_string().contains(MARKER))
             .expect("our entry")
             .clone();
-        assert_eq!(ours["bash"], "'/opt/my tools/memory-wire' hook session-start");
+        assert_eq!(
+            ours["bash"],
+            "'/opt/my tools/memory-wire' hook session-start"
+        );
         assert_eq!(ours["timeoutSec"], 5);
         std::fs::remove_dir_all(&home).ok();
     }
@@ -2361,7 +2698,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let home = tmp_home("quote");
         let rel = Host::ClaudeCode.config_rel();
         write_config(&home, &rel, FOREIGN);
-        let out = apply(Host::ClaudeCode, "/opt/my tools/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/opt/my tools/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         for ev in EVENTS {
@@ -2373,7 +2718,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
                 .filter_map(|h| h["command"].as_str())
                 .find(|c| c.contains(MARKER))
                 .unwrap_or_else(|| panic!("{} command missing in {doc}", ev.name));
-            assert_eq!(cmd, format!("'/opt/my tools/memory-wire' hook {}", ev.lifecycle));
+            assert_eq!(
+                cmd,
+                format!("'/opt/my tools/memory-wire' hook {}", ev.lifecycle)
+            );
         }
         std::fs::remove_dir_all(&home).ok();
     }
@@ -2387,7 +2735,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let dir = backup(&data, &home, Host::Codex, "20260102-030405", &rel)
             .expect("backup")
             .expect("a backup was made");
-        let name = dir.file_name().expect("name").to_string_lossy().into_owned();
+        let name = dir
+            .file_name()
+            .expect("name")
+            .to_string_lossy()
+            .into_owned();
         assert_eq!(name, "codex-20260102-030405");
         assert!(name.starts_with(&format!("{}-", Host::Codex.id())));
         assert_eq!(
@@ -2396,9 +2748,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         );
         // Nothing to preserve on a first install that creates the file.
         let missing = home.join(".codex/other.json");
-        assert!(backup(&data, &home, Host::Codex, "20260102-030405", Path::new(".codex/other.json"))
-            .expect("backup")
-            .is_none());
+        assert!(backup(
+            &data,
+            &home,
+            Host::Codex,
+            "20260102-030405",
+            Path::new(".codex/other.json")
+        )
+        .expect("backup")
+        .is_none());
         assert!(!missing.exists());
         std::fs::remove_dir_all(&home).ok();
     }
@@ -2410,15 +2768,37 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         assert!(!binary_on_path("memory-wire-definitely-not-installed"));
         assert!(!detected_with(Host::Cursor, &home, no_path));
 
-        let skipped = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
-        assert!(matches!(&skipped, Outcome::Skipped(w) if w.contains("not detected")), "{skipped:?}");
+        let skipped = apply(
+            Host::Cursor,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
+        assert!(
+            matches!(&skipped, Outcome::Skipped(w) if w.contains("not detected")),
+            "{skipped:?}"
+        );
 
         std::fs::create_dir_all(home.join(Host::Cursor.detect_rel())).expect("mkdir");
         assert!(detected_with(Host::Cursor, &home, no_path));
         // Detected is enough now: an MCP-only host is wired, not skipped.
-        let wired = apply(Host::Cursor, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let wired = apply(
+            Host::Cursor,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(wired, Outcome::Wired { .. }), "{wired:?}");
-        assert!(!MCP_ONLY_REASON.contains("no MCP server"), "stale reason: {MCP_ONLY_REASON}");
+        assert!(
+            !MCP_ONLY_REASON.contains("no MCP server"),
+            "stale reason: {MCP_ONLY_REASON}"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -2430,7 +2810,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
     #[test]
     fn mcp_hosts_should_install_idempotently_and_uninstall_cleanly() {
         for (host, key, entry) in [
-            (Host::Cursor, "mcpServers", json!({ "command": "/bin/memory-wire", "args": ["mcp"] })),
+            (
+                Host::Cursor,
+                "mcpServers",
+                json!({ "command": "/bin/memory-wire", "args": ["mcp"] }),
+            ),
             (
                 Host::Opencode,
                 "mcp",
@@ -2449,34 +2833,99 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             let data = home.join("data");
 
             let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
-            assert!(matches!(first, Outcome::Wired { .. }), "{}: {first:?}", host.id());
+            assert!(
+                matches!(first, Outcome::Wired { .. }),
+                "{}: {first:?}",
+                host.id()
+            );
             let doc = read_config(&home, &rel);
             assert_eq!(doc[key][MARKER], entry, "{} entry shape", host.id());
-            assert_eq!(doc[key].as_object().expect("map").len(), 2, "{} foreign server kept", host.id());
-            assert_eq!(our_entries(&doc, key), 1, "{}: one server per file", host.id());
+            assert_eq!(
+                doc[key].as_object().expect("map").len(),
+                2,
+                "{} foreign server kept",
+                host.id()
+            );
+            assert_eq!(
+                our_entries(&doc, key),
+                1,
+                "{}: one server per file",
+                host.id()
+            );
 
             let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
-            assert!(matches!(second, Outcome::Already { .. }), "{}: {second:?}", host.id());
-            assert_eq!(our_entries(&doc, key), 1, "{}: a re-install must not stack", host.id());
+            assert!(
+                matches!(second, Outcome::Already { .. }),
+                "{}: {second:?}",
+                host.id()
+            );
+            assert_eq!(
+                our_entries(&doc, key),
+                1,
+                "{}: a re-install must not stack",
+                host.id()
+            );
 
             // A moved binary replaces the stale command rather than adding one.
-            let moved = apply(host, "/new/dir/memory-wire", &home, false, no_path, &data, None);
-            assert!(matches!(moved, Outcome::Wired { .. }), "{}: {moved:?}", host.id());
+            let moved = apply(
+                host,
+                "/new/dir/memory-wire",
+                &home,
+                false,
+                no_path,
+                &data,
+                None,
+            );
+            assert!(
+                matches!(moved, Outcome::Wired { .. }),
+                "{}: {moved:?}",
+                host.id()
+            );
             let doc = read_config(&home, &rel);
             assert_eq!(our_entries(&doc, key), 1, "{}: {moved:?}", host.id());
             assert!(
-                std::fs::read_to_string(home.join(&rel)).expect("read").contains("/new/dir/memory-wire"),
+                std::fs::read_to_string(home.join(&rel))
+                    .expect("read")
+                    .contains("/new/dir/memory-wire"),
                 "{}: stale command must be replaced",
                 host.id()
             );
 
-            let out = apply(host, "/new/dir/memory-wire", &home, true, no_path, &data, None);
-            assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
+            let out = apply(
+                host,
+                "/new/dir/memory-wire",
+                &home,
+                true,
+                no_path,
+                &data,
+                None,
+            );
+            assert!(
+                matches!(out, Outcome::Unwired { .. }),
+                "{}: {out:?}",
+                host.id()
+            );
             let doc = read_config(&home, &rel);
-            assert_eq!(our_entries(&doc, key), 0, "{}: our entry removed", host.id());
-            assert!(doc[key]["other"]["url"] == json!("http://127.0.0.1:9/mcp"), "{doc}");
+            assert_eq!(
+                our_entries(&doc, key),
+                0,
+                "{}: our entry removed",
+                host.id()
+            );
+            assert!(
+                doc[key]["other"]["url"] == json!("http://127.0.0.1:9/mcp"),
+                "{doc}"
+            );
 
-            let again = apply(host, "/new/dir/memory-wire", &home, true, no_path, &data, None);
+            let again = apply(
+                host,
+                "/new/dir/memory-wire",
+                &home,
+                true,
+                no_path,
+                &data,
+                None,
+            );
             assert!(
                 matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }),
                 "{}: {again:?}",
@@ -2521,7 +2970,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("mkdir");
         write_config(&home, &rel, live_shape);
 
-        let first = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data, None);
+        let first = apply(
+            Host::Omp,
+            "/opt/mw/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
         assert!(matches!(first, Outcome::Wired { .. }), "{first:?}");
         let doc = read_config(&home, &rel);
         assert_eq!(
@@ -2537,7 +2994,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         // The two sibling keys are not ours to touch, and the three foreign
         // servers keep their exact entry shape.
         assert_eq!(doc["$schema"], json!(OMP_SCHEMA), "{doc}");
-        assert_eq!(doc["enabledServers"], json!(["sourcehound", "cloakctl"]), "{doc}");
+        assert_eq!(
+            doc["enabledServers"],
+            json!(["sourcehound", "cloakctl"]),
+            "{doc}"
+        );
         assert_eq!(
             doc["mcpServers"]["cloakctl"]["command"],
             json!("/home/ishanp/.local/bin/cloakctl-mcp"),
@@ -2549,7 +3010,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             "an http entry must survive intact: {doc}"
         );
 
-        let second = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &data, None);
+        let second = apply(
+            Host::Omp,
+            "/opt/mw/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
         assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
         assert_eq!(
             our_entries(&read_config(&home, &rel), "mcpServers"),
@@ -2557,18 +3026,41 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             "a re-install must not stack"
         );
 
-        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data, None);
+        let out = apply(
+            Host::Omp,
+            "/opt/mw/memory-wire",
+            &home,
+            true,
+            no_path,
+            &data,
+            None,
+        );
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         let doc = read_config(&home, &rel);
         assert_eq!(our_entries(&doc, "mcpServers"), 0, "our key removed");
         assert_eq!(
-            doc["mcpServers"].as_object().expect("map still there").len(),
+            doc["mcpServers"]
+                .as_object()
+                .expect("map still there")
+                .len(),
             3,
             "foreign servers keep the map alive, so only our key goes: {doc}"
         );
-        assert_eq!(doc["enabledServers"], json!(["sourcehound", "cloakctl"]), "{doc}");
+        assert_eq!(
+            doc["enabledServers"],
+            json!(["sourcehound", "cloakctl"]),
+            "{doc}"
+        );
 
-        let again = apply(Host::Omp, "/opt/mw/memory-wire", &home, true, no_path, &data, None);
+        let again = apply(
+            Host::Omp,
+            "/opt/mw/memory-wire",
+            &home,
+            true,
+            no_path,
+            &data,
+            None,
+        );
         assert!(
             matches!(again, Outcome::Skipped(_) | Outcome::Already { .. }),
             "{again:?}"
@@ -2586,7 +3078,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let broken = "{ \"mcpServers\": { \"memory-wire\": oops";
         write_config(&home, &rel, broken);
         std::fs::create_dir_all(home.join(Host::Omp.detect_rel())).expect("mkdir");
-        let out = apply(Host::Omp, "/opt/mw/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::Omp,
+            "/opt/mw/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
         assert!(out.is_failure());
         assert_eq!(
@@ -2631,7 +3131,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let broken = r#"{"mcp": ["not","an","object"]}"#;
         write_config(&home, &rel, broken);
         std::fs::create_dir_all(home.join(Host::Opencode.detect_rel())).expect("mkdir");
-        let out = apply(Host::Opencode, "/bin/memory-wire", &home, false, no_path, &home.join("data"), None);
+        let out = apply(
+            Host::Opencode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &home.join("data"),
+            None,
+        );
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
         assert_eq!(
             std::fs::read_to_string(home.join(&rel)).expect("read"),
@@ -2652,9 +3160,17 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             std::fs::create_dir_all(home.join(host.detect_rel())).expect("mkdir");
 
             apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
-            assert!(home.join(&rel).is_file(), "{}: install created the config", host.id());
+            assert!(
+                home.join(&rel).is_file(),
+                "{}: install created the config",
+                host.id()
+            );
             let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data, None);
-            assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
+            assert!(
+                matches!(out, Outcome::Unwired { .. }),
+                "{}: {out:?}",
+                host.id()
+            );
             assert!(
                 !home.join(&rel).exists(),
                 "{}: an empty residue file must be deleted, not left as {{}}",
@@ -2665,7 +3181,10 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             write_config(
                 &home,
                 &rel,
-                &format!(r#"{{"{}":{{"other":{{"url":"x"}}}}}}"#, host.mcp_spec().expect("spec").0),
+                &format!(
+                    r#"{{"{}":{{"other":{{"url":"x"}}}}}}"#,
+                    host.mcp_spec().expect("spec").0
+                ),
             );
             apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
             apply(host, "/bin/memory-wire", &home, true, no_path, &data, None);
@@ -2688,11 +3207,30 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let rel = Host::ClaudeCode.config_rel();
         std::fs::create_dir_all(home.join(Host::ClaudeCode.detect_rel())).expect("mkdir");
         let data = home.join("data");
-        apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data, None);
+        apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
         assert!(home.join(&rel).is_file());
-        let out = apply(Host::ClaudeCode, "/bin/memory-wire", &home, true, no_path, &data, None);
+        let out = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            true,
+            no_path,
+            &data,
+            None,
+        );
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
-        assert!(!home.join(&rel).exists(), "an empty residue file must be deleted");
+        assert!(
+            !home.join(&rel).exists(),
+            "an empty residue file must be deleted"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -2709,7 +3247,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             let data = home.join("data");
 
             let first = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
-            assert!(matches!(first, Outcome::Wired { .. }), "{}: {first:?}", host.id());
+            assert!(
+                matches!(first, Outcome::Wired { .. }),
+                "{}: {first:?}",
+                host.id()
+            );
             let doc = read_config(&home, &rel);
             for ev in EVENTS {
                 let slot = doc["hooks"][ev.name]
@@ -2739,7 +3281,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             assert_eq!(count_ours(&home, &rel), 5, "{}: five entries", host.id());
 
             let second = apply(host, "/bin/memory-wire", &home, false, no_path, &data, None);
-            assert!(matches!(second, Outcome::Already { .. }), "{}: {second:?}", host.id());
+            assert!(
+                matches!(second, Outcome::Already { .. }),
+                "{}: {second:?}",
+                host.id()
+            );
             assert_eq!(
                 count_ours(&home, &rel),
                 5,
@@ -2748,7 +3294,11 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             );
 
             let out = apply(host, "/bin/memory-wire", &home, true, no_path, &data, None);
-            assert!(matches!(out, Outcome::Unwired { .. }), "{}: {out:?}", host.id());
+            assert!(
+                matches!(out, Outcome::Unwired { .. }),
+                "{}: {out:?}",
+                host.id()
+            );
             // This config held nothing but our five entries, so pruning them
             // leaves no residue to write: the file is removed rather than
             // emptied.
@@ -2791,7 +3341,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
             r#"{"hooks":{"SessionStart":"legacy-string-hook"}}"#,
         );
         let data = home.join("data");
-        let first = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data, None);
+        let first = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
         let Outcome::Wired { events, notes, .. } = &first else {
             panic!("{first:?}");
         };
@@ -2818,7 +3376,15 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         let backups = data.join("backups");
         let n_backups = std::fs::read_dir(&backups).expect("readdir").count();
 
-        let second = apply(Host::ClaudeCode, "/bin/memory-wire", &home, false, no_path, &data, None);
+        let second = apply(
+            Host::ClaudeCode,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
         let Outcome::Already { notes } = &second else {
             panic!("{second:?}");
         };

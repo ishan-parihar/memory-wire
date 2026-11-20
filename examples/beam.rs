@@ -86,7 +86,10 @@ fn main() -> anyhow::Result<()> {
         Some(p) => p,
         None => {
             let p = std::env::temp_dir().join("results_beam.json");
-            eprintln!("no --out-json given: writing per-question data to {}", p.display());
+            eprintln!(
+                "no --out-json given: writing per-question data to {}",
+                p.display()
+            );
             p.display().to_string()
         }
     };
@@ -116,7 +119,10 @@ fn main() -> anyhow::Result<()> {
     );
 
     // ---- the pass ----------------------------------------------------------------
-    let mut per_config: Vec<Vec<Row>> = GRID.iter().map(|_| Vec::with_capacity(planned.len())).collect();
+    let mut per_config: Vec<Vec<Row>> = GRID
+        .iter()
+        .map(|_| Vec::with_capacity(planned.len()))
+        .collect();
     let mut per_dim: Vec<BTreeMap<String, Agg>> = GRID.iter().map(|_| BTreeMap::new()).collect();
     let mut pool_len_sum = 0usize;
     let mut pool_len_max = 0usize;
@@ -127,7 +133,10 @@ fn main() -> anyhow::Result<()> {
         let q = planned_q.query;
         let svc = &banks[&q.user_id];
         for (ci, weight) in GRID.iter().enumerate() {
-            let weights = FusionWeights { overlap: *weight, ..FusionWeights::SHIPPED };
+            let weights = FusionWeights {
+                overlap: *weight,
+                ..FusionWeights::SHIPPED
+            };
             let hits = svc.recall_with_weights(&q.user_id, &q.query, budget_tokens, &weights)?;
             let retrieved = dev::session_of(hits.into_iter().map(|h| h.memory.id));
             let row = Row::new(q, &retrieved, &planned_q.gold);
@@ -135,7 +144,10 @@ fn main() -> anyhow::Result<()> {
                 pool_len_sum += retrieved.len();
                 pool_len_max = pool_len_max.max(retrieved.len());
             }
-            per_dim[ci].entry(row.category.clone()).or_default().add(&row);
+            per_dim[ci]
+                .entry(row.category.clone())
+                .or_default()
+                .add(&row);
             per_config[ci].push(row);
         }
         if (qi + 1) % 100 == 0 {
@@ -176,8 +188,14 @@ fn main() -> anyhow::Result<()> {
         })
         .collect();
     // The deletion question is 0.25 vs 0.00, per-query, on R@5 and R@1.
-    let fitted = GRID.iter().position(|w| (*w - 0.25).abs() < f64::EPSILON).expect("grid pins 0.25");
-    let zero = GRID.iter().position(|w| w.abs() < f64::EPSILON).expect("grid pins 0.00");
+    let fitted = GRID
+        .iter()
+        .position(|w| (*w - 0.25).abs() < f64::EPSILON)
+        .expect("grid pins 0.25");
+    let zero = GRID
+        .iter()
+        .position(|w| w.abs() < f64::EPSILON)
+        .expect("grid pins 0.00");
     let mut zero_up = 0;
     let mut zero_down = 0;
     for (r, b) in per_config[zero].iter().zip(&per_config[fitted]) {
@@ -195,7 +213,11 @@ fn main() -> anyhow::Result<()> {
     let n_eval = totals[0].count;
     let pool_hit = totals[0].pool();
     let pool_miss = ((1.0 - pool_hit / 100.0) * n_eval as f64).round() as usize;
-    let pool_mean = if n_eval == 0 { 0.0 } else { pool_len_sum as f64 / n_eval as f64 };
+    let pool_mean = if n_eval == 0 {
+        0.0
+    } else {
+        pool_len_sum as f64 / n_eval as f64
+    };
     let d = |a: &Agg, b: &Agg, f: fn(&Agg) -> f64| f(a) - f(b);
     // The pre-registered deletion test (`0.25` vs `0.00`) and, beside it, the control
     // comparison (`0.25` vs the unfitted `1.00`). Both are derived from measured
@@ -246,11 +268,7 @@ fn main() -> anyhow::Result<()> {
              on 19–32-document LoCoMo banks the second lexical voter could only reorder ties; on \
              {bank_min}–{bank_max}-document banks it also carries coverage, and the ordering \
              deltas above are its work.",
-            del_deltas[0].1,
-            del_deltas[1].1,
-            del_deltas[2].1,
-            del_deltas[3].1,
-            del_deltas[4].1,
+            del_deltas[0].1, del_deltas[1].1, del_deltas[2].1, del_deltas[3].1, del_deltas[4].1,
         )
     };
     // The control comparison, stated whichever way it points.
@@ -372,12 +390,19 @@ MRR | ΔMRR | R@pool | R@5 up/down/same | n |\n|---|---|---|---|---|---|---|---|
         md.push_str(&format!(
             "| {weight:.2} | {:.1}% | {:+.1} | {:.1}% | {:+.1} | {:.1}% | {:.1}% | {:.1}% | \
 {:.1}% | {:+.1} | {:.1}% | {:+.1} | {:.1}% | {up}/{down}/{same} | {} |\n",
-            t.r1(), t.r1() - base.r1(),
-            t.r5(), t.r5() - base.r5(),
-            t.r10(), t.r20(), t.all10(),
-            t.ndcg10(), t.ndcg10() - base.ndcg10(),
-            t.mrr(), t.mrr() - base.mrr(),
-            t.pool(), t.count,
+            t.r1(),
+            t.r1() - base.r1(),
+            t.r5(),
+            t.r5() - base.r5(),
+            t.r10(),
+            t.r20(),
+            t.all10(),
+            t.ndcg10(),
+            t.ndcg10() - base.ndcg10(),
+            t.mrr(),
+            t.mrr() - base.mrr(),
+            t.pool(),
+            t.count,
         ));
     }
     md.push_str(&format!(
@@ -414,7 +439,12 @@ MRR | ΔMRR | R@pool | R@5 up/down/same | n |\n|---|---|---|---|---|---|---|---|
             for c in &dims {
                 let a = per_dim[i].get(c).unwrap_or(&empty);
                 let b = per_dim[0].get(c).unwrap_or(&empty);
-                md.push_str(&format!(" {:.1}% ({:+.1}, n={}) |", f(a), f(a) - f(b), a.count));
+                md.push_str(&format!(
+                    " {:.1}% ({:+.1}, n={}) |",
+                    f(a),
+                    f(a) - f(b),
+                    a.count
+                ));
             }
             md.push_str(&format!(" {:.1}% |\n", f(&totals[i])));
         }
@@ -500,12 +530,24 @@ NDCG@10 {a_n:.1}%  vs {b_n:.1}%  ({d_n:+.1}pp)\n  \
 MRR     {a_m:.1}%  vs {b_m:.1}%  ({d_m:+.1}pp)\n  \
 R@pool  {a_p:.1}%  vs {b_p:.1}%  ({d_p:+.1}pp)\n  \
 control — overlap=1.00: R@1 {ctl_1:.1}%, R@5 {ctl_5:.1}% — points {ctl_word} the fitted value",
-        a_r1 = t_f.r1(), b_r1 = t_z.r1(), d_r1 = t_f.r1() - t_z.r1(),
-        a_r5 = t_f.r5(), b_r5 = t_z.r5(), d_r5 = t_f.r5() - t_z.r5(),
-        a_r10 = t_f.r10(), b_r10 = t_z.r10(), d_r10 = t_f.r10() - t_z.r10(),
-        a_n = t_f.ndcg10(), b_n = t_z.ndcg10(), d_n = t_f.ndcg10() - t_z.ndcg10(),
-        a_m = t_f.mrr(), b_m = t_z.mrr(), d_m = t_f.mrr() - t_z.mrr(),
-        a_p = t_f.pool(), b_p = t_z.pool(), d_p = t_f.pool() - t_z.pool(),
+        a_r1 = t_f.r1(),
+        b_r1 = t_z.r1(),
+        d_r1 = t_f.r1() - t_z.r1(),
+        a_r5 = t_f.r5(),
+        b_r5 = t_z.r5(),
+        d_r5 = t_f.r5() - t_z.r5(),
+        a_r10 = t_f.r10(),
+        b_r10 = t_z.r10(),
+        d_r10 = t_f.r10() - t_z.r10(),
+        a_n = t_f.ndcg10(),
+        b_n = t_z.ndcg10(),
+        d_n = t_f.ndcg10() - t_z.ndcg10(),
+        a_m = t_f.mrr(),
+        b_m = t_z.mrr(),
+        d_m = t_f.mrr() - t_z.mrr(),
+        a_p = t_f.pool(),
+        b_p = t_z.pool(),
+        d_p = t_f.pool() - t_z.pool(),
         ctl_1 = totals[0].r1(),
         ctl_5 = totals[0].r5(),
         ctl_word = ctl_word,

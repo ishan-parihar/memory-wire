@@ -108,10 +108,34 @@ fn grid(spec: &str) -> Vec<(String, Option<FusionWeights>)> {
     match spec {
         "default" => vec![
             ("shipped".to_string(), None),
-            ("raw overlap=0.50".to_string(), Some(FusionWeights { overlap: 0.50, ..FusionWeights::SHIPPED })),
-            ("raw overlap=0.75".to_string(), Some(FusionWeights { overlap: 0.75, ..FusionWeights::SHIPPED })),
-            ("raw overlap=1.00".to_string(), Some(FusionWeights { overlap: 1.0, ..FusionWeights::SHIPPED })),
-            ("raw overlap=2.00".to_string(), Some(FusionWeights { overlap: 2.0, ..FusionWeights::SHIPPED })),
+            (
+                "raw overlap=0.50".to_string(),
+                Some(FusionWeights {
+                    overlap: 0.50,
+                    ..FusionWeights::SHIPPED
+                }),
+            ),
+            (
+                "raw overlap=0.75".to_string(),
+                Some(FusionWeights {
+                    overlap: 0.75,
+                    ..FusionWeights::SHIPPED
+                }),
+            ),
+            (
+                "raw overlap=1.00".to_string(),
+                Some(FusionWeights {
+                    overlap: 1.0,
+                    ..FusionWeights::SHIPPED
+                }),
+            ),
+            (
+                "raw overlap=2.00".to_string(),
+                Some(FusionWeights {
+                    overlap: 2.0,
+                    ..FusionWeights::SHIPPED
+                }),
+            ),
         ],
         _ => spec
             .split(';')
@@ -163,9 +187,7 @@ fn main() -> Result<()> {
         .split(',')
         .map(|s| s.trim().parse::<usize>().expect("--sizes 1000,10000"))
         .collect();
-    let n_queries: usize = arg(&args, "--queries", "32")
-        .parse()
-        .expect("--queries N");
+    let n_queries: usize = arg(&args, "--queries", "32").parse().expect("--queries N");
     let repeats: usize = arg(&args, "--repeats", "3").parse().expect("--repeats N");
     let seed: u64 = arg(&args, "--seed", "42").parse().expect("--seed N");
     let out_md = bench_common::out_md(&args, "BENCH_RECALL_CURVE.md");
@@ -173,7 +195,10 @@ fn main() -> Result<()> {
         Some(p) => Some(p),
         None => {
             let p = std::env::temp_dir().join("bench_recall_curve.json");
-            eprintln!("no --out-json given: writing per-question data to {}", p.display());
+            eprintln!(
+                "no --out-json given: writing per-question data to {}",
+                p.display()
+            );
             Some(p.display().to_string())
         }
     };
@@ -193,7 +218,7 @@ fn main() -> Result<()> {
     let mut rows: Vec<Row> = Vec::with_capacity(sizes.len() * grid.len());
     let mut skipped: Vec<String> = Vec::new();
     for &size in &sizes {
-        eprintln!("  building {size} ...", );
+        eprintln!("  building {size} ...",);
         match measure(size, n_queries, repeats, seed, &grid) {
             Ok(mut got) => rows.append(&mut got),
             // A size that cannot be built or measured is named, never dropped: a
@@ -281,13 +306,7 @@ fn main() -> Result<()> {
         for r in &at_size {
             md.push_str(&format!(
                 "| {} | {:.2} | {:.2} | {:.1}% | {:.1}% | {} | {} |\n",
-                r.config,
-                r.weights.bm25,
-                r.weights.overlap,
-                r.r1,
-                r.r5,
-                r.p50,
-                r.p95,
+                r.config, r.weights.bm25, r.weights.overlap, r.r1, r.r5, r.p50, r.p95,
             ));
         }
         md.push('\n');
@@ -363,18 +382,18 @@ fn main() -> Result<()> {
             .iter()
             .map(|r| {
                 serde_json::json!({
-                    "memories": r.size,
-                    "configuration": r.config,
-            "overlap": r.weights.overlap,
-                    "in_window": r.win, "in_bm25": r.bm25, "in_pool": r.pool,
-                    "questions": r.ranks.iter().enumerate().map(|(k, rank)| serde_json::json!({
-                        "signal": k,
-                        "gold_id": signal(k).id,
-                        "gold_rank": rank,
-                        "recall_any_at_1": rank.is_some_and(|p| p < 1),
-                        "recall_any_at_5": rank.is_some_and(|p| p < 5),
-                    })).collect::<Vec<_>>(),
-                })
+                        "memories": r.size,
+                        "configuration": r.config,
+                "overlap": r.weights.overlap,
+                        "in_window": r.win, "in_bm25": r.bm25, "in_pool": r.pool,
+                        "questions": r.ranks.iter().enumerate().map(|(k, rank)| serde_json::json!({
+                            "signal": k,
+                            "gold_id": signal(k).id,
+                            "gold_rank": rank,
+                            "recall_any_at_1": rank.is_some_and(|p| p < 1),
+                            "recall_any_at_5": rank.is_some_and(|p| p < 5),
+                        })).collect::<Vec<_>>(),
+                    })
             })
             .collect();
         std::fs::write(&path, serde_json::to_string(&json)?)?;
@@ -451,7 +470,9 @@ fn measure(
     let mut hits1 = vec![0usize; resolved.len()];
     let mut hits5 = vec![0usize; resolved.len()];
     let mut ranks: Vec<Vec<Option<usize>>> = vec![Vec::with_capacity(n_queries); resolved.len()];
-    let mut lat: Vec<Vec<u64>> = (0..resolved.len()).map(|_| Vec::with_capacity(n_queries)).collect();
+    let mut lat: Vec<Vec<u64>> = (0..resolved.len())
+        .map(|_| Vec::with_capacity(n_queries))
+        .collect();
     for pass in 0..repeats {
         for k in 0..n_queries {
             let sig = signal(k);
@@ -486,9 +507,7 @@ fn measure(
     let mut in_bm25 = vec![false; n_queries];
     for (k, seen) in in_bm25.iter_mut().enumerate() {
         let sig = signal(k);
-        let fts = svc
-            .store
-            .keyword_search_fts("b", &sig.query, FTS_LIMIT)?;
+        let fts = svc.store.keyword_search_fts("b", &sig.query, FTS_LIMIT)?;
         *seen = fts.iter().any(|(id, _)| *id == sig.id);
     }
     // Rowids are assigned in write order, so a gold row is inside the newest-`POOL`

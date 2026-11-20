@@ -85,7 +85,9 @@ fn main() -> anyhow::Result<()> {
     let docs_path = bench_common::arg(&args, "--docs", "eval/data/locomo/documents.json");
     let queries_path = bench_common::arg(&args, "--data", "eval/data/locomo/queries.json");
     let n: usize = bench_common::arg(&args, "--n", "0").parse().unwrap_or(0);
-    let seed: u64 = bench_common::arg(&args, "--seed", "42").parse().unwrap_or(42);
+    let seed: u64 = bench_common::arg(&args, "--seed", "42")
+        .parse()
+        .unwrap_or(42);
     let out_md = bench_common::out_md(&args, "LOCOMO.md");
     // Temp-defaulted like `sweep_fusion`'s: a grid's per-question dump is not this
     // suite's reviewable record, and two harnesses defaulting to one committed
@@ -94,7 +96,10 @@ fn main() -> anyhow::Result<()> {
         Some(p) => p,
         None => {
             let p = std::env::temp_dir().join("results_locomo.json");
-            eprintln!("no --out-json given: writing per-question data to {}", p.display());
+            eprintln!(
+                "no --out-json given: writing per-question data to {}",
+                p.display()
+            );
             p.display().to_string()
         }
     };
@@ -151,8 +156,10 @@ fn main() -> anyhow::Result<()> {
     );
 
     // ---- the pass ----------------------------------------------------------------
-    let mut per_config: Vec<Vec<Row>> =
-        GRID.iter().map(|_| Vec::with_capacity(planned.len())).collect();
+    let mut per_config: Vec<Vec<Row>> = GRID
+        .iter()
+        .map(|_| Vec::with_capacity(planned.len()))
+        .collect();
     let mut per_cat: Vec<BTreeMap<String, Agg>> = GRID.iter().map(|_| BTreeMap::new()).collect();
     // The count of unanswerable queries is a property of the corpus, not of this
     // pass: `plan` dropped them, and the artifact reports how many.
@@ -182,7 +189,10 @@ fn main() -> anyhow::Result<()> {
         }
         let svc = &banks[&q.user_id];
         for (ci, weight) in GRID.iter().enumerate() {
-            let weights = FusionWeights { overlap: *weight, ..FusionWeights::SHIPPED };
+            let weights = FusionWeights {
+                overlap: *weight,
+                ..FusionWeights::SHIPPED
+            };
             let hits = svc.recall_with_weights(&q.user_id, &q.query, budget_tokens, &weights)?;
             let retrieved = dev::session_of(hits.into_iter().map(|h| h.memory.id));
             let row = Row::new(q, &retrieved, &planned_q.gold);
@@ -193,7 +203,10 @@ fn main() -> anyhow::Result<()> {
                 pool_len_sum += retrieved.len();
                 pool_len_max = pool_len_max.max(retrieved.len());
             }
-            per_cat[ci].entry(row.category.clone()).or_default().add(&row);
+            per_cat[ci]
+                .entry(row.category.clone())
+                .or_default()
+                .add(&row);
             per_config[ci].push(row);
         }
         if (qi + 1) % 250 == 0 {
@@ -520,7 +533,12 @@ reader can tell which one this is.\n",
             for c in &cats {
                 let a = per_cat[i].get(c).unwrap_or(&empty);
                 let b = per_cat[0].get(c).unwrap_or(&empty);
-                md.push_str(&format!(" {:.1}% ({:+.1}, n={}) |", f(a), f(a) - f(b), a.count));
+                md.push_str(&format!(
+                    " {:.1}% ({:+.1}, n={}) |",
+                    f(a),
+                    f(a) - f(b),
+                    a.count
+                ));
             }
             md.push_str(&format!(" {:.1}% |\n", f(&totals[i])));
         }
@@ -653,7 +671,8 @@ artifact means naming `--out-md eval/LOCOMO.md`.\n",
         .position(|w| (*w - 0.25).abs() < f64::EPSILON)
         .expect("the grid pins the shipped weight, so this row always exists");
     let t = &totals[fitted];
-    println!(        "REPLICATION CHECK — overlap=0.25 vs unfitted overlap=1.00 on LoCoMo (n={n_eval}, \
+    println!(
+        "REPLICATION CHECK — overlap=0.25 vs unfitted overlap=1.00 on LoCoMo (n={n_eval}, \
 {docs} documents, {banks} banks). Retrieval-only: no LLM.\n  \
 R@1     {a_r1:.1}%  vs {b_r1:.1}%  ({d_r1:+.1}pp)\n  \
 R@5     {a_r5:.1}%  vs {b_r5:.1}%  ({d_r5:+.1}pp)\n  \

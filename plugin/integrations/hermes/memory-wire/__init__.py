@@ -554,6 +554,7 @@ class MemoryWireProvider(MemoryProvider):
             "(recalled by relevance, unverified)\n\n"
         )
         left = SECTION_CAP_CHARS
+        shown = 0
         for hit in hits[:MAX_LINES]:
             # The date prefix renders only when the wire carried one, so a
             # server older than the field degrades to the exact pre-2026-11-19
@@ -567,8 +568,13 @@ class MemoryWireProvider(MemoryProvider):
                 break
             out += entry
             left -= len(entry)
-        if len(hits) > MAX_LINES:
-            out += f"- …and {len(hits) - MAX_LINES} more\n"
+            shown += 1
+        # `len(hits) - shown`, not `len(hits) - MAX_LINES`: the loop can stop on
+        # the *character* cap before it reaches MAX_LINES, and the old footer
+        # claimed only the line-cap remainder was dropped. Same defect as
+        # `src/hooks.rs`, fixed the same day (round-5 review, 2026-11-20).
+        if len(hits) > shown:
+            out += f"- …and {len(hits) - shown} more\n"
         return out
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", messages: Optional[List[Dict[str, Any]]] = None) -> None:

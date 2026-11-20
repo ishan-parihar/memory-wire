@@ -172,8 +172,8 @@ fn glob_match(pattern: &str, path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::{Aspect, Memory, MemoryMeta, Scope};
     use crate::memory::Bank;
+    use crate::memory::{Aspect, Memory, MemoryMeta, Scope};
 
     fn mem_with_meta(
         bank: &str,

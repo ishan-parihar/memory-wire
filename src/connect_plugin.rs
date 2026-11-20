@@ -25,8 +25,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::connect_common::preserve_comment;
 use crate::connect::{backup, timestamp, Host, Outcome, MARKER};
+use crate::connect_common::preserve_comment;
 use crate::paths;
 
 /// The plugin tree, embedded at build time.
@@ -507,10 +507,7 @@ fn set_provider(text: &str, op: &Provider) -> Result<String, String> {
 }
 /// Whether `memory.provider` currently holds our own marker.
 fn block_value_is_ours(block: &Block) -> bool {
-    block
-        .provider
-        .as_ref()
-        .is_some_and(|(_, v)| v == MARKER)
+    block.provider.as_ref().is_some_and(|(_, v)| v == MARKER)
 }
 
 /// The value of a `key: value` line, or `None` when it is not a plain scalar.
@@ -522,7 +519,13 @@ fn block_value_is_ours(block: &Block) -> bool {
 /// comment-only line. Each of those would otherwise come back as a "value" and
 /// be replaced by a bare token, silently changing what the file means.
 fn scalar_value(line: &str) -> Option<String> {
-    let value = line.split_once(':')?.1.split('#').next().unwrap_or("").trim();
+    let value = line
+        .split_once(':')?
+        .1
+        .split('#')
+        .next()
+        .unwrap_or("")
+        .trim();
     if value.is_empty()
         || !value
             .chars()
@@ -578,13 +581,29 @@ mod tests {
     fn install(home: &Path) -> Outcome {
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
-        crate::connect::apply(Host::Hermes, "memory-wire", home, false, no_path, &data, None)
+        crate::connect::apply(
+            Host::Hermes,
+            "memory-wire",
+            home,
+            false,
+            no_path,
+            &data,
+            None,
+        )
     }
 
     fn uninstall(home: &Path) -> Outcome {
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
-        crate::connect::apply(Host::Hermes, "memory-wire", home, true, no_path, &data, None)
+        crate::connect::apply(
+            Host::Hermes,
+            "memory-wire",
+            home,
+            true,
+            no_path,
+            &data,
+            None,
+        )
     }
 
     /// A PATH lookup that finds nothing, so detection cannot depend on what
@@ -617,7 +636,10 @@ telemetry:
 
     #[test]
     fn the_real_config_shape_is_understood_and_its_provider_read() {
-        assert_eq!(provider_value(REAL).expect("parseable"), Some("agentmemory".to_string()));
+        assert_eq!(
+            provider_value(REAL).expect("parseable"),
+            Some("agentmemory".to_string())
+        );
     }
 
     #[test]
@@ -633,14 +655,23 @@ telemetry:
     fn a_block_with_no_provider_gets_one_at_the_blocks_own_indent() {
         let text = "memory:\n    memory_enabled: true\n";
         let out = set_provider(text, &Provider::Set("memory-wire".into())).expect("set");
-        assert_eq!(out, "memory:\n    memory_enabled: true\n    provider: memory-wire\n");
+        assert_eq!(
+            out,
+            "memory:\n    memory_enabled: true\n    provider: memory-wire\n"
+        );
     }
 
     #[test]
     fn a_config_with_no_memory_block_gains_one_at_the_end() {
-        let out = set_provider("gateway:\n  enabled: true\n", &Provider::Set("memory-wire".into()))
-            .expect("set");
-        assert_eq!(out, "gateway:\n  enabled: true\n\nmemory:\n  provider: memory-wire\n");
+        let out = set_provider(
+            "gateway:\n  enabled: true\n",
+            &Provider::Set("memory-wire".into()),
+        )
+        .expect("set");
+        assert_eq!(
+            out,
+            "gateway:\n  enabled: true\n\nmemory:\n  provider: memory-wire\n"
+        );
     }
 
     #[test]
@@ -651,9 +682,15 @@ telemetry:
 
     #[test]
     fn a_config_with_no_trailing_newline_is_not_joined_to_our_append() {
-        let out = set_provider("gateway:\n  enabled: true", &Provider::Set("memory-wire".into()))
-            .expect("set");
-        assert_eq!(out, "gateway:\n  enabled: true\n\nmemory:\n  provider: memory-wire\n");
+        let out = set_provider(
+            "gateway:\n  enabled: true",
+            &Provider::Set("memory-wire".into()),
+        )
+        .expect("set");
+        assert_eq!(
+            out,
+            "gateway:\n  enabled: true\n\nmemory:\n  provider: memory-wire\n"
+        );
     }
 
     #[test]
@@ -665,7 +702,8 @@ telemetry:
 
     #[test]
     fn removing_the_only_key_removes_the_block_we_would_have_left_behind() {
-        let out = set_provider("memory:\n  provider: memory-wire\n", &Provider::Remove).expect("rm");
+        let out =
+            set_provider("memory:\n  provider: memory-wire\n", &Provider::Remove).expect("rm");
         assert_eq!(out, "", "our own residue, not the user's config");
     }
 
@@ -741,7 +779,10 @@ telemetry:
 
     #[test]
     fn a_commented_out_provider_is_not_a_provider() {
-        assert_eq!(provider_value("memory:\n  # provider: agentmemory\n").expect("parse"), None);
+        assert_eq!(
+            provider_value("memory:\n  # provider: agentmemory\n").expect("parse"),
+            None
+        );
     }
 
     // -- the install ------------------------------------------------------
@@ -758,7 +799,8 @@ telemetry:
                 "{name} is embedded but the template on disk differs, or vice versa"
             );
         }
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin/integrations/hermes/memory-wire");
+        let dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("plugin/integrations/hermes/memory-wire");
         let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
             .expect("template dir")
             .flatten()
@@ -833,8 +875,14 @@ telemetry:
         }
         // The sixth: absent from the claimed list, and saying so out loud in the
         // code rather than inheriting a silent no-op.
-        assert!(!hooks.contains(&"on_memory_write"), "not implemented, so not claimed");
-        assert!(init.contains("def on_memory_write("), "still explicit about it");
+        assert!(
+            !hooks.contains(&"on_memory_write"),
+            "not implemented, so not claimed"
+        );
+        assert!(
+            init.contains("def on_memory_write("),
+            "still explicit about it"
+        );
     }
 
     #[test]
@@ -850,7 +898,10 @@ telemetry:
             crate::mcp::REFLECT,
             crate::mcp::CONFIG_GET,
         ] {
-            assert!(init.contains(&format!("\"{name}\"")), "{name} is not the same tool");
+            assert!(
+                init.contains(&format!("\"{name}\"")),
+                "{name} is not the same tool"
+            );
         }
     }
 
@@ -866,7 +917,11 @@ telemetry:
         assert!(home.join(plugin_rel()).join("__init__.py").is_file());
 
         assert!(matches!(uninstall(&home), Outcome::Unwired { .. }));
-        assert_eq!(read_config(&home), before, "the previous provider is put back");
+        assert_eq!(
+            read_config(&home),
+            before,
+            "the previous provider is put back"
+        );
         assert_eq!(
             std::fs::read_dir(home.join(".hermes"))
                 .expect("hermes home")
@@ -901,10 +956,13 @@ telemetry:
             panic!("expected a wired outcome");
         };
         assert!(
-            notes.iter().any(|n| n.contains("agentmemory") && n.contains("restores")),
+            notes
+                .iter()
+                .any(|n| n.contains("agentmemory") && n.contains("restores")),
             "the displaced provider is reported: {notes:?}"
         );
-        let state = std::fs::read_to_string(home.join(plugin_rel()).join(STATE_FILE)).expect("state");
+        let state =
+            std::fs::read_to_string(home.join(plugin_rel()).join(STATE_FILE)).expect("state");
         assert!(state.contains("agentmemory"), "{state}");
     }
 
@@ -915,7 +973,10 @@ telemetry:
         write_config(&home, REAL);
         assert!(matches!(install(&home), Outcome::Wired { .. }));
         // The user switches to another provider by hand while ours is installed.
-        write_config(&home, &REAL.replace("provider: agentmemory", "provider: hindsight"));
+        write_config(
+            &home,
+            &REAL.replace("provider: agentmemory", "provider: hindsight"),
+        );
         let Outcome::Unwired { .. } = uninstall(&home) else {
             panic!("expected an unwired outcome");
         };
@@ -933,9 +994,13 @@ telemetry:
         assert!(matches!(install(&home), Outcome::Wired { .. }));
         // The user uninstalls, picks a different provider, and reinstalls.
         assert!(matches!(uninstall(&home), Outcome::Unwired { .. }));
-        write_config(&home, &REAL.replace("provider: agentmemory", "provider: hindsight"));
+        write_config(
+            &home,
+            &REAL.replace("provider: agentmemory", "provider: hindsight"),
+        );
         assert!(matches!(install(&home), Outcome::Wired { .. }));
-        let state = std::fs::read_to_string(home.join(plugin_rel()).join(STATE_FILE)).expect("state");
+        let state =
+            std::fs::read_to_string(home.join(plugin_rel()).join(STATE_FILE)).expect("state");
         assert!(state.contains("hindsight"), "{state}");
         // And uninstalling restores that, not the value before it.
         assert!(matches!(uninstall(&home), Outcome::Unwired { .. }));
@@ -978,7 +1043,10 @@ telemetry:
         write_config(&home, REAL);
         assert!(matches!(install(&home), Outcome::Wired { .. }));
         let init = std::fs::read_to_string(dir.join("__init__.py")).expect("read");
-        assert!(init.contains("class MemoryWireProvider"), "the stale file was replaced");
+        assert!(
+            init.contains("class MemoryWireProvider"),
+            "the stale file was replaced"
+        );
     }
 
     #[test]
@@ -993,7 +1061,10 @@ telemetry:
             panic!("expected an unwired outcome");
         };
         assert!(dir.join("NOTES.md").is_file(), "a user's file survives");
-        assert!(notes.iter().any(|n| n.contains("did not write")), "{notes:?}");
+        assert!(
+            notes.iter().any(|n| n.contains("did not write")),
+            "{notes:?}"
+        );
     }
 
     #[test]
@@ -1017,7 +1088,10 @@ telemetry:
     fn a_machine_without_hermes_is_skipped_not_created() {
         let home = tmp_home("absent");
         assert!(matches!(install(&home), Outcome::Skipped(_)));
-        assert!(!home.join(".hermes").exists(), "no hermes home is conjured up");
+        assert!(
+            !home.join(".hermes").exists(),
+            "no hermes home is conjured up"
+        );
     }
 
     #[test]
@@ -1039,9 +1113,15 @@ telemetry:
         std::fs::write(dir.join("__init__.py"), "# an older build\n").expect("write");
         let data = home.join("data");
 
-        let Outcome::Wired { backup, .. } =
-            crate::connect::apply(Host::Hermes, "memory-wire", &home, false, no_path, &data, None)
-        else {
+        let Outcome::Wired { backup, .. } = crate::connect::apply(
+            Host::Hermes,
+            "memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        ) else {
             panic!("expected a wired outcome");
         };
         let b = backup.expect("a backup, because both targets already existed");

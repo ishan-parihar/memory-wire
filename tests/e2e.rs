@@ -23,8 +23,13 @@ fn e2e_should_retain_recall_and_reflect_with_isolation() {
     let hits = svc.recall("proj", "jose auth", 2000).expect("recall");
     assert_eq!(hits.len(), 1);
     assert!(hits[0].memory.content.contains("jose"));
-    assert!(svc.recall("other", "jose", 2000).expect("recall").is_empty());
-    let answer = svc.reflect("proj", "how does auth work", &[]).expect("reflect");
+    assert!(svc
+        .recall("other", "jose", 2000)
+        .expect("recall")
+        .is_empty());
+    let answer = svc
+        .reflect("proj", "how does auth work", &[])
+        .expect("reflect");
     assert!(answer.contains("jose"));
 }
 
@@ -33,7 +38,9 @@ fn e2e_should_redact_secrets_end_to_end() {
     let store = SqliteStore::open_in_memory().expect("open");
     store.put_bank(&bank("b")).expect("bank");
     let svc = MemoryService::new(store);
-    let id = svc.retain("b", "deploy key sk-abcDEF123456", None).expect("retain");
+    let id = svc
+        .retain("b", "deploy key sk-abcDEF123456", None)
+        .expect("retain");
     let got = svc.store.get("b", &id).expect("get").expect("some");
     assert!(got.content.contains("[REDACTED:api_key]"));
 }

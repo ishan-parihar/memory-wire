@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, TryLockError};
 
+use regex::Regex;
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, ToSql};
 use serde::Serialize;
-use regex::Regex;
 
 use crate::capture::hash_content;
-use crate::recall::KeywordScope;
 use crate::memory::{Bank, Memory};
+use crate::recall::KeywordScope;
 
 /// Default database file: `$XDG_DATA_HOME/memory-wire/memory.db`, falling back
 /// to `~/.local/share/memory-wire/memory.db` when `XDG_DATA_HOME` is unset or
@@ -25,8 +25,7 @@ pub fn default_db_path() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-                .join(".local/share")
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")
         });
     base.join("memory-wire").join("memory.db")
 }
@@ -496,7 +495,9 @@ fn dimensional_predicate(alias: &str, dims: Option<&DimensionalFilter>) -> (Stri
         values.extend(allowed.iter().cloned());
     }
     if !dims.include_history && dims.lifecycles.is_empty() {
-        sql.push_str(&format!(" AND {alias}.lifecycle NOT IN ('superseded','quarantined')"));
+        sql.push_str(&format!(
+            " AND {alias}.lifecycle NOT IN ('superseded','quarantined')"
+        ));
     }
     (sql, values)
 }
@@ -626,7 +627,13 @@ pub trait Store: Send + Sync {
     /// The audit skeleton survives: `op`, `created_at`, `actor` and the row's
     /// id are unchanged. Only `content` and `content_sha256` move, so a reader
     /// can verify the chain by recomputing the digest.
-    fn redact(&self, _bank_id: &str, _id: &str, _pattern: &str, _name: &str) -> Result<usize, StoreError> {
+    fn redact(
+        &self,
+        _bank_id: &str,
+        _id: &str,
+        _pattern: &str,
+        _name: &str,
+    ) -> Result<usize, StoreError> {
         Err(StoreError::Unsupported("redact"))
     }
     /// Mark a memory as superseded by another (or by nothing, for a retract).
@@ -636,7 +643,12 @@ pub trait Store: Send + Sync {
     /// `Ok(true)` when a row was marked, `Ok(false)` when the id was not in
     /// `bank_id`. Default is [`StoreError::Unsupported`], because a backend
     /// that cannot supersede must say so rather than report a silent no-op.
-    fn supersede(&self, _bank_id: &str, _id: &str, _superseded_by: Option<&str>) -> Result<bool, StoreError> {
+    fn supersede(
+        &self,
+        _bank_id: &str,
+        _id: &str,
+        _superseded_by: Option<&str>,
+    ) -> Result<bool, StoreError> {
         Err(StoreError::Unsupported("supersede"))
     }
     /// One page of a bank's memories, in the backend's own insertion order.
@@ -650,7 +662,12 @@ pub trait Store: Send + Sync {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Memory>, StoreError> {
-        Ok(self.list(bank_id)?.into_iter().skip(offset).take(limit).collect())
+        Ok(self
+            .list(bank_id)?
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect())
     }
     /// Row counts and age bounds for one bank.
     ///
@@ -759,7 +776,12 @@ pub trait Store: Send + Sync {
     /// Default is [`StoreError::Unsupported`], like every other operation a
     /// backend cannot honour — a default that silently discarded the vector would
     /// leave a recall that looks configured and ranks on two streams.
-    fn put_vector(&self, _bank_id: &str, _memory_id: &str, _vector: &[f32]) -> Result<(), StoreError> {
+    fn put_vector(
+        &self,
+        _bank_id: &str,
+        _memory_id: &str,
+        _vector: &[f32],
+    ) -> Result<(), StoreError> {
         Err(StoreError::Unsupported("put vector"))
     }
     /// Every stored vector in one bank, as `(memory_id, vector)`.
@@ -793,7 +815,12 @@ pub trait Store: Send + Sync {
     ///
     /// Default is [`StoreError::Unsupported`]: a backend that cannot expire must
     /// say so rather than report a silent no-op.
-    fn expire_before(&self, _bank_id: &str, _cutoff: &str, _dry_run: bool) -> Result<usize, StoreError> {
+    fn expire_before(
+        &self,
+        _bank_id: &str,
+        _cutoff: &str,
+        _dry_run: bool,
+    ) -> Result<usize, StoreError> {
         Err(StoreError::Unsupported("expire"))
     }
 }
@@ -851,10 +878,21 @@ impl<T: Store + ?Sized> Store for &T {
     fn delete(&self, bank_id: &str, id: &str) -> Result<bool, StoreError> {
         (*self).delete(bank_id, id)
     }
-    fn redact(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, StoreError> {
+    fn redact(
+        &self,
+        bank_id: &str,
+        id: &str,
+        pattern: &str,
+        name: &str,
+    ) -> Result<usize, StoreError> {
         (*self).redact(bank_id, id, pattern, name)
     }
-    fn supersede(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, StoreError> {
+    fn supersede(
+        &self,
+        bank_id: &str,
+        id: &str,
+        superseded_by: Option<&str>,
+    ) -> Result<bool, StoreError> {
         (*self).supersede(bank_id, id, superseded_by)
     }
     fn list_page(
@@ -905,12 +943,7 @@ impl<T: Store + ?Sized> Store for &T {
     fn bank_ttls(&self) -> Result<Vec<(String, Option<u32>)>, StoreError> {
         (*self).bank_ttls()
     }
-    fn put_vector(
-        &self,
-        bank_id: &str,
-        memory_id: &str,
-        vector: &[f32],
-    ) -> Result<(), StoreError> {
+    fn put_vector(&self, bank_id: &str, memory_id: &str, vector: &[f32]) -> Result<(), StoreError> {
         (*self).put_vector(bank_id, memory_id, vector)
     }
     fn bank_vectors(&self, bank_id: &str) -> Result<Vec<(String, Vec<f32>)>, StoreError> {
@@ -1051,9 +1084,7 @@ impl SqliteStore {
     /// from it would answer with data that was never durable. Refusing is
     /// diagnosable; a plausible wrong answer is not.
     fn conn(&self) -> Result<MutexGuard<'_, Connection>, StoreError> {
-        self.conn
-            .lock()
-            .map_err(|_| StoreError::LockPoisoned)
+        self.conn.lock().map_err(|_| StoreError::LockPoisoned)
     }
 
     /// A connection a read may run on, or [`StoreError::LockPoisoned`].
@@ -1182,7 +1213,9 @@ impl SqliteStore {
                 Err(TryLockError::WouldBlock) => {}
             }
         }
-        self.reads[start].lock().map_err(|_| StoreError::LockPoisoned)
+        self.reads[start]
+            .lock()
+            .map_err(|_| StoreError::LockPoisoned)
     }
 
     /// Connection-scoped pragmas for one connection, applied before any DDL.
@@ -1299,9 +1332,7 @@ impl SqliteStore {
         // that predate it, which is what makes a legacy database readable
         // without rewriting its contents.
         if !Self::has_column(&conn, "banks", CONFIG_COLUMN)? {
-            conn.execute_batch(
-                "ALTER TABLE banks ADD COLUMN config TEXT NOT NULL DEFAULT '{}';",
-            )?;
+            conn.execute_batch("ALTER TABLE banks ADD COLUMN config TEXT NOT NULL DEFAULT '{}';")?;
         }
         if !Self::has_column(&conn, "memories", CREATED_AT_COLUMN)? {
             conn.execute_batch(&format!(
@@ -1330,13 +1361,34 @@ impl SqliteStore {
         // a value this build does not know must degrade to "unfilterable",
         // never to a failed retain.
         for (column, sql) in [
-            (SCOPE_COLUMN, "ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'local';"),
-            (ASPECT_COLUMN, "ALTER TABLE memories ADD COLUMN aspect TEXT NOT NULL DEFAULT 'episodic';"),
-            (LIFECYCLE_COLUMN, "ALTER TABLE memories ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active';"),
-            (TRUST_COLUMN, "ALTER TABLE memories ADD COLUMN trust TEXT NOT NULL DEFAULT 'agent_inferred';"),
-            (PARENT_ID_COLUMN, "ALTER TABLE memories ADD COLUMN parent_id TEXT;"),
-            (SUPERSEDED_BY_COLUMN, "ALTER TABLE memories ADD COLUMN superseded_by TEXT;"),
-            (SCOPE_GLOBS_COLUMN, "ALTER TABLE memories ADD COLUMN scope_globs TEXT NOT NULL DEFAULT '';"),
+            (
+                SCOPE_COLUMN,
+                "ALTER TABLE memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'local';",
+            ),
+            (
+                ASPECT_COLUMN,
+                "ALTER TABLE memories ADD COLUMN aspect TEXT NOT NULL DEFAULT 'episodic';",
+            ),
+            (
+                LIFECYCLE_COLUMN,
+                "ALTER TABLE memories ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active';",
+            ),
+            (
+                TRUST_COLUMN,
+                "ALTER TABLE memories ADD COLUMN trust TEXT NOT NULL DEFAULT 'agent_inferred';",
+            ),
+            (
+                PARENT_ID_COLUMN,
+                "ALTER TABLE memories ADD COLUMN parent_id TEXT;",
+            ),
+            (
+                SUPERSEDED_BY_COLUMN,
+                "ALTER TABLE memories ADD COLUMN superseded_by TEXT;",
+            ),
+            (
+                SCOPE_GLOBS_COLUMN,
+                "ALTER TABLE memories ADD COLUMN scope_globs TEXT NOT NULL DEFAULT '';",
+            ),
         ] {
             if !Self::has_column(&conn, "memories", column)? {
                 conn.execute_batch(sql)?;
@@ -1402,8 +1454,8 @@ impl SqliteStore {
                 // `prepare`, not `prepare_cached`: the marker above means this
                 // block runs at most once per database, ever, so there is no
                 // second call to amortise a parse against.
-                let mut stmt = conn
-                    .prepare("SELECT id, content FROM memories WHERE content_hash IS NULL")?;
+                let mut stmt =
+                    conn.prepare("SELECT id, content FROM memories WHERE content_hash IS NULL")?;
                 let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
                 let mut out = Vec::new();
                 for row in rows {
@@ -1528,7 +1580,8 @@ impl SqliteStore {
         // keep the audit trail even though the current row is gone. The versions
         // table is the *only* thing that survives a hard delete, which is the
         // point of an audit trail.
-        conn.execute_batch("CREATE TABLE IF NOT EXISTS memory_versions (
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS memory_versions (
                id INTEGER PRIMARY KEY AUTOINCREMENT,
                memory_id TEXT NOT NULL,
                bank_id TEXT NOT NULL,
@@ -1539,7 +1592,8 @@ impl SqliteStore {
                actor TEXT
              );
              CREATE INDEX IF NOT EXISTS idx_memory_versions_memory
-               ON memory_versions(memory_id);")?;
+               ON memory_versions(memory_id);",
+        )?;
         // Triggers are dropped and recreated rather than created-if-absent: a
         // trigger body that drifted from this version (or was never indexing at
         // all) is otherwise kept forever, and the FTS index then quietly stops
@@ -1575,7 +1629,9 @@ impl SqliteStore {
         // the check itself is the gate: one index pass at startup instead of a
         // full reindex, and a self-healing rebuild the moment it fails.
         if conn
-            .execute_batch("INSERT INTO memories_fts(memories_fts, rank) VALUES('integrity-check', 1);")
+            .execute_batch(
+                "INSERT INTO memories_fts(memories_fts, rank) VALUES('integrity-check', 1);",
+            )
             .is_err()
         {
             tracing::warn!(
@@ -1736,10 +1792,9 @@ impl SqliteStore {
     /// goes through [`Self::recall_pool_conn`] instead — so a filter parameter
     /// here would have exactly one possible value, which is the whole bank.
     fn list_conn(conn: &Connection, bank_id: &str) -> Result<Vec<Memory>, StoreError> {
-        let mut stmt = conn
-            .prepare_cached(&format!(
-                "SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=? ORDER BY rowid"
-            ))?;
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {MEMORY_COLUMNS} FROM memories WHERE bank_id=? ORDER BY rowid"
+        ))?;
         let rows = stmt.query_map(params![bank_id], memory_from_row)?;
         let mut out = Vec::new();
         for row in rows {
@@ -1856,7 +1911,10 @@ impl SqliteStore {
         Self::keyword_search_lexical_conn(
             conn,
             bank_id,
-            &LexicalQuery { text: query, ..LexicalQuery::default() },
+            &LexicalQuery {
+                text: query,
+                ..LexicalQuery::default()
+            },
             limit,
             tags,
             None,
@@ -2212,14 +2270,17 @@ impl Store for SqliteStore {
         Self::put_conn(&tx, m, document_id, &digest)?;
         // The caller's list is the whole tag set: a row relocated to another bank
         // must not drag the previous owner's tags along with it.
-        tx.execute("DELETE FROM memory_tags WHERE memory_id = ?1", params![m.id])?;
+        tx.execute(
+            "DELETE FROM memory_tags WHERE memory_id = ?1",
+            params![m.id],
+        )?;
         // Prepared once, executed per tag: the statement is the same every time,
         // and re-preparing it inside the loop is per-tag parse work for a
         // statement the database has already seen. `prepare_cached` rather than
         // `prepare` so the parse is paid once per connection rather than once
         // per retain.
-        let mut insert_tag =
-            tx.prepare_cached("INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?1, ?2)")?;
+        let mut insert_tag = tx
+            .prepare_cached("INSERT OR IGNORE INTO memory_tags (memory_id, tag) VALUES (?1, ?2)")?;
         for tag in tags {
             insert_tag.execute(params![m.id, tag])?;
         }
@@ -2239,7 +2300,13 @@ impl Store for SqliteStore {
         Ok(removed > 0)
     }
 
-    fn redact(&self, bank_id: &str, id: &str, pattern: &str, name: &str) -> Result<usize, StoreError> {
+    fn redact(
+        &self,
+        bank_id: &str,
+        id: &str,
+        pattern: &str,
+        name: &str,
+    ) -> Result<usize, StoreError> {
         // W3: the pattern is a regex. A bad one is a programming error, not a
         // user input the server tolerates: refuse rather than silently matching
         // nothing.
@@ -2257,7 +2324,9 @@ impl Store for SqliteStore {
             Some(m) => m,
             None => return Ok(0),
         };
-        let redacted = re.replace_all(&m.content, replacement.as_str()).into_owned();
+        let redacted = re
+            .replace_all(&m.content, replacement.as_str())
+            .into_owned();
         if redacted != m.content {
             let conn = self.conn()?;
             conn.execute(
@@ -2273,7 +2342,9 @@ impl Store for SqliteStore {
             let mut stmt = conn.prepare_cached(
                 "SELECT id, content FROM memory_versions WHERE bank_id=?1 AND memory_id=?2",
             )?;
-            let rows = stmt.query_map(params![bank_id, id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+            let rows = stmt.query_map(params![bank_id, id], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
         for (version_id, content) in versions {
@@ -2289,7 +2360,12 @@ impl Store for SqliteStore {
         Ok(count)
     }
 
-    fn supersede(&self, bank_id: &str, id: &str, superseded_by: Option<&str>) -> Result<bool, StoreError> {
+    fn supersede(
+        &self,
+        bank_id: &str,
+        id: &str,
+        superseded_by: Option<&str>,
+    ) -> Result<bool, StoreError> {
         let conn = self.conn()?;
         // Mark the row as superseded. The row stays in the store; default recall
         // excludes it because `lifecycle` is now 'superseded'. The `superseded_by`
@@ -2366,7 +2442,12 @@ impl Store for SqliteStore {
             params![bank_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        Ok(BankStats { memories, tags, oldest, newest })
+        Ok(BankStats {
+            memories,
+            tags,
+            oldest,
+            newest,
+        })
     }
 
     fn keyword_search(
@@ -2387,7 +2468,10 @@ impl Store for SqliteStore {
     ) -> Result<RecallInputs, StoreError> {
         self.recall_inputs_lexical(
             bank_id,
-            &LexicalQuery { text: query, ..LexicalQuery::default() },
+            &LexicalQuery {
+                text: query,
+                ..LexicalQuery::default()
+            },
             tags,
             fts_limit,
         )
@@ -2415,11 +2499,19 @@ impl Store for SqliteStore {
         // BM25 first: the pool it feeds is bounded by the window *plus* these
         // hits, so the hit list has to be in hand before the pool can be asked
         // for. Doing it the other way round would need a second FTS scan.
-        let hits = Self::keyword_search_lexical_conn(&conn, bank_id, lq, fts_limit, tags, Some(dims))?;
+        let hits =
+            Self::keyword_search_lexical_conn(&conn, bank_id, lq, fts_limit, tags, Some(dims))?;
         // Borrowed, not cloned: these are SQL bind parameters that are only ever
         // read, and `hits` outlives the statement.
         let hit_ids: Vec<&str> = hits.iter().map(|(id, _)| id.as_str()).collect();
-        let pool = Self::recall_pool_conn(&conn, bank_id, tags, RECALL_POOL_LIMIT, &hit_ids, Some(dims))?;
+        let pool = Self::recall_pool_conn(
+            &conn,
+            bank_id,
+            tags,
+            RECALL_POOL_LIMIT,
+            &hit_ids,
+            Some(dims),
+        )?;
         Ok((pool, hits))
     }
 
@@ -2489,7 +2581,9 @@ impl Store for SqliteStore {
     fn bank_ttls(&self) -> Result<Vec<(String, Option<u32>)>, StoreError> {
         let conn = self.read_conn()?;
         let mut stmt = conn.prepare_cached("SELECT id, ttl_days FROM banks ORDER BY id")?;
-        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<u32>>(1)?)))?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<u32>>(1)?))
+        })?;
         let mut out = Vec::new();
         for row in rows {
             out.push(row?);
@@ -2554,7 +2648,12 @@ impl Store for SqliteStore {
         Ok(())
     }
 
-    fn expire_before(&self, bank_id: &str, cutoff: &str, dry_run: bool) -> Result<usize, StoreError> {
+    fn expire_before(
+        &self,
+        bank_id: &str,
+        cutoff: &str,
+        dry_run: bool,
+    ) -> Result<usize, StoreError> {
         let mut conn = self.conn()?;
         // One transaction per bank: a bank that fails to expire leaves every other
         // bank swept, rather than a half-expired bank that no single rerun can
@@ -2650,8 +2749,10 @@ mod tests {
     fn keyword_should_rank_bm25_best_first() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "auth uses jose middleware for jwt")).expect("put");
-        s.put(&content_mem("a", "m2", "cafeteria menu noodles rice")).expect("put");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware for jwt"))
+            .expect("put");
+        s.put(&content_mem("a", "m2", "cafeteria menu noodles rice"))
+            .expect("put");
         let hits = s.keyword_search("a", "jose jwt", 10).expect("search");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, "m1");
@@ -2662,8 +2763,12 @@ mod tests {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank a");
         s.put_bank(&bank("b")).expect("bank b");
-        s.put(&content_mem("a", "m1", "jose middleware secrets")).expect("put");
-        assert!(s.keyword_search("b", "jose", 10).expect("search").is_empty());
+        s.put(&content_mem("a", "m1", "jose middleware secrets"))
+            .expect("put");
+        assert!(s
+            .keyword_search("b", "jose", 10)
+            .expect("search")
+            .is_empty());
     }
 
     #[test]
@@ -2765,14 +2870,47 @@ mod tests {
     fn hostile_input_should_never_error_or_change_the_operator_count() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "auth uses jose middleware")).expect("put");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware"))
+            .expect("put");
 
         let hostile = [
-            "\"", "'", "`", "\\", "NEAR", "NEAR(a b)", "OR", "AND", "NOT",
-            "a OR b", "a NEAR b", "a*", "*", "**", "a**", "x:y", "a:b:c",
-            "-a", "+a", "^a", "(a", "a)", "[a]", "{a}", "-", "()", "* (",
-            "\" OR \"", "\"*", "\" OR 1=1 --", "%", "_", ":", "..",
-            "a b OR OR b", "\"\"", "\"\"*",
+            "\"",
+            "'",
+            "`",
+            "\\",
+            "NEAR",
+            "NEAR(a b)",
+            "OR",
+            "AND",
+            "NOT",
+            "a OR b",
+            "a NEAR b",
+            "a*",
+            "*",
+            "**",
+            "a**",
+            "x:y",
+            "a:b:c",
+            "-a",
+            "+a",
+            "^a",
+            "(a",
+            "a)",
+            "[a]",
+            "{a}",
+            "-",
+            "()",
+            "* (",
+            "\" OR \"",
+            "\"*",
+            "\" OR 1=1 --",
+            "%",
+            "_",
+            ":",
+            "..",
+            "a b OR OR b",
+            "\"\"",
+            "\"\"*",
         ];
         for q in hostile {
             for scope in [KeywordScope::Exact, KeywordScope::ExactAndPrefix] {
@@ -2783,9 +2921,7 @@ mod tests {
                     let inner = term
                         .strip_prefix('"')
                         .and_then(|t| t.strip_suffix('"'))
-                        .or_else(|| {
-                            term.strip_prefix('"').and_then(|t| t.strip_suffix("\"*"))
-                        });
+                        .or_else(|| term.strip_prefix('"').and_then(|t| t.strip_suffix("\"*")));
                     assert!(
                         inner.is_some_and(|i| !i.contains('"')),
                         "{scope:?} produced a term that is not a quoted string: \
@@ -2795,7 +2931,11 @@ mod tests {
                 // The real assertion: FTS5 must accept it.
                 s.keyword_search_lexical(
                     "a",
-                    &LexicalQuery { text: q, scope, ..LexicalQuery::default() },
+                    &LexicalQuery {
+                        text: q,
+                        scope,
+                        ..LexicalQuery::default()
+                    },
                     10,
                 )
                 .unwrap_or_else(|e| panic!("FTS5 rejected {m:?} from {q:?} ({scope:?}): {e}"));
@@ -2821,16 +2961,28 @@ mod tests {
     fn a_prefix_should_reach_a_morphological_variant_the_exact_form_cannot() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "the database migration needs a backup")).expect("put");
+        s.put(&content_mem(
+            "a",
+            "m1",
+            "the database migration needs a backup",
+        ))
+        .expect("put");
 
         let exact = s
             .keyword_search_lexical(
                 "a",
-                &LexicalQuery { text: "migrated", scope: KeywordScope::Exact, ..Default::default() },
+                &LexicalQuery {
+                    text: "migrated",
+                    scope: KeywordScope::Exact,
+                    ..Default::default()
+                },
                 10,
             )
             .expect("exact search");
-        assert!(exact.is_empty(), "the exact grammar must not match a variant: {exact:?}");
+        assert!(
+            exact.is_empty(),
+            "the exact grammar must not match a variant: {exact:?}"
+        );
 
         let prefix = s
             .keyword_search_lexical(
@@ -2858,9 +3010,12 @@ mod tests {
         // `cats` is the only indexed term starting with it, so `"cats"*` is a
         // one-term expansion. `migrat` reaches two here, so `"migrat"*` is a
         // multi-term expansion.
-        s.put(&content_mem("a", "narrow", "alpha cats omega")).expect("put");
-        s.put(&content_mem("a", "wide", "alpha migration omega")).expect("put");
-        s.put(&content_mem("a", "mid", "alpha migrating omega")).expect("put");
+        s.put(&content_mem("a", "narrow", "alpha cats omega"))
+            .expect("put");
+        s.put(&content_mem("a", "wide", "alpha migration omega"))
+            .expect("put");
+        s.put(&content_mem("a", "mid", "alpha migrating omega"))
+            .expect("put");
 
         let score_of = |text: &str, id: &str| -> f64 {
             s.keyword_search_lexical(
@@ -2880,7 +3035,10 @@ mod tests {
         };
         let narrow = score_of("cats", "narrow");
         let wide = score_of("migrat", "wide");
-        assert!(narrow < 0.0 && wide < 0.0, "both prefixes must match: {narrow} {wide}");
+        assert!(
+            narrow < 0.0 && wide < 0.0,
+            "both prefixes must match: {narrow} {wide}"
+        );
         assert!(
             wide > narrow / 1000.0,
             "a multi-term prefix should be far below a one-term one: {wide} vs {narrow}"
@@ -2894,12 +3052,27 @@ mod tests {
     fn a_synonym_should_reach_a_document_the_query_does_not_name() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "the postgres refactor is scheduled")).expect("put");
+        s.put(&content_mem(
+            "a",
+            "m1",
+            "the postgres refactor is scheduled",
+        ))
+        .expect("put");
 
         let plain = s
-            .keyword_search_lexical("a", &LexicalQuery { text: "migrate", ..Default::default() }, 10)
+            .keyword_search_lexical(
+                "a",
+                &LexicalQuery {
+                    text: "migrate",
+                    ..Default::default()
+                },
+                10,
+            )
             .expect("plain search");
-        assert!(plain.is_empty(), "the query alone must not match: {plain:?}");
+        assert!(
+            plain.is_empty(),
+            "the query alone must not match: {plain:?}"
+        );
 
         let expanded = s
             .keyword_search_lexical(
@@ -2923,8 +3096,14 @@ mod tests {
     fn a_down_weighted_synonym_should_rank_below_a_direct_match() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "direct", "migrate the database now")).expect("put");
-        s.put(&content_mem("a", "synonym", "the postgres refactor is scheduled")).expect("put");
+        s.put(&content_mem("a", "direct", "migrate the database now"))
+            .expect("put");
+        s.put(&content_mem(
+            "a",
+            "synonym",
+            "the postgres refactor is scheduled",
+        ))
+        .expect("put");
 
         let hits = s
             .keyword_search_lexical(
@@ -2938,7 +3117,10 @@ mod tests {
             )
             .expect("search");
         assert_eq!(hits.len(), 2, "both must be found: {hits:?}");
-        assert_eq!(hits[0].0, "direct", "the direct match must outrank a 0.7 synonym: {hits:?}");
+        assert_eq!(
+            hits[0].0, "direct",
+            "the direct match must outrank a 0.7 synonym: {hits:?}"
+        );
     }
 
     /// A higher synonym weight must rank higher, because the weight is applied
@@ -2947,8 +3129,10 @@ mod tests {
     fn a_higher_synonym_weight_should_rank_higher() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "heavy", "alpha refactor omega")).expect("put");
-        s.put(&content_mem("a", "light", "alpha fiddle omega")).expect("put");
+        s.put(&content_mem("a", "heavy", "alpha refactor omega"))
+            .expect("put");
+        s.put(&content_mem("a", "light", "alpha fiddle omega"))
+            .expect("put");
         let hits = s
             .keyword_search_lexical(
                 "a",
@@ -2970,12 +3154,16 @@ mod tests {
     fn the_default_lexical_query_should_reach_the_original_search() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "auth uses jose middleware")).expect("put");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware"))
+            .expect("put");
         let q = "jose middleware";
         let via_lexical = s
             .keyword_search_lexical(
                 "a",
-                &LexicalQuery { text: q, ..LexicalQuery::default() },
+                &LexicalQuery {
+                    text: q,
+                    ..LexicalQuery::default()
+                },
                 10,
             )
             .expect("lexical search");
@@ -2997,14 +3185,20 @@ mod tests {
         let groups = SqliteStore::group_synonyms(&syn);
         assert_eq!(groups.len(), MAX_SYNONYM_WEIGHT_GROUPS);
         let total: usize = groups.iter().map(|(_, t)| t.len()).sum();
-        assert_eq!(total, MAX_SYNONYM_WEIGHT_GROUPS, "one term per group, no more");
+        assert_eq!(
+            total, MAX_SYNONYM_WEIGHT_GROUPS,
+            "one term per group, no more"
+        );
     }
 
     /// A synonym term is quoted exactly like a query token — config is HTTP
     /// input, so it gets the same discipline rather than being trusted.
     #[test]
     fn a_synonym_term_should_be_quoted_not_interpreted() {
-        assert_eq!(SqliteStore::quote_terms(&["plain".to_string()]), "\"plain\"");
+        assert_eq!(
+            SqliteStore::quote_terms(&["plain".to_string()]),
+            "\"plain\""
+        );
         assert_eq!(
             SqliteStore::quote_terms(&["NEAR(a b)".to_string()]),
             "\"NEAR(a b)\"",
@@ -3021,7 +3215,6 @@ mod tests {
             "\"x\""
         );
     }
-
 
     fn tmp_db(tag: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
@@ -3041,7 +3234,10 @@ mod tests {
         // XDG_DATA_HOME from two parallel tests would race.
         let prev_xdg = std::env::var_os("XDG_DATA_HOME");
         let prev_home = std::env::var_os("HOME");
-        let (xdg, home) = (PathBuf::from("/tmp/xdg-probe"), PathBuf::from("/tmp/home-probe"));
+        let (xdg, home) = (
+            PathBuf::from("/tmp/xdg-probe"),
+            PathBuf::from("/tmp/home-probe"),
+        );
 
         std::env::set_var("XDG_DATA_HOME", &xdg);
         std::env::set_var("HOME", &home);
@@ -3050,7 +3246,9 @@ mod tests {
         std::env::remove_var("XDG_DATA_HOME");
         assert_eq!(
             default_db_path(),
-            home.join(".local/share").join("memory-wire").join("memory.db")
+            home.join(".local/share")
+                .join("memory-wire")
+                .join("memory.db")
         );
 
         match prev_xdg {
@@ -3069,7 +3267,8 @@ mod tests {
         {
             let s = SqliteStore::open(&path).expect("open");
             s.put_bank(&bank("a")).expect("bank");
-            s.put(&content_mem("a", "m1", "durable jose content")).expect("put");
+            s.put(&content_mem("a", "m1", "durable jose content"))
+                .expect("put");
         }
         let s = SqliteStore::open(&path).expect("reopen");
         let got = s.get("a", "m1").expect("get").expect("some");
@@ -3087,18 +3286,31 @@ mod tests {
         let path = tmp_db("pool-shared");
         let s = SqliteStore::open(&path).expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "auth uses jose middleware")).expect("put");
-        assert_eq!(s.list("a").expect("list").len(), 1, "a pool reader must see the first write");
-        let (pool, hits) = s.recall_inputs("a", "jose", &[], 10).expect("recall inputs");
+        s.put(&content_mem("a", "m1", "auth uses jose middleware"))
+            .expect("put");
+        assert_eq!(
+            s.list("a").expect("list").len(),
+            1,
+            "a pool reader must see the first write"
+        );
+        let (pool, hits) = s
+            .recall_inputs("a", "jose", &[], 10)
+            .expect("recall inputs");
         assert_eq!((pool.len(), hits.len()), (1, 1));
 
-        s.put(&content_mem("a", "m2", "rate limiting via token bucket")).expect("put");
+        s.put(&content_mem("a", "m2", "rate limiting via token bucket"))
+            .expect("put");
         assert_eq!(
             s.list("a").expect("list").len(),
             2,
             "and the second, committed after the pool was built — a reader that missed it is a stale snapshot"
         );
-        assert_eq!(s.keyword_search("a", "token bucket", 10).expect("search").len(), 1);
+        assert_eq!(
+            s.keyword_search("a", "token bucket", 10)
+                .expect("search")
+                .len(),
+            1
+        );
         assert_eq!(s.bank_stats("a").expect("stats").memories, 2);
 
         // The pool is a pool: a held reader is not handed out again, which is
@@ -3122,7 +3334,10 @@ mod tests {
     #[test]
     fn an_in_memory_store_should_keep_one_connection_and_a_file_store_a_pool() {
         assert!(
-            SqliteStore::open_in_memory().expect("open").reads.is_empty(),
+            SqliteStore::open_in_memory()
+                .expect("open")
+                .reads
+                .is_empty(),
             "a pool over a `:memory:` database is N empty databases"
         );
         let path = tmp_db("pool-size");
@@ -3141,11 +3356,23 @@ mod tests {
         let s = SqliteStore::open(&path).expect("open");
         for (i, slot) in s.reads.iter().enumerate() {
             let conn = slot.lock().expect("read connection");
-            let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).expect("fk");
-            let busy: i64 = conn.query_row("PRAGMA busy_timeout", [], |r| r.get(0)).expect("busy");
-            let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).expect("mode");
-            assert_eq!(fk, 1, "reader {i} must enforce foreign keys like the writer");
-            assert_eq!(busy, 5000, "reader {i} must wait for the writer, not fail with SQLITE_BUSY");
+            let fk: i64 = conn
+                .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+                .expect("fk");
+            let busy: i64 = conn
+                .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
+                .expect("busy");
+            let mode: String = conn
+                .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+                .expect("mode");
+            assert_eq!(
+                fk, 1,
+                "reader {i} must enforce foreign keys like the writer"
+            );
+            assert_eq!(
+                busy, 5000,
+                "reader {i} must wait for the writer, not fail with SQLITE_BUSY"
+            );
             assert_eq!(mode, "wal", "reader {i} must be on the writer's journal");
         }
         rm_db(&path);
@@ -3160,13 +3387,17 @@ mod tests {
         let path = tmp_db("pool-poison");
         let s = SqliteStore::open(&path).expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+        s.put(&content_mem("a", "m1", "jose middleware"))
+            .expect("put");
 
         let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _guard = s.reads[0].lock().expect("lock");
             panic!("deliberate: a panic while a read connection is held");
         }));
-        assert!(unwound.is_err(), "the fixture must actually poison a reader");
+        assert!(
+            unwound.is_err(),
+            "the fixture must actually poison a reader"
+        );
 
         // Including the reads that would have landed on the seven healthy slots:
         // a store the operator has been told is poisoned must not go on answering
@@ -3174,10 +3405,14 @@ mod tests {
         assert!(matches!(s.list("a"), Err(StoreError::LockPoisoned)));
         assert!(matches!(s.get("a", "m1"), Err(StoreError::LockPoisoned)));
         assert!(matches!(s.bank_stats("a"), Err(StoreError::LockPoisoned)));
-        assert!(matches!(s.recall_inputs("a", "jose", &[], 10), Err(StoreError::LockPoisoned)));
+        assert!(matches!(
+            s.recall_inputs("a", "jose", &[], 10),
+            Err(StoreError::LockPoisoned)
+        ));
 
         // The write path is a different lock: a read poison is not a write poison.
-        s.put(&content_mem("a", "m2", "another jose note")).expect("writes still work");
+        s.put(&content_mem("a", "m2", "another jose note"))
+            .expect("writes still work");
         rm_db(&path);
     }
 
@@ -3192,7 +3427,8 @@ mod tests {
         let path = tmp_db("pool-writer-first");
         let s = SqliteStore::open(&path).expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+        s.put(&content_mem("a", "m1", "jose middleware"))
+            .expect("put");
 
         // The address the writer's `Connection` lives at, captured by briefly
         // locking it. The `Mutex` owns the connection in place, so the address
@@ -3205,8 +3441,7 @@ mod tests {
         for i in 0..8 {
             let guard = s.read_conn().expect("read connection");
             assert_eq!(
-                &*guard as *const Connection as usize,
-                writer_at,
+                &*guard as *const Connection as usize, writer_at,
                 "read {i} was served off a pool connection while nothing was contending, \
                  so it leaves the writer's warm page cache — and four cold ones — \
                  for contention it never experiences"
@@ -3232,7 +3467,8 @@ mod tests {
         let path = tmp_db("pool-spill");
         let s = SqliteStore::open(&path).expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+        s.put(&content_mem("a", "m1", "jose middleware"))
+            .expect("put");
 
         let writer_at = {
             let g = s.conn.lock().expect("write connection");
@@ -3269,7 +3505,9 @@ mod tests {
         // And the spill is a *usable* connection against the same database, not
         // a second empty one: it sees the committed write.
         let got: String = spilled
-            .query_row("SELECT content FROM memories WHERE id='m1'", [], |r| r.get(0))
+            .query_row("SELECT content FROM memories WHERE id='m1'", [], |r| {
+                r.get(0)
+            })
             .expect("spilled read must see committed state");
         assert_eq!(got, "jose middleware");
 
@@ -3284,12 +3522,14 @@ mod tests {
         {
             let s = SqliteStore::open(&path).expect("open");
             s.put_bank(&bank("a")).expect("bank");
-            s.put(&content_mem("a", "m1", "reindex me jose")).expect("put");
+            s.put(&content_mem("a", "m1", "reindex me jose"))
+                .expect("put");
         }
         // Simulate a legacy/desynced index: wipe FTS behind the store's back.
         {
             let conn = Connection::open(&path).expect("raw open");
-            conn.execute("DELETE FROM memories_fts", []).expect("wipe fts");
+            conn.execute("DELETE FROM memories_fts", [])
+                .expect("wipe fts");
         }
         let s = SqliteStore::open(&path).expect("reopen");
         let hits = s.keyword_search("a", "jose", 10).expect("search");
@@ -3404,7 +3644,10 @@ mod tests {
         let path = tmp_db("detail-idempotent");
         legacy_detail_full_db(&path, &[("m1", "auth uses jose")]);
         let s = SqliteStore::open(&path).expect("first open migrates");
-        assert!(!s.rebuilt_fts_on_open(), "a clean legacy index needs no repair");
+        assert!(
+            !s.rebuilt_fts_on_open(),
+            "a clean legacy index needs no repair"
+        );
         drop(s);
         // Every later open must be a no-op. `rebuilt_fts_on_open` is the flag the
         // rebuild sets, and the index *content* is the independent witness that
@@ -3496,10 +3739,8 @@ mod tests {
         ];
 
         let path = tmp_db("detail-parity");
-        let borrowed: Vec<(&str, &str)> = rows
-            .iter()
-            .map(|(i, c)| (i.as_str(), c.as_str()))
-            .collect();
+        let borrowed: Vec<(&str, &str)> =
+            rows.iter().map(|(i, c)| (i.as_str(), c.as_str())).collect();
         legacy_detail_full_db(&path, &borrowed);
 
         let mut before = Vec::new();
@@ -3519,9 +3760,7 @@ mod tests {
                     )
                     .expect("prepare");
                 let rows: Vec<(String, f64)> = stmt
-                    .query_map(params![m, "a", 50i64], |r| {
-                        Ok((r.get(0)?, r.get(1)?))
-                    })
+                    .query_map(params![m, "a", 50i64], |r| Ok((r.get(0)?, r.get(1)?)))
                     .expect("query")
                     .collect::<Result<_, _>>()
                     .expect("rows");
@@ -3557,9 +3796,13 @@ mod tests {
         let path = tmp_db("detail-integrity");
         let s = SqliteStore::open(&path).expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put(&content_mem("a", "m1", "integrity gate under detail none")).expect("put");
+        s.put(&content_mem("a", "m1", "integrity gate under detail none"))
+            .expect("put");
         drop(s);
-        assert!(fts_ddl(&path).contains("detail=none"), "fixture is not detail=none");
+        assert!(
+            fts_ddl(&path).contains("detail=none"),
+            "fixture is not detail=none"
+        );
 
         {
             let conn = Connection::open(&path).expect("raw open");
@@ -3569,7 +3812,8 @@ mod tests {
             .expect("integrity-check must succeed on a detail=none external-content table");
             // Now desync the index behind the store's back, exactly as a lost
             // trigger write would, and require the same command to object.
-            conn.execute_batch("DROP TRIGGER memories_au;").expect("drop trigger");
+            conn.execute_batch("DROP TRIGGER memories_au;")
+                .expect("drop trigger");
             conn.execute(
                 "UPDATE memories SET content = 'drifted away' WHERE id = 'm1'",
                 [],
@@ -3642,7 +3886,9 @@ mod tests {
     #[test]
     fn put_should_reject_orphan_bank_when_foreign_keys_are_on() {
         let s = SqliteStore::open_in_memory().expect("open");
-        let err = s.put(&mem("ghost", "m1")).expect_err("orphan must be rejected");
+        let err = s
+            .put(&mem("ghost", "m1"))
+            .expect_err("orphan must be rejected");
         assert!(matches!(err, StoreError::Sqlite(_)), "got {err:?}");
         assert!(s.list("ghost").expect("list").is_empty());
     }
@@ -3653,11 +3899,19 @@ mod tests {
     #[test]
     fn put_bank_should_not_clobber_a_bank_that_already_exists() {
         let s = SqliteStore::open_in_memory().expect("open");
-        s.put_bank(&Bank { id: "a".to_string(), name: "Original Name".to_string() })
-            .expect("create");
-        s.set_bank_config("a", r#"{"retain_mission":"own the release"}"#).expect("config");
+        s.put_bank(&Bank {
+            id: "a".to_string(),
+            name: "Original Name".to_string(),
+        })
+        .expect("create");
+        s.set_bank_config("a", r#"{"retain_mission":"own the release"}"#)
+            .expect("config");
         // A retain re-declares the bank with no metadata; that must not clobber.
-        s.put_bank(&Bank { id: "a".to_string(), name: "a".to_string() }).expect("retain");
+        s.put_bank(&Bank {
+            id: "a".to_string(),
+            name: "a".to_string(),
+        })
+        .expect("retain");
         let name: String = s
             .conn
             .lock()
@@ -3677,10 +3931,15 @@ mod tests {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank a");
         s.put_bank(&bank("b")).expect("bank b");
-        s.put(&content_mem("a", "shared", "lives in a")).expect("put a");
-        s.put(&content_mem("b", "shared", "moved to b")).expect("put b");
+        s.put(&content_mem("a", "shared", "lives in a"))
+            .expect("put a");
+        s.put(&content_mem("b", "shared", "moved to b"))
+            .expect("put b");
 
-        assert!(s.get("a", "shared").expect("get").is_none(), "row must leave bank a");
+        assert!(
+            s.get("a", "shared").expect("get").is_none(),
+            "row must leave bank a"
+        );
         assert!(s.list("a").expect("list a").is_empty());
         let got = s.get("b", "shared").expect("get b").expect("some");
         assert_eq!(got.bank_id, "b");
@@ -3712,7 +3971,8 @@ mod tests {
 
         // A second write is the whole truth, so the earlier set is dropped rather
         // than merged — a relocated row must not keep the other bank's tags.
-        s.put_tagged(&mem("a", "m1"), &tag_filter(&["only"])).expect("re-put");
+        s.put_tagged(&mem("a", "m1"), &tag_filter(&["only"]))
+            .expect("re-put");
         assert_eq!(tags_of(&s, "m1"), vec!["only"]);
     }
 
@@ -3720,7 +3980,8 @@ mod tests {
     fn tags_should_cascade_when_the_memory_is_deleted() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put_tagged(&mem("a", "m1"), &tag_filter(&["t1", "t2"])).expect("put");
+        s.put_tagged(&mem("a", "m1"), &tag_filter(&["t1", "t2"]))
+            .expect("put");
         // Deleted through the store's own connection, so this also proves the
         // FK pragma the store sets is what arms the cascade.
         s.conn
@@ -3728,7 +3989,10 @@ mod tests {
             .expect("lock")
             .execute("DELETE FROM memories WHERE id = 'm1'", [])
             .expect("delete");
-        assert!(tags_of(&s, "m1").is_empty(), "orphan tags must be cascaded away");
+        assert!(
+            tags_of(&s, "m1").is_empty(),
+            "orphan tags must be cascaded away"
+        );
     }
 
     #[test]
@@ -3744,12 +4008,21 @@ mod tests {
     fn recall_inputs_should_filter_both_streams_by_tag() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put_tagged(&content_mem("a", "m1", "auth uses jose middleware"), &tag_filter(&["auth"]))
-            .expect("put 1");
-        s.put_tagged(&content_mem("a", "m2", "auth uses jose secrets"), &tag_filter(&["ops"]))
-            .expect("put 2");
-        s.put_tagged(&content_mem("a", "m3", "jose on the frontend"), &tag_filter(&["auth", "ui"]))
-            .expect("put 3");
+        s.put_tagged(
+            &content_mem("a", "m1", "auth uses jose middleware"),
+            &tag_filter(&["auth"]),
+        )
+        .expect("put 1");
+        s.put_tagged(
+            &content_mem("a", "m2", "auth uses jose secrets"),
+            &tag_filter(&["ops"]),
+        )
+        .expect("put 2");
+        s.put_tagged(
+            &content_mem("a", "m3", "jose on the frontend"),
+            &tag_filter(&["auth", "ui"]),
+        )
+        .expect("put 3");
 
         // No filter: the whole bank.
         let (all, _) = s.recall_inputs("a", "jose", &[], 10).expect("all");
@@ -3764,10 +4037,15 @@ mod tests {
             all.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
             ["m1", "m3"]
         );
-        assert_eq!(hits.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["m1", "m3"]);
+        assert_eq!(
+            hits.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            ["m1", "m3"]
+        );
 
         // A tag nothing carries empties both streams.
-        let (all, hits) = s.recall_inputs("a", "jose", &tag_filter(&["nope"]), 10).expect("none");
+        let (all, hits) = s
+            .recall_inputs("a", "jose", &tag_filter(&["nope"]), 10)
+            .expect("none");
         assert!(all.is_empty() && hits.is_empty());
     }
 
@@ -3822,9 +4100,11 @@ mod tests {
         );
         // The rest of the schema is created around the legacy table, so the
         // database is usable, not merely non-crashing.
-        s.put(&content_mem("a", "m1", "legacy row still indexes jose")).expect("put");
+        s.put(&content_mem("a", "m1", "legacy row still indexes jose"))
+            .expect("put");
         assert_eq!(s.keyword_search("a", "jose", 10).expect("search").len(), 1);
-        s.set_bank_config("a", r#"{"recallMaxTokens":8}"#).expect("set");
+        s.set_bank_config("a", r#"{"recallMaxTokens":8}"#)
+            .expect("set");
 
         // Reopening runs migrate again and must not re-apply the ALTER.
         let s = SqliteStore::open(&path).expect("reopen again");
@@ -3882,10 +4162,16 @@ mod tests {
             "an unused column must be dropped, not kept out of harm's way"
         );
         // Dropping a column must not drop the rows that referenced it.
-        let old = s.get("a", "old-1").expect("get").expect("the legacy row survives");
+        let old = s
+            .get("a", "old-1")
+            .expect("get")
+            .expect("the legacy row survives");
         assert_eq!(old.content, "a legacy row about jose");
         assert_eq!(s.list("a").expect("list").len(), 1);
-        assert!(s.get_bank_config("a").expect("config").is_some(), "the rest of the schema is intact");
+        assert!(
+            s.get_bank_config("a").expect("config").is_some(),
+            "the rest of the schema is intact"
+        );
 
         // Reopening runs migrate again, and the column is already gone.
         let s = SqliteStore::open(&path).expect("reopen again");
@@ -3929,20 +4215,32 @@ mod tests {
             .conn
             .lock()
             .expect("lock")
-            .query_row("SELECT background FROM banks WHERE id = 'a'", [], |r| r.get(0))
+            .query_row("SELECT background FROM banks WHERE id = 'a'", [], |r| {
+                r.get(0)
+            })
             .expect("row");
-        assert_eq!(kept.as_deref(), Some("keep me"), "the value itself is untouched");
+        assert_eq!(
+            kept.as_deref(),
+            Some("keep me"),
+            "the value itself is untouched"
+        );
 
         // Usable, not merely non-crashing: reads, writes, and config all work
         // over a table the migration chose not to clean.
         assert_eq!(s.list("a").expect("list").len(), 1);
-        s.put(&content_mem("a", "m1", "written after the kept column, about jose")).expect("put");
+        s.put(&content_mem(
+            "a",
+            "m1",
+            "written after the kept column, about jose",
+        ))
+        .expect("put");
         assert_eq!(
             s.keyword_search("a", "jose", 10).expect("search").len(),
             2,
             "both the legacy and the new row are indexed"
         );
-        s.set_bank_config("a", r#"{"recallMaxTokens":8}"#).expect("config");
+        s.set_bank_config("a", r#"{"recallMaxTokens":8}"#)
+            .expect("config");
         // Re-declaring the bank must not disturb the row the migration kept.
         s.put_bank(&bank("a")).expect("re-declare");
         assert_eq!(s.list("a").expect("list").len(), 2);
@@ -4006,12 +4304,18 @@ mod tests {
             Some(UNKNOWN_CREATED_AT),
             "a legacy row reads as unknown age"
         );
-        assert_eq!(old.content, "a legacy row about jose", "the migration must not rewrite content");
+        assert_eq!(
+            old.content, "a legacy row about jose",
+            "the migration must not rewrite content"
+        );
 
         // The rest of the schema is created around the legacy table, so the
         // database is usable: tags, documents, and new timestamps all work.
-        s.put_tagged(&content_mem("a", "new-1", "fresh row about jose"), &tag_filter(&["t"]))
-            .expect("put tagged");
+        s.put_tagged(
+            &content_mem("a", "new-1", "fresh row about jose"),
+            &tag_filter(&["t"]),
+        )
+        .expect("put tagged");
         let fresh = s.get("a", "new-1").expect("get").expect("some");
         assert_ne!(
             fresh.created_at.as_deref(),
@@ -4019,7 +4323,10 @@ mod tests {
             "a row written after the migration must carry a real timestamp"
         );
         assert_eq!(tags_of(&s, "new-1"), vec!["t"]);
-        assert_eq!(s.get_bank_config("a").expect("config").as_deref(), Some("{}"));
+        assert_eq!(
+            s.get_bank_config("a").expect("config").as_deref(),
+            Some("{}")
+        );
 
         // Reopening runs migrate again and must not re-apply the ALTERs.
         let s = SqliteStore::open(&path).expect("reopen again");
@@ -4049,7 +4356,11 @@ mod tests {
             .expect("set");
         let ttls = s.bank_ttls().expect("ttls");
         assert_eq!(ttls[0], ("a".to_string(), Some(30)));
-        assert_eq!(ttls[1], ("b".to_string(), None), "an unconfigured bank stays unset");
+        assert_eq!(
+            ttls[1],
+            ("b".to_string(), None),
+            "an unconfigured bank stays unset"
+        );
         // The wire format is untouched by the projection.
         assert!(s
             .get_bank_config("a")
@@ -4058,14 +4369,23 @@ mod tests {
             .contains(r#""ttl_days":30"#));
 
         // A whole-object replace drops the key, so the policy goes with it.
-        s.set_bank_config("a", r#"{"recallMaxTokens":64}"#).expect("replace");
+        s.set_bank_config("a", r#"{"recallMaxTokens":64}"#)
+            .expect("replace");
         assert_eq!(s.bank_ttls().expect("ttls")[0], ("a".to_string(), None));
 
         // A value this build cannot use is a policy of "never", not a refused
         // write: forgetting must not be switchable by a typo.
-        for bad in [r#"{"ttl_days":"30 days"}"#, r#"{"ttl_days":-1}"#, r#"{"ttl_days":null}"#] {
+        for bad in [
+            r#"{"ttl_days":"30 days"}"#,
+            r#"{"ttl_days":-1}"#,
+            r#"{"ttl_days":null}"#,
+        ] {
             s.set_bank_config("a", bad).expect("set");
-            assert_eq!(s.bank_ttls().expect("ttls")[0], ("a".to_string(), None), "{bad}");
+            assert_eq!(
+                s.bank_ttls().expect("ttls")[0],
+                ("a".to_string(), None),
+                "{bad}"
+            );
         }
         // Zero is a real policy, not an absent one.
         s.set_bank_config("a", r#"{"ttl_days":0}"#).expect("set");
@@ -4087,7 +4407,11 @@ mod tests {
         // than as zero — which would have meant forgetting everything on the first
         // sweep of a bank nobody had ever asked to expire.
         assert_eq!(s.bank_ttls().expect("ttls"), [("a".to_string(), None)]);
-        assert_eq!(s.list("a").expect("list").len(), 1, "the legacy row survives");
+        assert_eq!(
+            s.list("a").expect("list").len(),
+            1,
+            "the legacy row survives"
+        );
         assert!(s.keyword_search("a", "jose", 10).expect("search").len() == 1);
 
         // Config writes still work over the added column, and the policy takes.
@@ -4120,19 +4444,38 @@ mod tests {
         s.put_bank(&bank("a")).expect("bank a");
         s.put_bank(&bank("b")).expect("bank b");
         s.put_tagged(
-            &aged_mem("a", "old", "jose middleware rotated last spring", "2020-01-01T00:00:00.000Z"),
+            &aged_mem(
+                "a",
+                "old",
+                "jose middleware rotated last spring",
+                "2020-01-01T00:00:00.000Z",
+            ),
             &tag_filter(&["auth"]),
         )
         .expect("old");
-        s.put(&aged_mem("a", "young", "jose middleware rotated today", "2026-09-01T00:00:00.000Z"))
-            .expect("young");
-        s.put(&aged_mem("b", "other-bank", "jose middleware in another bank", "2020-01-01T00:00:00.000Z"))
-            .expect("other bank");
+        s.put(&aged_mem(
+            "a",
+            "young",
+            "jose middleware rotated today",
+            "2026-09-01T00:00:00.000Z",
+        ))
+        .expect("young");
+        s.put(&aged_mem(
+            "b",
+            "other-bank",
+            "jose middleware in another bank",
+            "2020-01-01T00:00:00.000Z",
+        ))
+        .expect("other bank");
         let cutoff = "2025-01-01T00:00:00.000Z";
 
         // A dry run counts and changes nothing — not the rows, not the index.
         assert_eq!(s.expire_before("a", cutoff, true).expect("dry run"), 1);
-        assert_eq!(s.list("a").expect("list").len(), 2, "a dry run must delete nothing");
+        assert_eq!(
+            s.list("a").expect("list").len(),
+            2,
+            "a dry run must delete nothing"
+        );
         assert_eq!(s.keyword_search("a", "jose", 10).expect("search").len(), 2);
 
         assert_eq!(s.expire_before("a", cutoff, false).expect("expire"), 1);
@@ -4145,10 +4488,17 @@ mod tests {
         // The FTS trigger retires the row with it: a deleted memory must be
         // unfindable, or recall keeps citing content that no longer exists.
         let hits = s.keyword_search("a", "jose", 10).expect("search");
-        assert_eq!(hits.len(), 1, "the expired row must leave the index: {hits:?}");
+        assert_eq!(
+            hits.len(),
+            1,
+            "the expired row must leave the index: {hits:?}"
+        );
         assert_eq!(hits[0].0, "young");
         // And its tags went with it, through the cascade.
-        assert!(tags_of(&s, "old").is_empty(), "an expired memory leaves no tags");
+        assert!(
+            tags_of(&s, "old").is_empty(),
+            "an expired memory leaves no tags"
+        );
 
         // A second pass is a no-op, so a scheduled-looking caller cannot double-count.
         assert_eq!(s.expire_before("a", cutoff, false).expect("resweep"), 0);
@@ -4172,7 +4522,8 @@ mod tests {
             .expect("plant");
         }
         let s = SqliteStore::open(&path).expect("reopen repairs");
-        s.put(&content_mem("a", "m1", "written after the repair jose")).expect("put");
+        s.put(&content_mem("a", "m1", "written after the repair jose"))
+            .expect("put");
         // The row is inserted after the repair, so only a working insert trigger
         // can put it in the index -- the 'rebuild' backfill cannot.
         let hits = s.keyword_search("a", "jose", 10).expect("search");
@@ -4191,24 +4542,32 @@ mod tests {
         {
             let s = SqliteStore::open(&path).expect("open");
             s.put_bank(&bank("a")).expect("bank");
-            s.put(&content_mem("a", "m1", "indexed on the first write jose")).expect("put");
+            s.put(&content_mem("a", "m1", "indexed on the first write jose"))
+                .expect("put");
         }
         // Nothing drifted and the triggers are recreated below on every open, so
         // the index is already in step: this open must not pay to reindex the
         // whole bank, and must say so rather than leave it to be inferred from a
         // timing nobody can assert on.
         let s = SqliteStore::open(&path).expect("reopen");
-        assert!(!s.rebuilt_fts_on_open(), "an in-step index must not be rebuilt");
+        assert!(
+            !s.rebuilt_fts_on_open(),
+            "an in-step index must not be rebuilt"
+        );
         assert_eq!(s.keyword_search("a", "jose", 10).expect("search").len(), 1);
 
         // Self-healing is not the casualty: a wiped index is still repaired, and
         // only then.
         {
             let conn = Connection::open(&path).expect("raw open");
-            conn.execute("DELETE FROM memories_fts", []).expect("wipe fts");
+            conn.execute("DELETE FROM memories_fts", [])
+                .expect("wipe fts");
         }
         let s = SqliteStore::open(&path).expect("reopen after drift");
-        assert!(s.rebuilt_fts_on_open(), "a drifted index must still be rebuilt");
+        assert!(
+            s.rebuilt_fts_on_open(),
+            "a drifted index must still be rebuilt"
+        );
         assert_eq!(s.keyword_search("a", "jose", 10).expect("search").len(), 1);
         rm_db(&path);
     }
@@ -4224,8 +4583,12 @@ mod tests {
         // Every row matches, so none of them can drop out for being irrelevant —
         // the only thing that can shrink this pool is the bound itself.
         for i in 0..(RECALL_POOL_LIMIT * 3) {
-            s.put(&content_mem("a", &format!("m{i}"), &format!("jose middleware note {i}")))
-                .expect("put");
+            s.put(&content_mem(
+                "a",
+                &format!("m{i}"),
+                &format!("jose middleware note {i}"),
+            ))
+            .expect("put");
         }
         assert_eq!(s.list("a").expect("list").len(), RECALL_POOL_LIMIT * 3);
 
@@ -4234,7 +4597,11 @@ mod tests {
         // The bound is the window plus the hits unioned into it — a constant,
         // and a fraction of the bank no matter how far the bank has grown.
         assert_eq!(pool.len(), RECALL_POOL_LIMIT + hits.len());
-        assert!(pool.len() <= RECALL_POOL_LIMIT + 50, "read {} rows", pool.len());
+        assert!(
+            pool.len() <= RECALL_POOL_LIMIT + 50,
+            "read {} rows",
+            pool.len()
+        );
     }
 
     // The window is ordered by recency, so a relevant *old* row falls outside
@@ -4247,8 +4614,12 @@ mod tests {
         let old = content_mem("a", "the-old-one", "an early note about jose middleware");
         s.put(&old).expect("put old");
         for i in 0..(RECALL_POOL_LIMIT * 2) {
-            s.put(&content_mem("a", &format!("m{i}"), &format!("unrelated note {i}")))
-                .expect("put");
+            s.put(&content_mem(
+                "a",
+                &format!("m{i}"),
+                &format!("unrelated note {i}"),
+            ))
+            .expect("put");
         }
         assert_eq!(s.list("a").expect("list").len(), RECALL_POOL_LIMIT * 2 + 1);
 
@@ -4263,12 +4634,31 @@ mod tests {
         // ...and it is in the pool *only* because the hits were unioned in: the
         // window is the newest RECALL_POOL_LIMIT rows by insertion order, and the
         // old row is the one row that is not in it.
-        let window: Vec<&str> = ids.iter().copied().filter(|id| *id != "the-old-one").collect();
+        let window: Vec<&str> = ids
+            .iter()
+            .copied()
+            .filter(|id| *id != "the-old-one")
+            .collect();
         assert_eq!(window.len(), RECALL_POOL_LIMIT);
-        assert_eq!(window.first(), Some(&"m200"), "the window is the newest rows");
-        assert_eq!(window.last(), Some(&"m399"), "and it ends at the newest row");
-        assert_eq!(pool.len(), RECALL_POOL_LIMIT + 1, "window ∪ hits, nothing more");
-        assert_eq!(ids[0], "the-old-one", "and the pool stays in insertion order");
+        assert_eq!(
+            window.first(),
+            Some(&"m200"),
+            "the window is the newest rows"
+        );
+        assert_eq!(
+            window.last(),
+            Some(&"m399"),
+            "and it ends at the newest row"
+        );
+        assert_eq!(
+            pool.len(),
+            RECALL_POOL_LIMIT + 1,
+            "window ∪ hits, nothing more"
+        );
+        assert_eq!(
+            ids[0], "the-old-one",
+            "and the pool stays in insertion order"
+        );
     }
 
     // A selective tag on a large bank is the case a bare recency window gets
@@ -4287,8 +4677,12 @@ mod tests {
         )
         .expect("tagged");
         for i in 0..(RECALL_POOL_LIMIT * 2) {
-            s.put(&content_mem("a", &format!("m{i}"), &format!("unrelated note {i}")))
-                .expect("put");
+            s.put(&content_mem(
+                "a",
+                &format!("m{i}"),
+                &format!("unrelated note {i}"),
+            ))
+            .expect("put");
         }
         let (pool, hits) = s
             .recall_inputs("a", "jose", &tag_filter(&["auth"]), 50)
@@ -4309,35 +4703,68 @@ mod tests {
         }
         // SQLite treats every NULL as distinct under a unique index, which is
         // what lets untagged memories coexist while documents stay unique.
-        s.put(&content_mem("a", "m1", "no document one")).expect("put 1");
-        s.put(&content_mem("a", "m2", "no document two")).expect("put 2");
+        s.put(&content_mem("a", "m1", "no document one"))
+            .expect("put 1");
+        s.put(&content_mem("a", "m2", "no document two"))
+            .expect("put 2");
         assert_eq!(s.list("a").expect("list").len(), 2);
 
         // The index is per bank, so the same document id in another bank is a
         // different document, not a collision.
-        s.put_doc(&content_mem("a", "m3", "doc in a"), &[], Some("shared"), UpdateMode::Replace)
-            .expect("put a");
-        s.put_doc(&content_mem("b", "m4", "doc in b"), &[], Some("shared"), UpdateMode::Replace)
-            .expect("put b");
+        s.put_doc(
+            &content_mem("a", "m3", "doc in a"),
+            &[],
+            Some("shared"),
+            UpdateMode::Replace,
+        )
+        .expect("put a");
+        s.put_doc(
+            &content_mem("b", "m4", "doc in b"),
+            &[],
+            Some("shared"),
+            UpdateMode::Replace,
+        )
+        .expect("put b");
         assert_eq!(s.list("a").expect("list a").len(), 3);
-        assert_eq!(s.list("b").expect("list b").len(), 1, "the other bank's row landed");
+        assert_eq!(
+            s.list("b").expect("list b").len(),
+            1,
+            "the other bank's row landed"
+        );
     }
 
     #[test]
     fn put_doc_should_replace_the_prior_row_for_a_document() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put_doc(&mem("a", "m1"), &tag_filter(&["v1"]), Some("doc"), UpdateMode::Replace)
-            .expect("put v1");
-        s.put_doc(&mem("a", "m2"), &tag_filter(&["v2"]), Some("doc"), UpdateMode::Replace)
-            .expect("put v2");
+        s.put_doc(
+            &mem("a", "m1"),
+            &tag_filter(&["v1"]),
+            Some("doc"),
+            UpdateMode::Replace,
+        )
+        .expect("put v1");
+        s.put_doc(
+            &mem("a", "m2"),
+            &tag_filter(&["v2"]),
+            Some("doc"),
+            UpdateMode::Replace,
+        )
+        .expect("put v2");
 
         let left = s.list("a").expect("list");
-        assert_eq!(left.len(), 1, "a replace leaves exactly one current revision");
+        assert_eq!(
+            left.len(),
+            1,
+            "a replace leaves exactly one current revision"
+        );
         assert_eq!(left[0].id, "m2");
         // The superseded row's tags leave with it through the FK cascade, so the
         // new tag set is the whole truth with nothing inherited.
-        assert!(tags_of(&s, "m1").is_empty(), "the superseded row takes its tags with it");
+        assert!(
+            tags_of(&s, "m1").is_empty(),
+            "the superseded row takes its tags with it"
+        );
         assert_eq!(tags_of(&s, "m2"), vec!["v2"]);
         assert!(s.keyword_search("a", "content", 10).expect("search").len() == 1);
     }
@@ -4346,12 +4773,19 @@ mod tests {
     fn put_doc_append_should_keep_every_row() {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
-        s.put_doc(&mem("a", "m1"), &[], Some("doc#1"), UpdateMode::Append).expect("put 1");
-        s.put_doc(&mem("a", "m2"), &[], Some("doc#2"), UpdateMode::Append).expect("put 2");
-        s.put_doc(&mem("a", "m3"), &[], None, UpdateMode::Append).expect("put 3");
+        s.put_doc(&mem("a", "m1"), &[], Some("doc#1"), UpdateMode::Append)
+            .expect("put 1");
+        s.put_doc(&mem("a", "m2"), &[], Some("doc#2"), UpdateMode::Append)
+            .expect("put 2");
+        s.put_doc(&mem("a", "m3"), &[], None, UpdateMode::Append)
+            .expect("put 3");
 
         assert_eq!(
-            s.list("a").expect("list").iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            s.list("a")
+                .expect("list")
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
             ["m1", "m2", "m3"],
             "an append never supersedes a row"
         );
@@ -4364,7 +4798,10 @@ mod tests {
         ));
         let left = s.list("a").expect("list");
         assert_eq!(left.len(), 3, "the refused write changed nothing");
-        assert_eq!(left[0].content, "content-m1", "and left the first row byte-unchanged");
+        assert_eq!(
+            left[0].content, "content-m1",
+            "and left the first row byte-unchanged"
+        );
     }
 
     // The index is per bank, so the same document id is a different document in
@@ -4375,19 +4812,43 @@ mod tests {
         for b in ["a", "b"] {
             s.put_bank(&bank(b)).expect("bank");
         }
-        s.put_doc(&content_mem("a", "m1", "doc in a"), &[], Some("shared"), UpdateMode::Append)
-            .expect("append a");
-        s.put_doc(&content_mem("b", "m2", "doc in b"), &[], Some("shared"), UpdateMode::Append)
-            .expect("append b");
+        s.put_doc(
+            &content_mem("a", "m1", "doc in a"),
+            &[],
+            Some("shared"),
+            UpdateMode::Append,
+        )
+        .expect("append a");
+        s.put_doc(
+            &content_mem("b", "m2", "doc in b"),
+            &[],
+            Some("shared"),
+            UpdateMode::Append,
+        )
+        .expect("append b");
         assert_eq!(s.list("a").expect("list a").len(), 1);
-        assert_eq!(s.list("b").expect("list b").len(), 1, "the other bank's row landed");
+        assert_eq!(
+            s.list("b").expect("list b").len(),
+            1,
+            "the other bank's row landed"
+        );
 
         // Replace then append in one bank is the same refusal as append twice:
         // the pre-check asks the index's question, not "did I write it".
-        s.put_doc(&content_mem("a", "m3", "replacement"), &[], Some("shared"), UpdateMode::Replace)
-            .expect("replace");
+        s.put_doc(
+            &content_mem("a", "m3", "replacement"),
+            &[],
+            Some("shared"),
+            UpdateMode::Replace,
+        )
+        .expect("replace");
         assert!(matches!(
-            s.put_doc(&content_mem("a", "m4", "too late"), &[], Some("shared"), UpdateMode::Append),
+            s.put_doc(
+                &content_mem("a", "m4", "too late"),
+                &[],
+                Some("shared"),
+                UpdateMode::Append
+            ),
             Err(StoreError::DocumentConflict)
         ));
     }
@@ -4402,8 +4863,13 @@ mod tests {
         for b in ["checked", "forced"] {
             s.put_bank(&bank(b)).expect("bank");
         }
-        s.put_doc(&content_mem("checked", "m1", "first"), &[], Some("doc"), UpdateMode::Append)
-            .expect("checked: first");
+        s.put_doc(
+            &content_mem("checked", "m1", "first"),
+            &[],
+            Some("doc"),
+            UpdateMode::Append,
+        )
+        .expect("checked: first");
         let prechecked = s
             .put_doc(
                 &content_mem("checked", "m2", "second"),
@@ -4425,7 +4891,7 @@ mod tests {
                 Some("doc"),
                 &hash_content("first"),
             )
-                .expect("forced: first");
+            .expect("forced: first");
             let indexed = SqliteStore::put_conn(
                 &conn,
                 &content_mem("forced", "f2", "second"),
@@ -4455,7 +4921,10 @@ mod tests {
     fn the_constraint_backstop_should_not_relabel_an_orphan_bank() {
         let s = SqliteStore::open_in_memory().expect("open");
         assert!(
-            matches!(s.put_doc(&mem("ghost", "m1"), &[], Some("doc"), UpdateMode::Append), Err(StoreError::Sqlite(_))),
+            matches!(
+                s.put_doc(&mem("ghost", "m1"), &[], Some("doc"), UpdateMode::Append),
+                Err(StoreError::Sqlite(_))
+            ),
             "an orphan bank is a storage fault, not a document conflict"
         );
     }
@@ -4487,19 +4956,36 @@ mod tests {
                 UpdateMode::Replace,
             )
             .expect("duplicate");
-        assert_eq!(again, "m1", "the row already holding the content is returned");
+        assert_eq!(
+            again, "m1",
+            "the row already holding the content is returned"
+        );
         assert_eq!(s.list("a").expect("list").len(), 1, "no second copy");
-        assert_eq!(tags_of(&s, "m1"), vec!["v1"], "and a deduped write changes nothing at all");
+        assert_eq!(
+            tags_of(&s, "m1"),
+            vec!["v1"],
+            "and a deduped write changes nothing at all"
+        );
 
         // Scoped to the bank: the same content elsewhere is a different memory.
-        s.put_doc(&content_mem("b", "m3", "auth uses jose"), &[], None, UpdateMode::Replace)
-            .expect("other bank");
+        s.put_doc(
+            &content_mem("b", "m3", "auth uses jose"),
+            &[],
+            None,
+            UpdateMode::Replace,
+        )
+        .expect("other bank");
         assert_eq!(s.list("b").expect("list b").len(), 1);
 
         // A row already sitting under this id is not a duplicate of itself, so a
         // re-put that only changes the tag set stays an update.
-        s.put_doc(&mem("a", "m1"), &tag_filter(&["v3"]), None, UpdateMode::Replace)
-            .expect("rewrite");
+        s.put_doc(
+            &mem("a", "m1"),
+            &tag_filter(&["v3"]),
+            None,
+            UpdateMode::Replace,
+        )
+        .expect("rewrite");
         assert_eq!(tags_of(&s, "m1"), vec!["v3"]);
 
         // An append writes a second copy on purpose, so identical content under
@@ -4521,7 +5007,11 @@ mod tests {
             )
             .expect("append 2");
         assert_ne!(one, two, "an append under a fresh document id never dedups");
-        assert_eq!(s.list("a").expect("list").len(), 3, "m1 plus the two appends");
+        assert_eq!(
+            s.list("a").expect("list").len(),
+            3,
+            "m1 plus the two appends"
+        );
     }
 
     // The digest column is additive, so a database that predates it arrives with
@@ -4536,7 +5026,11 @@ mod tests {
             .conn
             .lock()
             .expect("lock")
-            .query_row("SELECT content_hash FROM memories WHERE id = 'old-1'", [], |r| r.get(0))
+            .query_row(
+                "SELECT content_hash FROM memories WHERE id = 'old-1'",
+                [],
+                |r| r.get(0),
+            )
             .expect("row");
         assert_eq!(
             digested.as_deref(),
@@ -4555,15 +5049,27 @@ mod tests {
         s.put_bank(&bank("a")).expect("bank");
         s.put(&content_mem("a", "m1", "first")).expect("put");
         let first = s.get("a", "m1").expect("get").expect("some").created_at;
-        let first = first.as_deref().expect("the read path always fills created_at");
-        assert_ne!(first, UNKNOWN_CREATED_AT, "a new row must not read as unknown age");
-        assert!(first.ends_with('Z') && first.starts_with("20"), "expected RFC 3339 UTC, got {first}");
+        let first = first
+            .as_deref()
+            .expect("the read path always fills created_at");
+        assert_ne!(
+            first, UNKNOWN_CREATED_AT,
+            "a new row must not read as unknown age"
+        );
+        assert!(
+            first.ends_with('Z') && first.starts_with("20"),
+            "expected RFC 3339 UTC, got {first}"
+        );
 
         // created_at records when the row came into being, so rewriting a row
         // must not restate its age — only the payload moves.
         s.put(&content_mem("a", "m1", "second")).expect("rewrite");
         let after = s.get("a", "m1").expect("get").expect("some");
-        assert_eq!(after.created_at.as_deref(), Some(first), "a rewrite must not restate the creation time");
+        assert_eq!(
+            after.created_at.as_deref(),
+            Some(first),
+            "a rewrite must not restate the creation time"
+        );
         assert_eq!(after.content, "second");
     }
 
@@ -4572,15 +5078,34 @@ mod tests {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank a");
         s.put_bank(&bank("b")).expect("bank b");
-        s.put_tagged(&mem("a", "m1"), &tag_filter(&["t1", "t2"])).expect("put");
+        s.put_tagged(&mem("a", "m1"), &tag_filter(&["t1", "t2"]))
+            .expect("put");
 
-        assert!(!s.delete("b", "m1").expect("cross-bank delete"), "another bank's id is unreachable");
-        assert!(s.get("a", "m1").expect("get").is_some(), "the refused delete changed nothing");
+        assert!(
+            !s.delete("b", "m1").expect("cross-bank delete"),
+            "another bank's id is unreachable"
+        );
+        assert!(
+            s.get("a", "m1").expect("get").is_some(),
+            "the refused delete changed nothing"
+        );
 
-        assert!(s.delete("a", "m1").expect("delete"), "a bank-scoped delete reports true");
-        assert!(!s.delete("a", "m1").expect("again"), "a second delete finds nothing");
-        assert!(!s.delete("a", "ghost").expect("ghost"), "an unknown id is not a delete");
-        assert!(tags_of(&s, "m1").is_empty(), "tags must cascade with the row");
+        assert!(
+            s.delete("a", "m1").expect("delete"),
+            "a bank-scoped delete reports true"
+        );
+        assert!(
+            !s.delete("a", "m1").expect("again"),
+            "a second delete finds nothing"
+        );
+        assert!(
+            !s.delete("a", "ghost").expect("ghost"),
+            "an unknown id is not a delete"
+        );
+        assert!(
+            tags_of(&s, "m1").is_empty(),
+            "tags must cascade with the row"
+        );
     }
 
     #[test]
@@ -4590,10 +5115,13 @@ mod tests {
         // Write a memory with a secret in it. Use a pattern that the secret
         // scanner does not catch: a corp-internal email.
         s.put(&mem("a", "m1")).expect("put");
-        s.conn().expect("conn").execute(
-            "UPDATE memories SET content=?1 WHERE bank_id='a' AND id='m1'",
-            params!["token is abc123def456ghi789 for details"],
-        ).expect("set content");
+        s.conn()
+            .expect("conn")
+            .execute(
+                "UPDATE memories SET content=?1 WHERE bank_id='a' AND id='m1'",
+                params!["token is abc123def456ghi789 for details"],
+            )
+            .expect("set content");
         // Rewrite it once so there are two version rows: the original 'write'
         // and the 'rewrite'.
         let mut updated = s.get("a", "m1").expect("get").expect("row");
@@ -4602,25 +5130,46 @@ mod tests {
 
         // Before redact: at least 2 version rows (write + rewrite), and the
         // secret is in both the current row and at least one version.
-        let before = s.conn().expect("conn").query_row(
-            "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1'",
-            params![],
-            |r| r.get::<_, i64>(0),
-        ).expect("count versions");
-        assert!(before >= 2, "expected at least 2 version rows, got {before}");
+        let before = s
+            .conn()
+            .expect("conn")
+            .query_row(
+                "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1'",
+                params![],
+                |r| r.get::<_, i64>(0),
+            )
+            .expect("count versions");
+        assert!(
+            before >= 2,
+            "expected at least 2 version rows, got {before}"
+        );
         let live = s.get("a", "m1").expect("get").expect("row");
-        assert!(live.content.contains("xyz000aaa111bbb"), "secret must be present before redact");
+        assert!(
+            live.content.contains("xyz000aaa111bbb"),
+            "secret must be present before redact"
+        );
 
         // Redact every email-shaped token.
-        let rewritten = s.redact("a", "m1", r"token is [a-z0-9]+", "email").expect("redact");
-        assert!(rewritten >= 2, "redact must rewrite at least the live row + one version, got {rewritten}");
+        let rewritten = s
+            .redact("a", "m1", r"token is [a-z0-9]+", "email")
+            .expect("redact");
+        assert!(
+            rewritten >= 2,
+            "redact must rewrite at least the live row + one version, got {rewritten}"
+        );
 
         // The secret is gone from the live row.
         let live = s.get("a", "m1").expect("get").expect("row");
-        assert!(!live.content.contains("abc123def456"), "secret must be gone from the live row");
+        assert!(
+            !live.content.contains("abc123def456"),
+            "secret must be gone from the live row"
+        );
         // The replacement is the redaction marker, not the email.
         let marker = format!("[REDACTED:{}]", "email");
-        assert!(live.content.contains(&marker), "replacement must be present");
+        assert!(
+            live.content.contains(&marker),
+            "replacement must be present"
+        );
 
         // The secret is gone from every version row too.
         let version_with_secret = s.conn().expect("conn").query_row(
@@ -4628,18 +5177,30 @@ mod tests {
             params![],
             |r| r.get::<_, i64>(0),
         ).expect("count versions with secret");
-        assert_eq!(version_with_secret, 0, "secret must be gone from every version row");
+        assert_eq!(
+            version_with_secret, 0,
+            "secret must be gone from every version row"
+        );
 
         // The version rows survive (their ids, ops, timestamps) — only content and sha256 moved.
-        let version_count_after = s.conn().expect("conn").query_row(
-            "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1'",
-            params![],
-            |r| r.get::<_, i64>(0),
-        ).expect("count versions after");
-        assert_eq!(version_count_after, before, "redact must not drop version rows");
+        let version_count_after = s
+            .conn()
+            .expect("conn")
+            .query_row(
+                "SELECT COUNT(*) FROM memory_versions WHERE bank_id='a' AND memory_id='m1'",
+                params![],
+                |r| r.get::<_, i64>(0),
+            )
+            .expect("count versions after");
+        assert_eq!(
+            version_count_after, before,
+            "redact must not drop version rows"
+        );
 
         // A second redact is idempotent: nothing matches, returns 0.
-        let second = s.redact("a", "m1", r"token is [a-z0-9]+", "email").expect("second redact");
+        let second = s
+            .redact("a", "m1", r"token is [a-z0-9]+", "email")
+            .expect("second redact");
         assert_eq!(second, 0, "a second redact must be a no-op");
     }
 
@@ -4648,7 +5209,9 @@ mod tests {
         let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank");
         s.put(&mem("a", "m1")).expect("put");
-        let err = s.redact("a", "m1", "(unclosed", "email").expect_err("bad pattern");
+        let err = s
+            .redact("a", "m1", "(unclosed", "email")
+            .expect_err("bad pattern");
         assert!(matches!(err, StoreError::BadInput(_)), "got {err:?}");
     }
 
@@ -4722,12 +5285,16 @@ mod tests {
         assert_eq!(page(2, 0), ["m0", "m1"]);
         assert_eq!(page(2, 2), ["m2", "m3"]);
         assert_eq!(page(2, 4), ["m4"]);
-        assert!(page(2, 5).is_empty(), "an offset past the end is empty, not an error");
+        assert!(
+            page(2, 5).is_empty(),
+            "an offset past the end is empty, not an error"
+        );
         assert!(page(0, 0).is_empty(), "a zero limit is empty");
     }
 
     #[test]
-    fn bank_stats_should_report_counts_tags_and_age_bounds() {        let s = SqliteStore::open_in_memory().expect("open");
+    fn bank_stats_should_report_counts_tags_and_age_bounds() {
+        let s = SqliteStore::open_in_memory().expect("open");
         s.put_bank(&bank("a")).expect("bank a");
         s.put_bank(&bank("b")).expect("bank b");
         assert_eq!(
@@ -4736,10 +5303,15 @@ mod tests {
             "an empty bank is zeroes and no bounds"
         );
 
-        s.put_tagged(&content_mem("a", "m1", "jose auth"), &tag_filter(&["auth", "jose"]))
-            .expect("put 1");
-        s.put_tagged(&content_mem("a", "m2", "jose ops"), &tag_filter(&["ops"])).expect("put 2");
-        s.put(&content_mem("b", "m3", "other bank jose")).expect("put b");
+        s.put_tagged(
+            &content_mem("a", "m1", "jose auth"),
+            &tag_filter(&["auth", "jose"]),
+        )
+        .expect("put 1");
+        s.put_tagged(&content_mem("a", "m2", "jose ops"), &tag_filter(&["ops"]))
+            .expect("put 2");
+        s.put(&content_mem("b", "m3", "other bank jose"))
+            .expect("put b");
 
         let st = s.bank_stats("a").expect("stats");
         assert_eq!(
@@ -4748,165 +5320,240 @@ mod tests {
             "tags are counted distinct, inside this bank only"
         );
         let (oldest, newest) = (st.oldest.expect("oldest"), st.newest.expect("newest"));
-        assert!(oldest <= newest, "oldest {oldest} must not follow newest {newest}");
+        assert!(
+            oldest <= newest,
+            "oldest {oldest} must not follow newest {newest}"
+        );
         assert_eq!(
             newest,
-            s.get("a", "m2").expect("get").expect("some").created_at.expect("stamped"),
+            s.get("a", "m2")
+                .expect("get")
+                .expect("some")
+                .created_at
+                .expect("stamped"),
             "the newest bound is the newest row's stamp"
         );
-        assert_eq!(s.bank_stats("b").expect("b").memories, 1, "the other bank is counted on its own");
-    }
-
-/// A backend with nothing: only the four methods `Store` requires, so every
-/// other method is a default. It exists to pin what those defaults do.
-struct NoBackend;
-
-impl Store for NoBackend {
-    fn put_bank(&self, _bank: &Bank) -> Result<(), StoreError> {
-        Err(StoreError::Unsupported("put_bank"))
-    }
-    fn put(&self, _m: &Memory) -> Result<(), StoreError> {
-        Err(StoreError::Unsupported("put"))
-    }
-    fn get(&self, _bank_id: &str, _id: &str) -> Result<Option<Memory>, StoreError> {
-        Err(StoreError::Unsupported("get"))
-    }
-    fn list(&self, _bank_id: &str) -> Result<Vec<Memory>, StoreError> {
-        Err(StoreError::Unsupported("list"))
-    }
-}
-
-// Every defaulted method must *refuse*, not answer.
-//
-// Five of them always did. The other three used to answer anyway, and each
-// answer was quietly wrong rather than obviously absent: `put_tagged` dropped
-// the tags, `put_doc` dropped the `document_id` (so a replace became a second
-// row), and `recall_inputs` dropped the tag filter (so a scoped recall came
-// back unscoped). A future backend that forgot to override any of them got
-// plausible data instead of a compile-shaped nudge, which is the failure a
-// default exists to prevent.
-#[test]
-fn every_defaulted_store_method_should_refuse_rather_than_answer() {
-    let s = NoBackend;
-    let m = mem("a", "m1");
-    let refusals: Vec<(&str, Result<(), StoreError>)> = vec![
-        ("delete", s.delete("a", "m1").map(|_| ())),
-        ("bank_stats", s.bank_stats("a").map(|_| ())),
-        ("set_bank_config", s.set_bank_config("a", "{}")),
-        ("bank_ttls", s.bank_ttls().map(|_| ())),
-        ("expire_before", s.expire_before("a", "2026-01-01T00:00:00.000Z", false).map(|_| ())),
-        ("put_tagged", s.put_tagged(&m, &tag_filter(&["t"]))),
-        ("put_doc", s.put_doc(&m, &[], Some("doc"), UpdateMode::Replace).map(|_| ())),
-        ("recall_inputs", s.recall_inputs("a", "q", &[], 10).map(|_| ())),
-    ];
-    for (op, got) in refusals {
-        assert!(
-            matches!(got, Err(StoreError::Unsupported(_))),
-            "{op} must refuse by default, got {got:?}"
+        assert_eq!(
+            s.bank_stats("b").expect("b").memories,
+            1,
+            "the other bank is counted on its own"
         );
     }
-}
 
-// A poisoned lock must produce an error, not a second panic.
-//
-// This is the shape a real panic takes: unwind while the guard is held, and
-// `Mutex` records it forever after. Every later call used to `expect` its way
-// straight into a second panic — inside a request handler that is not a crash
-// the client sees, it is a *missing response*, while `/health` kept answering
-// 200 and `doctor` kept calling the server up. The fix is only real if the
-// next call returns the variant.
-#[test]
-fn a_poisoned_store_lock_should_refuse_loudly_instead_of_panicking() {
-    let s = SqliteStore::open_in_memory().expect("open");
-    s.put_bank(&bank("a")).expect("bank");
-    s.put(&content_mem("a", "m1", "jose middleware")).expect("put");
+    /// A backend with nothing: only the four methods `Store` requires, so every
+    /// other method is a default. It exists to pin what those defaults do.
+    struct NoBackend;
 
-    // Poison it: the panic unwinds *out of* the guard, which is what a panic
-    // inside any store call would do.
-    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _guard = s.conn.lock().expect("lock");
-        panic!("deliberate: a panic while the store lock is held");
-    }));
-    assert!(unwound.is_err(), "the fixture must actually poison the lock");
-
-    // Every operation that takes the lock now refuses with the one variant, and
-    // none of them panics: an `expect` in a handler is a request with no reply.
-    assert!(matches!(s.list("a"), Err(StoreError::LockPoisoned)));
-    assert!(matches!(s.get("a", "m1"), Err(StoreError::LockPoisoned)));
-    assert!(matches!(s.bank_stats("a"), Err(StoreError::LockPoisoned)));
-    assert!(matches!(
-        s.put(&content_mem("a", "m2", "another jose note")),
-        Err(StoreError::LockPoisoned)
-    ));
-    assert!(matches!(
-        s.recall_inputs("a", "jose", &[], 10),
-        Err(StoreError::LockPoisoned)
-    ));
-    assert!(matches!(
-        s.expire_before("a", "2026-01-01T00:00:00.000Z", true),
-        Err(StoreError::LockPoisoned)
-    ));
-    assert!(matches!(s.get_bank_config("a"), Err(StoreError::LockPoisoned)));
-
-    // Loud, but not leaky: the message says what happened and carries no path,
-    // no SQL, and no content the caller wrote.
-    let msg = StoreError::LockPoisoned.to_string();
-    assert_eq!(msg, "store lock poisoned", "got {msg:?}");
-}
-
-// The wire mode is parsed once, and only the two documented values survive it.
-//
-// The reason it is an enum: `replace` deletes the document's prior revision, so
-// a value that fell through to it destroyed a revision over a typo. A typo is
-// now a refusal, and only an *absent* field is the default.
-#[test]
-fn update_mode_should_parse_only_the_two_documented_values() {
-    assert_eq!(UpdateMode::parse(None), Some(UpdateMode::Replace), "absent is the default");
-    assert_eq!(UpdateMode::parse(Some(REPLACE_MODE)), Some(UpdateMode::Replace));
-    assert_eq!(UpdateMode::parse(Some(APPEND_MODE)), Some(UpdateMode::Append));
-    assert_eq!(UpdateMode::default(), UpdateMode::Replace, "and the enum's own default agrees");
-
-    for typo in ["append ", "APPEND", "Replace", " upsert", "", "append\n", "replace "] {
-        assert_eq!(UpdateMode::parse(Some(typo)), None, "{typo:?} must be refused");
+    impl Store for NoBackend {
+        fn put_bank(&self, _bank: &Bank) -> Result<(), StoreError> {
+            Err(StoreError::Unsupported("put_bank"))
+        }
+        fn put(&self, _m: &Memory) -> Result<(), StoreError> {
+            Err(StoreError::Unsupported("put"))
+        }
+        fn get(&self, _bank_id: &str, _id: &str) -> Result<Option<Memory>, StoreError> {
+            Err(StoreError::Unsupported("get"))
+        }
+        fn list(&self, _bank_id: &str) -> Result<Vec<Memory>, StoreError> {
+            Err(StoreError::Unsupported("list"))
+        }
     }
 
-    // The spellings round-trip, so the constants and the parser cannot drift.
-    assert_eq!(UpdateMode::parse(Some(UpdateMode::Append.as_str())), Some(UpdateMode::Append));
-    assert_eq!(UpdateMode::parse(Some(UpdateMode::Replace.as_str())), Some(UpdateMode::Replace));
-}
+    // Every defaulted method must *refuse*, not answer.
+    //
+    // Five of them always did. The other three used to answer anyway, and each
+    // answer was quietly wrong rather than obviously absent: `put_tagged` dropped
+    // the tags, `put_doc` dropped the `document_id` (so a replace became a second
+    // row), and `recall_inputs` dropped the tag filter (so a scoped recall came
+    // back unscoped). A future backend that forgot to override any of them got
+    // plausible data instead of a compile-shaped nudge, which is the failure a
+    // default exists to prevent.
+    #[test]
+    fn every_defaulted_store_method_should_refuse_rather_than_answer() {
+        let s = NoBackend;
+        let m = mem("a", "m1");
+        let refusals: Vec<(&str, Result<(), StoreError>)> = vec![
+            ("delete", s.delete("a", "m1").map(|_| ())),
+            ("bank_stats", s.bank_stats("a").map(|_| ())),
+            ("set_bank_config", s.set_bank_config("a", "{}")),
+            ("bank_ttls", s.bank_ttls().map(|_| ())),
+            (
+                "expire_before",
+                s.expire_before("a", "2026-01-01T00:00:00.000Z", false)
+                    .map(|_| ()),
+            ),
+            ("put_tagged", s.put_tagged(&m, &tag_filter(&["t"]))),
+            (
+                "put_doc",
+                s.put_doc(&m, &[], Some("doc"), UpdateMode::Replace)
+                    .map(|_| ()),
+            ),
+            (
+                "recall_inputs",
+                s.recall_inputs("a", "q", &[], 10).map(|_| ()),
+            ),
+        ];
+        for (op, got) in refusals {
+            assert!(
+                matches!(got, Err(StoreError::Unsupported(_))),
+                "{op} must refuse by default, got {got:?}"
+            );
+        }
+    }
 
-// The epoch sentinel is "unknown age", so it goes the moment the bank asks to
-// forget anything, and a stamp that is not a timestamp is never mistaken for an
-// old one. Both are byte compares on `created_at`, and the sweep is the only
-// thing that acts on it — so the behaviour is pinned here rather than left to a
-// doc comment.
-#[test]
-fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp() {
-    let s = SqliteStore::open_in_memory().expect("open");
-    s.put_bank(&bank("a")).expect("bank");
-    let cutoff = "2026-01-01T00:00:00.000Z";
+    // A poisoned lock must produce an error, not a second panic.
+    //
+    // This is the shape a real panic takes: unwind while the guard is held, and
+    // `Mutex` records it forever after. Every later call used to `expect` its way
+    // straight into a second panic — inside a request handler that is not a crash
+    // the client sees, it is a *missing response*, while `/health` kept answering
+    // 200 and `doctor` kept calling the server up. The fix is only real if the
+    // next call returns the variant.
+    #[test]
+    fn a_poisoned_store_lock_should_refuse_loudly_instead_of_panicking() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "m1", "jose middleware"))
+            .expect("put");
 
-    s.put(&aged_mem("a", "sentinel", "jose predates timestamping", UNKNOWN_CREATED_AT))
+        // Poison it: the panic unwinds *out of* the guard, which is what a panic
+        // inside any store call would do.
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = s.conn.lock().expect("lock");
+            panic!("deliberate: a panic while the store lock is held");
+        }));
+        assert!(
+            unwound.is_err(),
+            "the fixture must actually poison the lock"
+        );
+
+        // Every operation that takes the lock now refuses with the one variant, and
+        // none of them panics: an `expect` in a handler is a request with no reply.
+        assert!(matches!(s.list("a"), Err(StoreError::LockPoisoned)));
+        assert!(matches!(s.get("a", "m1"), Err(StoreError::LockPoisoned)));
+        assert!(matches!(s.bank_stats("a"), Err(StoreError::LockPoisoned)));
+        assert!(matches!(
+            s.put(&content_mem("a", "m2", "another jose note")),
+            Err(StoreError::LockPoisoned)
+        ));
+        assert!(matches!(
+            s.recall_inputs("a", "jose", &[], 10),
+            Err(StoreError::LockPoisoned)
+        ));
+        assert!(matches!(
+            s.expire_before("a", "2026-01-01T00:00:00.000Z", true),
+            Err(StoreError::LockPoisoned)
+        ));
+        assert!(matches!(
+            s.get_bank_config("a"),
+            Err(StoreError::LockPoisoned)
+        ));
+
+        // Loud, but not leaky: the message says what happened and carries no path,
+        // no SQL, and no content the caller wrote.
+        let msg = StoreError::LockPoisoned.to_string();
+        assert_eq!(msg, "store lock poisoned", "got {msg:?}");
+    }
+
+    // The wire mode is parsed once, and only the two documented values survive it.
+    //
+    // The reason it is an enum: `replace` deletes the document's prior revision, so
+    // a value that fell through to it destroyed a revision over a typo. A typo is
+    // now a refusal, and only an *absent* field is the default.
+    #[test]
+    fn update_mode_should_parse_only_the_two_documented_values() {
+        assert_eq!(
+            UpdateMode::parse(None),
+            Some(UpdateMode::Replace),
+            "absent is the default"
+        );
+        assert_eq!(
+            UpdateMode::parse(Some(REPLACE_MODE)),
+            Some(UpdateMode::Replace)
+        );
+        assert_eq!(
+            UpdateMode::parse(Some(APPEND_MODE)),
+            Some(UpdateMode::Append)
+        );
+        assert_eq!(
+            UpdateMode::default(),
+            UpdateMode::Replace,
+            "and the enum's own default agrees"
+        );
+
+        for typo in [
+            "append ", "APPEND", "Replace", " upsert", "", "append\n", "replace ",
+        ] {
+            assert_eq!(
+                UpdateMode::parse(Some(typo)),
+                None,
+                "{typo:?} must be refused"
+            );
+        }
+
+        // The spellings round-trip, so the constants and the parser cannot drift.
+        assert_eq!(
+            UpdateMode::parse(Some(UpdateMode::Append.as_str())),
+            Some(UpdateMode::Append)
+        );
+        assert_eq!(
+            UpdateMode::parse(Some(UpdateMode::Replace.as_str())),
+            Some(UpdateMode::Replace)
+        );
+    }
+
+    // The epoch sentinel is "unknown age", so it goes the moment the bank asks to
+    // forget anything, and a stamp that is not a timestamp is never mistaken for an
+    // old one. Both are byte compares on `created_at`, and the sweep is the only
+    // thing that acts on it — so the behaviour is pinned here rather than left to a
+    // doc comment.
+    #[test]
+    fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        let cutoff = "2026-01-01T00:00:00.000Z";
+
+        s.put(&aged_mem(
+            "a",
+            "sentinel",
+            "jose predates timestamping",
+            UNKNOWN_CREATED_AT,
+        ))
         .expect("put sentinel");
-    s.put(&aged_mem("a", "garbage", "jose with a stamp that is not a date", "not-a-date"))
+        s.put(&aged_mem(
+            "a",
+            "garbage",
+            "jose with a stamp that is not a date",
+            "not-a-date",
+        ))
         .expect("put garbage");
-    s.put(&aged_mem("a", "real", "jose from last year", "2020-01-01T00:00:00.000Z"))
+        s.put(&aged_mem(
+            "a",
+            "real",
+            "jose from last year",
+            "2020-01-01T00:00:00.000Z",
+        ))
         .expect("put real");
 
-    assert_eq!(
-        s.expire_before("a", cutoff, false).expect("expire"),
-        2,
-        "the sentinel and the genuinely old row, nothing else"
-    );
-    let left: Vec<String> = s.list("a").expect("list").into_iter().map(|m| m.id).collect();
-    assert_eq!(
-        left,
-        ["garbage"],
-        "an unparseable stamp sorts after every real one, so it is kept — a sweep that \
+        assert_eq!(
+            s.expire_before("a", cutoff, false).expect("expire"),
+            2,
+            "the sentinel and the genuinely old row, nothing else"
+        );
+        let left: Vec<String> = s
+            .list("a")
+            .expect("list")
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(
+            left,
+            ["garbage"],
+            "an unparseable stamp sorts after every real one, so it is kept — a sweep that \
          forgot the wrong row would be the expensive direction"
-    );
-    // …and the sentinel is gone, because "unknown age" is older than any cutoff.
-}
+        );
+        // …and the sentinel is gone, because "unknown age" is older than any cutoff.
+    }
     // ---- W1 dimensional schema ------------------------------------------
 
     /// A database opened *before* W1 shipped, with none of the new columns,
@@ -4972,7 +5619,10 @@ fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp()
         assert_eq!(got.meta.scope.0, "global");
         assert_eq!(got.meta.aspect.0, "preference");
         assert_eq!(got.meta.trust.0, "human_approved");
-        assert_eq!(got.meta.scope_globs, vec!["src".to_string(), "tests".to_string()]);
+        assert_eq!(
+            got.meta.scope_globs,
+            vec!["src".to_string(), "tests".to_string()]
+        );
 
         // Reopening runs migrate again and must not re-apply the ALTERs.
         let s = SqliteStore::open(&path).expect("reopen again");
@@ -4992,13 +5642,19 @@ fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp()
         m.meta.scope.0 = "domain".to_string();
         m.meta.aspect.0 = "map".to_string();
         s.put(&m).expect("put with meta");
-        assert_eq!(s.get("a", "m1").expect("get").expect("some").meta.scope.0, "domain");
+        assert_eq!(
+            s.get("a", "m1").expect("get").expect("some").meta.scope.0,
+            "domain"
+        );
         // A second put is an upsert: dimensions are rewritten as part of the
         // row, so a new value replaces the old one rather than stacking.
         let mut m2 = mem("a", "m1");
         m2.meta.scope.0 = "session".to_string();
         s.put(&m2).expect("put again");
-        assert_eq!(s.get("a", "m1").expect("get").expect("some").meta.scope.0, "session");
+        assert_eq!(
+            s.get("a", "m1").expect("get").expect("some").meta.scope.0,
+            "session"
+        );
     }
 
     // The column list every read selects; pinning it stops a future read that
@@ -5006,7 +5662,15 @@ fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp()
     #[test]
     fn memory_columns_should_cover_every_w1_dimension() {
         let sql = MEMORY_COLUMNS;
-        for col in ["scope", "aspect", "lifecycle", "trust", "parent_id", "superseded_by", "scope_globs"] {
+        for col in [
+            "scope",
+            "aspect",
+            "lifecycle",
+            "trust",
+            "parent_id",
+            "superseded_by",
+            "scope_globs",
+        ] {
             assert!(sql.contains(col), "MEMORY_COLUMNS is missing {col}: {sql}");
         }
     }
@@ -5036,7 +5700,11 @@ fn expire_before_should_sweep_the_epoch_sentinel_and_keep_an_unparseable_stamp()
         let rows = s.list("a").expect("list");
         let mut scopes: Vec<&str> = rows.iter().map(|m| m.meta.scope.0.as_str()).collect();
         scopes.sort();
-        assert_ne!(scopes, ["local", "local", "local", "local"], "a column that cannot vary is dead");
+        assert_ne!(
+            scopes,
+            ["local", "local", "local", "local"],
+            "a column that cannot vary is dead"
+        );
         let mut aspects: Vec<&str> = rows.iter().map(|m| m.meta.aspect.0.as_str()).collect();
         aspects.sort();
         assert_ne!(aspects, ["episodic", "episodic", "episodic", "episodic"]);
@@ -5062,9 +5730,15 @@ mod probe_prefix {
     #[test]
     fn probe() {
         let s = SqliteStore::open_in_memory().unwrap();
-        s.put_bank(&Bank { id: "a".into(), name: "a".into() }).unwrap();
-        s.put(&mem("a", "m1", "the migration plan for postgres")).unwrap();
-        s.put(&mem("a", "m2", "we migrated the database last week")).unwrap();
+        s.put_bank(&Bank {
+            id: "a".into(),
+            name: "a".into(),
+        })
+        .unwrap();
+        s.put(&mem("a", "m1", "the migration plan for postgres"))
+            .unwrap();
+        s.put(&mem("a", "m2", "we migrated the database last week"))
+            .unwrap();
         s.put(&mem("a", "m3", "cafeteria menu noodles")).unwrap();
         let conn = s.read_conn().unwrap();
         println!("sqlite version: {}", rusqlite::version());
@@ -5087,14 +5761,21 @@ mod probe_prefix {
             let sql = "SELECT memories.id, bm25(memories_fts) AS rank FROM memories_fts JOIN memories ON memories.rowid = memories_fts.rowid WHERE memories_fts MATCH ? AND memories.bank_id = ? ORDER BY rank";
             let mut stmt = conn.prepare(sql).unwrap();
             let r: Result<Vec<(String, f64)>, rusqlite::Error> = (|| {
-                let rows = stmt.query_map(params![q, "a"], |row| Ok((row.get::<_,String>(0)?, row.get::<_,f64>(1)?)))?;
+                let rows = stmt.query_map(params![q, "a"], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+                })?;
                 let mut v = Vec::new();
-                for x in rows { v.push(x?); }
+                for x in rows {
+                    v.push(x?);
+                }
                 Ok(v)
             })();
             match r {
                 Ok(v) => {
-                    let t: Vec<String> = v.into_iter().map(|(i, sc)| format!("{i}={sc:.4}")).collect();
+                    let t: Vec<String> = v
+                        .into_iter()
+                        .map(|(i, sc)| format!("{i}={sc:.4}"))
+                        .collect();
                     println!("OK   {q:?} -> [{}]", t.join(", "));
                 }
                 Err(e) => println!("ERR  {q:?} -> {e}"),
@@ -5106,10 +5787,16 @@ mod probe_prefix {
         let sql = "SELECT memories.id FROM memories_fts JOIN memories ON memories.rowid = memories_fts.rowid WHERE memories_fts MATCH ? AND memories.bank_id = ?";
         let mut bad = Vec::new();
         for cp in 0x20u32..0x2FA1F {
-            let Some(c) = char::from_u32(cp) else { continue };
-            if !c.is_alphanumeric() { continue; }
+            let Some(c) = char::from_u32(cp) else {
+                continue;
+            };
+            if !c.is_alphanumeric() {
+                continue;
+            }
             let tok = format!("x{c}y");
-            if tok.chars().count() < 2 || tok.len() < 2 { continue; }
+            if tok.chars().count() < 2 || tok.len() < 2 {
+                continue;
+            }
             let q = format!("\"{tok}\"");
             let res: Result<(), rusqlite::Error> = (|| {
                 let mut stmt = conn.prepare(sql).unwrap();
@@ -5122,6 +5809,8 @@ mod probe_prefix {
             }
         }
         println!("ALNUM CHARS FTS5 REJECTS: {}", bad.len());
-        for b in bad.iter().take(40) { println!("  {} {:?} {}", b.0, b.1, b.2); }
+        for b in bad.iter().take(40) {
+            println!("  {} {:?} {}", b.0, b.1, b.2);
+        }
     }
 }

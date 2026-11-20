@@ -63,7 +63,13 @@ const DEFAULT_BANK_LINE: &str = "var DEFAULT_BANK = \"memory-wire\";";
 ///
 /// A `None` from [`plugin_rel`] means the host has no plugin surface, and that
 /// is a [`Outcome::Skipped`] rather than a failure: nothing to get wrong.
-pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>) -> Outcome {
+pub fn apply(
+    host: Host,
+    home: &Path,
+    uninstall: bool,
+    data_root: &Path,
+    bank: Option<&str>,
+) -> Outcome {
     let Some(rel) = plugin_rel(host) else {
         return Outcome::Skipped("no opencode plugin surface for this host".to_string());
     };
@@ -123,7 +129,9 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     // reads the bank the installed plugin was baked with and keeps it, so a
     // pinned machine does not silently split between the plugin's bank and
     // the hooks' bank.
-    let baked_pin = existing.as_deref().and_then(crate::connect::bank_from_extension);
+    let baked_pin = existing
+        .as_deref()
+        .and_then(crate::connect::bank_from_extension);
     let bank = bank.or(baked_pin.as_deref());
     let source = crate::connect_common::baked(SOURCE, DEFAULT_BANK_LINE, bank);
     if let Some(have) = existing.as_deref() {
@@ -211,7 +219,8 @@ const LEGACY_PLUGIN_REL: &str = ".config/opencode/plugins/MEMORY_WIRE_OPENCODE_P
 /// an opencode wired by an earlier build has only the MCP key, and reporting
 /// `wired=no` there would be a false negative.
 pub fn installed(host: Host, home: &Path) -> bool {
-    plugin_rel(host).is_some_and(|rel| crate::connect_common::is_ours(&home.join(rel), VERSION_MARKER))
+    plugin_rel(host)
+        .is_some_and(|rel| crate::connect_common::is_ours(&home.join(rel), VERSION_MARKER))
 }
 /// The version the marker carries, or `None` for a file that has none.
 ///
@@ -246,7 +255,10 @@ fn prune_empty_dirs(dir: &Path) {
         if std::fs::remove_dir(cursor).is_err() {
             return;
         }
-        if cursor.file_name().is_some_and(|n| n == std::ffi::OsStr::new("plugins")) {
+        if cursor
+            .file_name()
+            .is_some_and(|n| n == std::ffi::OsStr::new("plugins"))
+        {
             break;
         }
         match cursor.parent() {
@@ -268,7 +280,8 @@ mod tests {
     }
 
     fn read_plugin(home: &Path) -> String {
-        std::fs::read_to_string(home.join(plugin_rel(Host::Opencode).expect("rel"))).expect("plugin")
+        std::fs::read_to_string(home.join(plugin_rel(Host::Opencode).expect("rel")))
+            .expect("plugin")
     }
 
     #[test]
@@ -296,8 +309,17 @@ mod tests {
         // a directory's index rather than a flat file: the old shape is
         // skipped silently, which is the failure this layout exists to fix.
         let rel = plugin_rel(Host::Opencode).expect("rel");
-        assert_eq!(rel.file_name().and_then(|n| n.to_str()), Some("index.ts"), "{rel:?}");
-        assert_eq!(rel.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()), Some(MARKER));
+        assert_eq!(
+            rel.file_name().and_then(|n| n.to_str()),
+            Some("index.ts"),
+            "{rel:?}"
+        );
+        assert_eq!(
+            rel.parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str()),
+            Some(MARKER)
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -305,21 +327,43 @@ mod tests {
     fn an_upgrade_removes_the_pre_v2_flat_plugin() {
         let home = tmp_home("legacy");
         // What 1.x wrote: a flat file no 2.x loader reads.
-        std::fs::create_dir_all(home.join(LEGACY_PLUGIN_REL).parent().expect("parent")).expect("mkdir");
+        std::fs::create_dir_all(home.join(LEGACY_PLUGIN_REL).parent().expect("parent"))
+            .expect("mkdir");
         std::fs::write(home.join(LEGACY_PLUGIN_REL), "// memory-wire\n").expect("seed");
         let out = apply(Host::Opencode, &home, false, &home.join("data"), None);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
-        assert!(!home.join(LEGACY_PLUGIN_REL).exists(), "the stale flat file is gone");
+        assert!(
+            !home.join(LEGACY_PLUGIN_REL).exists(),
+            "the stale flat file is gone"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
     #[test]
     fn a_reinstall_with_the_same_bank_is_a_no_op_and_a_different_bank_is_a_replace() {
         let home = tmp_home("bank-idem");
-        apply(Host::Opencode, &home, false, &home.join("data"), Some("omp"));
-        let out = apply(Host::Opencode, &home, false, &home.join("data"), Some("omp"));
+        apply(
+            Host::Opencode,
+            &home,
+            false,
+            &home.join("data"),
+            Some("omp"),
+        );
+        let out = apply(
+            Host::Opencode,
+            &home,
+            false,
+            &home.join("data"),
+            Some("omp"),
+        );
         assert!(matches!(out, Outcome::Already { .. }), "{out:?}");
-        let out = apply(Host::Opencode, &home, false, &home.join("data"), Some("other"));
+        let out = apply(
+            Host::Opencode,
+            &home,
+            false,
+            &home.join("data"),
+            Some("other"),
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         assert!(read_plugin(&home).contains("var DEFAULT_BANK = \"other\";"));
         std::fs::remove_dir_all(&home).ok();
@@ -328,9 +372,18 @@ mod tests {
     #[test]
     fn the_connect_bank_is_baked_into_the_default_bank() {
         let home = tmp_home("bank-baked");
-        apply(Host::Opencode, &home, false, &home.join("data"), Some("omp"));
+        apply(
+            Host::Opencode,
+            &home,
+            false,
+            &home.join("data"),
+            Some("omp"),
+        );
         let file = read_plugin(&home);
-        assert!(file.contains("var DEFAULT_BANK = \"omp\";"), "bank baked: {file}");
+        assert!(
+            file.contains("var DEFAULT_BANK = \"omp\";"),
+            "bank baked: {file}"
+        );
         assert!(file.contains(VERSION_MARKER));
         // And a reconnect without a bank is only ever a re-render: the file
         // stays ours, and the version still parses.
@@ -346,7 +399,10 @@ mod tests {
         std::fs::write(&path, "// my own plugin\n").expect("foreign");
         let out = apply(Host::Opencode, &home, false, &home.join("data"), None);
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
-        assert_eq!(std::fs::read_to_string(&path).expect("read"), "// my own plugin\n");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read"),
+            "// my own plugin\n"
+        );
         // And uninstall is refused too, so neither direction can harm it.
         let out = apply(Host::Opencode, &home, true, &home.join("data"), None);
         assert!(matches!(out, Outcome::Failed(_)), "{out:?}");
@@ -363,7 +419,10 @@ mod tests {
         let out = apply(Host::Opencode, &home, true, &home.join("data"), None);
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         assert!(!path.exists(), "removed");
-        assert!(!path.parent().expect("parent").exists(), "empty plugins/ dir pruned");
+        assert!(
+            !path.parent().expect("parent").exists(),
+            "empty plugins/ dir pruned"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 

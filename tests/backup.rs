@@ -50,7 +50,11 @@ fn backup(store: &Path) {
     let said = sh(&dir, &format!("sqlite3 '{db}' \".backup '{db}.bak'\""));
     assert!(said.is_empty(), "unexpected output: {said}");
     let copy = PathBuf::from(format!("{db}.bak"));
-    assert!(copy.is_file(), ".backup produced no file at {}", copy.display());
+    assert!(
+        copy.is_file(),
+        ".backup produced no file at {}",
+        copy.display()
+    );
 }
 
 /// INSTALL step 2 of the recipe: the store is closed, the sidecars go, the copy
@@ -58,7 +62,10 @@ fn backup(store: &Path) {
 fn restore(store: &Path) {
     sh(
         store.parent().expect("store dir"),
-        &format!("rm -f '{db}' '{db}-wal' '{db}-shm' && cp '{db}.bak' '{db}'", db = q(store)),
+        &format!(
+            "rm -f '{db}' '{db}-wal' '{db}-shm' && cp '{db}.bak' '{db}'",
+            db = q(store)
+        ),
     );
 }
 
@@ -105,7 +112,10 @@ fn rows_err(store: &Path) -> String {
 fn service(store: &Path) -> MemoryService<SqliteStore> {
     let svc = MemoryService::new(SqliteStore::open(store).expect("open"));
     svc.store
-        .put_bank(&Bank { id: "demo".into(), name: "demo".into() })
+        .put_bank(&Bank {
+            id: "demo".into(),
+            name: "demo".into(),
+        })
         .expect("bank");
     svc
 }

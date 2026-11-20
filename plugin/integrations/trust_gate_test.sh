@@ -157,3 +157,21 @@ console.log('ok  ' + file + ' (export shape: ' + want + ')');
 JS
   done
 fi
+
+# The opencode prompt hook caches its recall block by query, and the cache write
+# has to be conditional on the recall having SUCCEEDED.
+#
+# A failed `post` yields a non-array, so the block is "" -- and writing that
+# under the query meant the next turn with the same prompt hit the
+# `query === injectedQuery` short-circuit and injected nothing. A transient
+# outage froze recall for that query until the user retyped something.
+#
+# This is the third bug this file catches that the Rust side cannot: the first
+# two were the export shape and the post-slice starvation. All three were found
+# by a review or a live probe, not by the code's own tests -- which is the
+# argument for checking the shipped text here rather than trusting a unit test
+# that exercises a copy of the logic.
+if command -v node > /dev/null 2>&1; then
+  node plugin/integrations/opencode-plugin/cache_source_check.mjs || exit 1
+  node plugin/integrations/opencode-plugin/cache_rule_test.mjs || exit 1
+fi

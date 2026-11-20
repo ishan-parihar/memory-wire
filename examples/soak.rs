@@ -45,7 +45,6 @@
 //! than lost. Every existing assertion, the PASS/FAIL exit behaviour, and the
 //! stdout format are unchanged.
 
-
 use std::fs;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
@@ -252,7 +251,14 @@ fn run_op(
             )?;
         }
         Op::Append => {
-            svc.retain_doc(bank, &content(client, i), None, &[], Some(APPEND_DOC), UpdateMode::Append)?;
+            svc.retain_doc(
+                bank,
+                &content(client, i),
+                None,
+                &[],
+                Some(APPEND_DOC),
+                UpdateMode::Append,
+            )?;
         }
     }
     Ok(())
@@ -265,7 +271,14 @@ fn conflict_probe(svc: &MemoryService<SqliteStore>, bank: &str) -> Option<u64> {
     let mut lat = Vec::with_capacity(PROBE as usize);
     for i in 0..PROBE {
         let t = Instant::now();
-        let r = svc.retain_doc(bank, &content(u64::MAX, i), None, &[], Some(APPEND_DOC), UpdateMode::Append);
+        let r = svc.retain_doc(
+            bank,
+            &content(u64::MAX, i),
+            None,
+            &[],
+            Some(APPEND_DOC),
+            UpdateMode::Append,
+        );
         lat.push(t.elapsed().as_micros() as u64);
         match r {
             Err(ApiError::Store(StoreError::DocumentConflict)) => {}
@@ -331,12 +344,13 @@ fn page_cache_bytes(audit: &Connection) -> Result<u64> {
 
 /// How many rows one document holds in one bank.
 fn doc_rows(audit: &Connection, bank: &str, doc: &str) -> Result<u64> {
-    audit.query_row(
-        "SELECT COUNT(*) FROM memories WHERE bank_id=?1 AND document_id=?2",
-        rusqlite::params![bank, doc],
-        |r| r.get(0),
-    )
-    .map_err(Into::into)
+    audit
+        .query_row(
+            "SELECT COUNT(*) FROM memories WHERE bank_id=?1 AND document_id=?2",
+            rusqlite::params![bank, doc],
+            |r| r.get(0),
+        )
+        .map_err(Into::into)
 }
 
 /// The database file, or one of the two sidecars that live beside it. The empty
@@ -350,9 +364,7 @@ fn sidecar(db: &Path, suffix: &str) -> PathBuf {
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == name)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
 
 fn main() -> Result<()> {
@@ -366,7 +378,8 @@ fn main() -> Result<()> {
     let seconds: u64 = flag(&args, "--seconds")
         .map(|v| v.parse().expect("--seconds T"))
         .unwrap_or(10);
-    let baseline_p99: Option<u64> = flag(&args, "--baseline-p99-us").map(|v| v.parse().expect("--baseline-p99-us N"));
+    let baseline_p99: Option<u64> =
+        flag(&args, "--baseline-p99-us").map(|v| v.parse().expect("--baseline-p99-us N"));
     let out_md = bench_common::out_md(&args, "SOAK.md");
     let explicit_db = flag(&args, "--db");
     let db = explicit_db
@@ -382,8 +395,9 @@ fn main() -> Result<()> {
         // Never destroy a path the caller named. The row arithmetic below starts
         // from a known seed, so a database already holding rows is refused rather
         // than counted into this run's totals.
-        let existing = Connection::open(&db)?
-            .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get::<_, u64>(0))?;
+        let existing =
+            Connection::open(&db)?
+                .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get::<_, u64>(0))?;
         if existing > 0 {
             bail!(
                 "--db {} already holds {existing} rows; point --db at a fresh scratch file",
@@ -400,13 +414,19 @@ fn main() -> Result<()> {
     // closed-form expectation rather than a race to guess at.
     let bank_ids: Vec<String> = (0..banks).map(|i| format!("soak-{i}")).collect();
     for bank in &bank_ids {
-        svc.store
-            .put_bank(&Bank {
-                id: bank.clone(),
-                name: bank.clone(),
-            })?;
+        svc.store.put_bank(&Bank {
+            id: bank.clone(),
+            name: bank.clone(),
+        })?;
         for doc in [REPLACE_DOC, APPEND_DOC] {
-            svc.retain_doc(bank, &format!("seeded {doc} in {bank}"), None, &[], Some(doc), UpdateMode::Replace)?;
+            svc.retain_doc(
+                bank,
+                &format!("seeded {doc} in {bank}"),
+                None,
+                &[],
+                Some(doc),
+                UpdateMode::Replace,
+            )?;
         }
     }
     let seeded = 2 * banks as u64;
@@ -512,7 +532,10 @@ fn main() -> Result<()> {
         "workload   {clients} clients x {banks} banks x {seconds}s · db {}",
         db.display()
     );
-    println!("           wall {:.1}s · {seeded} seeded document rows", wall.as_secs_f64());
+    println!(
+        "           wall {:.1}s · {seeded} seeded document rows",
+        wall.as_secs_f64()
+    );
     println!();
     println!("| op      | count  | p50 us | p95 us | p99 us |");
     println!("|---|---|---|---|---|");
@@ -523,19 +546,11 @@ fn main() -> Result<()> {
     for op in ALL {
         let mut lat = std::mem::take(&mut total.lat[op.idx()]);
         lat.sort_unstable();
-        let (n, p50, p95, p99) = (
-            lat.len(),
-            pct(&lat, 0.50),
-            pct(&lat, 0.95),
-            pct(&lat, 0.99),
-        );
+        let (n, p50, p95, p99) = (lat.len(), pct(&lat, 0.50), pct(&lat, 0.95), pct(&lat, 0.99));
         per_op.push((op.idx(), n, p50, p95, p99));
         println!("| {} | {n} | {p50} | {p95} | {p99} |", op.name());
     }
-    println!(
-        "| all     | {} | {p50} | {p95} | {p99} |",
-        all.len()
-    );
+    println!("| all     | {} | {p50} | {p95} | {p99} |", all.len());
     println!();
     println!(
         "statuses   ok {} · 409 {} · 5xx {} · other {}",
@@ -550,7 +565,12 @@ fn main() -> Result<()> {
     println!("           expected sum {expected_total} · db sum {db_total} · per bank exact {per_bank_exact}");
     println!("documents  replace-storm {replace_rows:?} · append-storm {append_rows:?}");
     let rss_line = match (rss_before, rss_after) {
-        (Some(b), Some(a)) => format!("{:.1} MB -> {:.1} MB (delta {:+.1} MB)", b as f64 / 1024.0, a as f64 / 1024.0, (a - b) as f64 / 1024.0),
+        (Some(b), Some(a)) => format!(
+            "{:.1} MB -> {:.1} MB (delta {:+.1} MB)",
+            b as f64 / 1024.0,
+            a as f64 / 1024.0,
+            (a - b) as f64 / 1024.0
+        ),
         _ => "unavailable on this platform".to_string(),
     };
     println!(

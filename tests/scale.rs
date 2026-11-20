@@ -30,14 +30,27 @@ fn scale_should_recall_across_categories_at_5k() {
 
     // 4 topical anchors × 25 instances = 100 signal memories.
     let anchors = [
-        ("auth jose middleware", "auth uses jose middleware for jwt verification"),
-        ("token bucket limiter", "rate limiting via token bucket algorithm"),
+        (
+            "auth jose middleware",
+            "auth uses jose middleware for jwt verification",
+        ),
+        (
+            "token bucket limiter",
+            "rate limiting via token bucket algorithm",
+        ),
         ("pgvector hnsw", "vector search uses pgvector hnsw index"),
-        ("retention ninety days", "memory retention policy keeps observations ninety days"),
+        (
+            "retention ninety days",
+            "memory retention policy keeps observations ninety days",
+        ),
     ];
     for (i, (_, text)) in anchors.iter().cycle().take(100).enumerate() {
-        svc.retain("scale", &format!("{text} instance {i}"), Some(format!("session-{}", i % 20)))
-            .expect("retain");
+        svc.retain(
+            "scale",
+            &format!("{text} instance {i}"),
+            Some(format!("session-{}", i % 20)),
+        )
+        .expect("retain");
     }
     // 4,900 distractors.
     for i in 0..4900 {
@@ -50,10 +63,22 @@ fn scale_should_recall_across_categories_at_5k() {
     }
 
     let cases = [
-        Case { query: "jose jwt verification", expect_substr: "jose" }, // single-fact
-        Case { query: "token bucket rate limiting", expect_substr: "bucket" }, // multi-hop terms
-        Case { query: "pgvector hnsw vector search", expect_substr: "pgvector" }, // technical
-        Case { query: "retention policy observations days", expect_substr: "retention" }, // temporal/policy
+        Case {
+            query: "jose jwt verification",
+            expect_substr: "jose",
+        }, // single-fact
+        Case {
+            query: "token bucket rate limiting",
+            expect_substr: "bucket",
+        }, // multi-hop terms
+        Case {
+            query: "pgvector hnsw vector search",
+            expect_substr: "pgvector",
+        }, // technical
+        Case {
+            query: "retention policy observations days",
+            expect_substr: "retention",
+        }, // temporal/policy
     ];
     let (mut r1, mut r5, mut lat) = (0usize, 0usize, Vec::new());
     for case in &cases {
@@ -61,10 +86,17 @@ fn scale_should_recall_across_categories_at_5k() {
             let t = Instant::now();
             let hits = svc.recall("scale", case.query, 2000).expect("recall");
             lat.push(t.elapsed());
-            if hits.first().is_some_and(|h| h.memory.content.contains(case.expect_substr)) {
+            if hits
+                .first()
+                .is_some_and(|h| h.memory.content.contains(case.expect_substr))
+            {
                 r1 += 1;
             }
-            if hits.iter().take(5).any(|h| h.memory.content.contains(case.expect_substr)) {
+            if hits
+                .iter()
+                .take(5)
+                .any(|h| h.memory.content.contains(case.expect_substr))
+            {
                 r5 += 1;
             }
         }

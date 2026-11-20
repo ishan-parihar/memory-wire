@@ -163,12 +163,18 @@ fn main() -> anyhow::Result<()> {
     for pq in &planned {
         let q = pq.query;
         let svc = &corpus.banks[&q.user_id];
-        let hits =
-            svc.recall_with_weights(&q.user_id, &q.query, corpus.budget_tokens, &FusionWeights::SHIPPED)?;
+        let hits = svc.recall_with_weights(
+            &q.user_id,
+            &q.query,
+            corpus.budget_tokens,
+            &FusionWeights::SHIPPED,
+        )?;
         let retrieved = dev::session_of(hits.into_iter().map(|h| h.memory.id));
         let row = dev::Row::new(q, &retrieved, &pq.gold);
         *n_eval_by_cat.entry(row.category.clone()).or_default() += 1;
-        *n_eval_by_gold.entry(gold_size_key(pq.gold.len())).or_default() += 1;
+        *n_eval_by_gold
+            .entry(gold_size_key(pq.gold.len()))
+            .or_default() += 1;
         r10_sum += row.r10;
         if row.all10 > 0.0 {
             n_all10 += 1;
@@ -250,10 +256,7 @@ fn main() -> anyhow::Result<()> {
     // A miss query whose fused list is the whole bank says no document was dropped
     // for matching no query token — the precondition for `absent` to be able to
     // occur. Counted, not asserted, so a corpus where lists do shrink reports it.
-    let list_covers_bank = misses
-        .iter()
-        .filter(|m| m.list_len == m.bank_size)
-        .count();
+    let list_covers_bank = misses.iter().filter(|m| m.list_len == m.bank_size).count();
 
     // The gate reading, derived from the counts rather than written by hand,
     // so a re-run on a changed corpus cannot leave a stale conclusion above
@@ -327,7 +330,11 @@ fn main() -> anyhow::Result<()> {
             h[2],
             h[3],
             h.iter().sum::<usize>(),
-            if d == 0 { "—".into() } else { pct(h.iter().sum(), d) },
+            if d == 0 {
+                "—".into()
+            } else {
+                pct(h.iter().sum(), d)
+            },
         )
     };
 
@@ -335,10 +342,7 @@ fn main() -> anyhow::Result<()> {
     md.push_str("# LoCoMo — where the missed gold sessions sit (H1.0)\n\n");
     md.push_str("## Provenance\n\n");
     md.push_str("| | |\n|---|---|\n");
-    md.push_str(&format!(
-        "| Commit under test | `{}` |\n",
-        dev::git_head()
-    ));
+    md.push_str(&format!("| Commit under test | `{}` |\n", dev::git_head()));
     md.push_str(&format!(
         "| Command | `cargo run --release --example locomo_ranks -- --docs {} --data {} --out-md {} \
          --out-json {}` |\n",
@@ -355,7 +359,11 @@ fn main() -> anyhow::Result<()> {
         "| Weights | `FusionWeights::SHIPPED`: bm25 1.0, overlap 0.25, agreement 0.0, k 60, \
          recency 0.0 — the shipped configuration, the `0.25` row of `eval/LOCOMO.md` |\n",
     );
-    md.push_str(&format!("| Load at start / at end | `{}` / `{}` |\n", load_start, dev::loadavg()));
+    md.push_str(&format!(
+        "| Load at start / at end | `{}` / `{}` |\n",
+        load_start,
+        dev::loadavg()
+    ));
     md.push_str(&format!(
         "| Dataset | LoCoMo (Snap Research) via the canonical distribution \
          `vectorize-io/agent-memory-benchmark`, `data/locomo/locomo10/`, pinned at upstream commit \
@@ -371,9 +379,11 @@ fn main() -> anyhow::Result<()> {
         planned.len(),
         corpus.skipped_no_gold
     ));
-    md.push_str("\nThe rank distribution is deterministic — same corpus, same index, same \
+    md.push_str(
+        "\nThe rank distribution is deterministic — same corpus, same index, same \
         weights, same ranks — and there is no latency column, so the load row is recorded for \
-        completeness only.\n\n");
+        completeness only.\n\n",
+    );
 
     md.push_str("## The question\n\n");
     md.push_str(&format!(
@@ -431,7 +441,11 @@ fn main() -> anyhow::Result<()> {
         let miss_n: usize = h.iter().sum();
         md.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} | {} | {} |\n",
-            if *size == 4 { "≥4".to_string() } else { size.to_string() },
+            if *size == 4 {
+                "≥4".to_string()
+            } else {
+                size.to_string()
+            },
             evaluated,
             miss_n,
             pct(miss_n, evaluated),
@@ -456,18 +470,17 @@ fn main() -> anyhow::Result<()> {
     ));
     md.push_str(&format!(
         "| rank | {} | {} | {} | {} | {} |\n",
-        hist_golds[0],
-        hist_golds[1],
-        hist_golds[2],
-        hist_golds[3],
-        missed_golds
+        hist_golds[0], hist_golds[1], hist_golds[2], hist_golds[3], missed_golds
     ));
     md.push('\n');
 
     md.push_str("## Context, so a rank is read against the right denominators\n\n");
     md.push_str(&format!(
         "- Bank sizes: {}–{} documents, median {:.1} across {} banks.\n",
-        bank_min, bank_max, bank_median, corpus.banks.len()
+        bank_min,
+        bank_max,
+        bank_median,
+        corpus.banks.len()
     ));
     md.push_str(&format!(
         "- Fused-list length on the {} miss queries: min {}, median {:.1}, max {} — equal to the \

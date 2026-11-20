@@ -132,8 +132,9 @@ fn main() -> Result<()> {
             // `integrity_check` is the thorough one. Both are reported because
             // they are different work, and the difference is the interesting part.
             let t = Instant::now();
-            let verdict: String = Connection::open(&db)?
-                .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))?;
+            let verdict: String =
+                Connection::open(&db)?
+                    .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))?;
             checks.push((t.elapsed().as_secs_f64() * 1000.0, verdict));
 
             let svc = MemoryService::new(store);

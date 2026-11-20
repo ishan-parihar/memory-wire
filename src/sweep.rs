@@ -103,11 +103,17 @@ pub fn run_at<S: Store>(
     let mut report = Report::default();
     for (bank, ttl_days) in store.bank_ttls()? {
         let Some(days) = ttl_days else {
-            report.skipped.push(Skip { bank, reason: NO_TTL });
+            report.skipped.push(Skip {
+                bank,
+                reason: NO_TTL,
+            });
             continue;
         };
         let Some(cutoff) = cutoff(days, now) else {
-            report.skipped.push(Skip { bank, reason: TTL_OUT_OF_RANGE });
+            report.skipped.push(Skip {
+                bank,
+                reason: TTL_OUT_OF_RANGE,
+            });
             continue;
         };
         let removed = store.expire_before(&bank, &cutoff, dry_run)?;
@@ -186,9 +192,27 @@ mod tests {
         let s = store();
         bank(&s, "aging", Some("30"));
         bank(&s, "permanent", None);
-        aged(&s, "aging", "aging-stale", "jose middleware note", "2026-08-01T00:00:00.000Z");
-        aged(&s, "aging", "aging-fresh", "jose deploy note", "2026-09-20T00:00:00.000Z");
-        aged(&s, "permanent", "perm-stale", "jose middleware note", "2020-01-01T00:00:00.000Z");
+        aged(
+            &s,
+            "aging",
+            "aging-stale",
+            "jose middleware note",
+            "2026-08-01T00:00:00.000Z",
+        );
+        aged(
+            &s,
+            "aging",
+            "aging-fresh",
+            "jose deploy note",
+            "2026-09-20T00:00:00.000Z",
+        );
+        aged(
+            &s,
+            "permanent",
+            "perm-stale",
+            "jose middleware note",
+            "2020-01-01T00:00:00.000Z",
+        );
 
         let report = run_at(&s, false, now()).expect("sweep");
         assert_eq!(report.total, 1, "{report:?}");
@@ -221,8 +245,15 @@ mod tests {
 
         let report = run_at(&s, true, now()).expect("dry run");
         assert_eq!(report.total, 2, "{report:?}");
-        assert_eq!(s.list("aging").expect("list").len(), 3, "a dry run must delete nothing");
-        assert_eq!(s.keyword_search("aging", "jose", 10).expect("search").len(), 3);
+        assert_eq!(
+            s.list("aging").expect("list").len(),
+            3,
+            "a dry run must delete nothing"
+        );
+        assert_eq!(
+            s.keyword_search("aging", "jose", 10).expect("search").len(),
+            3
+        );
         assert!(
             report.render(true).contains("would delete 2"),
             "{}",
@@ -245,7 +276,13 @@ mod tests {
         assert_ne!(just_before, cutoff);
         aged(&s, "edge", "on", "jose exactly on the boundary", &cutoff);
         aged(&s, "edge", "before", "jose a moment before it", just_before);
-        aged(&s, "edge", "after", "jose a moment after it", "2026-08-28T12:00:00.001Z");
+        aged(
+            &s,
+            "edge",
+            "after",
+            "jose a moment after it",
+            "2026-08-28T12:00:00.001Z",
+        );
 
         assert_eq!(run_at(&s, false, now()).expect("sweep").total, 1);
         let left: Vec<String> = s

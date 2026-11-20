@@ -131,10 +131,7 @@ mod tests {
         let got = baked(src, "var DEFAULT_BANK = \"memory-wire\";", Some("prod"));
         assert!(got.contains("var DEFAULT_BANK = \"prod\";"), "{got}");
         assert!(got.contains("// head") && got.contains("tail();"));
-        assert_eq!(
-            baked(src, "var DEFAULT_BANK = \"memory-wire\";", None),
-            src
-        );
+        assert_eq!(baked(src, "var DEFAULT_BANK = \"memory-wire\";", None), src);
         assert_eq!(
             baked(src, "var DEFAULT_BANK = \"memory-wire\";", Some(" ")),
             src

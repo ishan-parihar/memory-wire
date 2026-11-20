@@ -232,8 +232,14 @@ mod tests {
 
     #[test]
     fn non_gnu_linux_is_rejected_as_abi() {
-        let e = allowed("aarch64-unknown-linux-musl", "aarch64-unknown-linux-musl", "linux", "musl", "aarch64")
-            .expect_err("musl has no host libstdc++ to link");
+        let e = allowed(
+            "aarch64-unknown-linux-musl",
+            "aarch64-unknown-linux-musl",
+            "linux",
+            "musl",
+            "aarch64",
+        )
+        .expect_err("musl has no host libstdc++ to link");
         assert!(e.contains("glibc-ABI"), "{e}");
         // The arch check must not be what rejected it: musl fails on ABI first.
         assert!(!e.contains("not the host triple"), "{e}");
@@ -241,8 +247,14 @@ mod tests {
 
     #[test]
     fn non_linux_is_rejected_as_abi() {
-        let e = allowed("aarch64-apple-darwin", "aarch64-apple-darwin", "macos", "", "aarch64")
-            .expect_err("macOS has no libstdc++ at all");
+        let e = allowed(
+            "aarch64-apple-darwin",
+            "aarch64-apple-darwin",
+            "macos",
+            "",
+            "aarch64",
+        )
+        .expect_err("macOS has no libstdc++ at all");
         assert!(e.contains("glibc-ABI"), "{e}");
     }
 

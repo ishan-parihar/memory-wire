@@ -157,7 +157,11 @@ finding    bank `{}` holds no memories; `{}` holds {n}.\n  \
                 if id == &self.bank {
                     shown_resolved = true;
                 }
-                let here = if id == &self.bank { "  <- resolved here" } else { "" };
+                let here = if id == &self.bank {
+                    "  <- resolved here"
+                } else {
+                    ""
+                };
                 out.push_str(&format!("\n    {n:>7}  {id}{here}"));
             }
             if !shown_resolved {
@@ -359,7 +363,9 @@ pub fn probe_server(endpoint: &str) -> ServerState {
 /// dead pid, or a platform without `/proc/<pid>/exe`.
 fn stale_serve_at(state: &Path, mine: &Path) -> Option<String> {
     let text = std::fs::read_to_string(state).ok()?;
-    let pid = serde_json::from_str::<crate::daemon::ServeState>(&text).ok()?.pid;
+    let pid = serde_json::from_str::<crate::daemon::ServeState>(&text)
+        .ok()?
+        .pid;
     let running = exe_of(pid)?;
     if running == mine.to_string_lossy() {
         return None;
@@ -401,10 +407,9 @@ fn bank_memory_counts(store: &Path) -> Vec<(String, i64)> {
     if !store.exists() {
         return Vec::new();
     }
-    let Ok(conn) = rusqlite::Connection::open_with_flags(
-        store,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    ) else {
+    let Ok(conn) =
+        rusqlite::Connection::open_with_flags(store, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
         return Vec::new();
     };
     let Ok(mut stmt) = conn.prepare(
@@ -476,9 +481,17 @@ fn harness_banks_at(home: &Path) -> Vec<(&'static str, String)> {
     }
     for (surface, rel, master) in [
         ("omp mcp entry", ".omp/agent/mcp.json", "mcpServers"),
-        ("opencode mcp entry", ".config/opencode/opencode.json", "mcp"),
+        (
+            "opencode mcp entry",
+            ".config/opencode/opencode.json",
+            "mcp",
+        ),
         ("claude-code mcp entry", ".claude.json", "mcpServers"),
-        ("copilot-cli mcp entry", ".copilot/mcp-config.json", "mcpServers"),
+        (
+            "copilot-cli mcp entry",
+            ".copilot/mcp-config.json",
+            "mcpServers",
+        ),
     ] {
         if let Some(bank) = mcp_bank_at(&home.join(rel), master) {
             out.push((surface, bank));
@@ -534,7 +547,9 @@ fn store_bytes(store: &Path) -> u64 {
             if let Some(suffix) = suffix {
                 name.push(format!("-{suffix}"));
             }
-            std::fs::metadata(PathBuf::from(name)).map(|m| m.len()).unwrap_or(0)
+            std::fs::metadata(PathBuf::from(name))
+                .map(|m| m.len())
+                .unwrap_or(0)
         })
         .sum()
 }
@@ -550,11 +565,9 @@ fn counts(store: &Path) -> Option<Result<(i64, i64), String>> {
     if !store.exists() {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(
-        store,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(store, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
     if let Err(why) = integrity(&conn) {
         return Some(Err(why));
     }
@@ -628,7 +641,10 @@ mod tests {
     use memory_wire::store::{SqliteStore, Store};
 
     fn bank(id: &str) -> Bank {
-        Bank { id: id.into(), name: id.into() }
+        Bank {
+            id: id.into(),
+            name: id.into(),
+        }
     }
 
     /// A loopback server that answers one request with a fixed status and body —
@@ -638,12 +654,17 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("addr");
         std::thread::spawn(move || {
-            let Ok((mut sock, _)) = listener.accept() else { return };
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
             let mut raw = [0u8; 1024];
             let _ = sock.read(&mut raw);
             let _ = sock.write_all(
-                format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n{body}", body.len())
-                    .as_bytes(),
+                format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
             );
         });
         format!("http://{addr}")
@@ -675,7 +696,10 @@ mod tests {
     #[test]
     fn a_state_file_naming_a_foreign_process_reports_the_stale_serve() {
         let dir = tmp_home("stale-serve");
-        let mut child = std::process::Command::new("sleep").arg("30").spawn().expect("sleep");
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep");
         let state = dir.join("serve.json");
         std::fs::write(
             &state,
@@ -686,7 +710,10 @@ mod tests {
         let mine = std::env::current_exe().expect("exe");
         let finding = stale_serve_at(&state, &mine).expect("a foreign binary must be reported");
         assert!(finding.contains("older binary"), "{finding}");
-        assert!(finding.contains("daemon stop"), "must name the restart: {finding}");
+        assert!(
+            finding.contains("daemon stop"),
+            "must name the restart: {finding}"
+        );
         let _ = child.kill();
         let _ = child.wait();
         std::fs::remove_dir_all(&dir).ok();
@@ -725,7 +752,11 @@ mod tests {
                 .to_string(),
         )
         .expect("write state");
-        assert_eq!(stale_serve_at(&state, &copy), None, "same bytes, different path");
+        assert_eq!(
+            stale_serve_at(&state, &copy),
+            None,
+            "same bytes, different path"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -842,7 +873,10 @@ mod tests {
             ServerState::Down("unexpected health response".to_string()),
             "{r:?}"
         );
-        assert!(r.strict_failure().unwrap().contains("unexpected health response"));
+        assert!(r
+            .strict_failure()
+            .unwrap()
+            .contains("unexpected health response"));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -863,7 +897,12 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("tmp");
         let store = dir.join("memory.db");
         let sidecars = ["memory.db", "memory.db-wal", "memory.db-shm"];
-        let present = |names: &[&str; 3]| names.iter().map(|n| dir.join(n).exists()).collect::<Vec<_>>();
+        let present = |names: &[&str; 3]| {
+            names
+                .iter()
+                .map(|n| dir.join(n).exists())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(store_bytes(&store), 0, "a missing store measures zero");
 
         let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
@@ -878,7 +917,11 @@ mod tests {
             .sum();
         assert!(total >= files, "{total} vs {files} across {sidecars:?}");
         assert!(total > 0, "{total}");
-        assert_eq!(before, present(&sidecars), "measuring must not touch the file set");
+        assert_eq!(
+            before,
+            present(&sidecars),
+            "measuring must not touch the file set"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -893,7 +936,8 @@ mod tests {
             svc.store.put_bank(&bank(id)).expect("bank");
         }
         svc.retain("proj", "auth uses jose", None).expect("retain");
-        svc.retain("proj", "rate limiting via token bucket", None).expect("retain");
+        svc.retain("proj", "rate limiting via token bucket", None)
+            .expect("retain");
 
         let r = collect_at("http://127.0.0.1:1", "proj", &store);
         assert_eq!(r.banks, Some(2));
@@ -949,8 +993,12 @@ mod tests {
             let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
             svc.store.put_bank(&bank("demo")).expect("bank");
             for n in 0..40 {
-                svc.retain("demo", &format!("memory number {n} of the corrupt fixture"), None)
-                    .expect("retain");
+                svc.retain(
+                    "demo",
+                    &format!("memory number {n} of the corrupt fixture"),
+                    None,
+                )
+                .expect("retain");
             }
         } // closed, so the WAL is folded and the file is a single file to damage
 
@@ -967,9 +1015,15 @@ mod tests {
             panic!("a damaged page must not read as healthy: {r:?}");
         };
         assert!(why.contains("integrity_check"), "{why}");
-        let strict = r.strict_failure().expect("a damaged store must fail --strict");
+        let strict = r
+            .strict_failure()
+            .expect("a damaged store must fail --strict");
         assert!(strict.contains("store unreadable"), "{strict}");
-        assert!(r.render().contains("unreadable: integrity_check"), "{}", r.render());
+        assert!(
+            r.render().contains("unreadable: integrity_check"),
+            "{}",
+            r.render()
+        );
         // Counts off a store nobody should trust are withheld, not reported.
         assert_eq!(r.banks, None);
         assert_eq!(r.memories, None);
@@ -1032,10 +1086,7 @@ server     up"
             server: ServerState::Up,
             legacy_bank: None,
             elsewhere: Some(("full-one".to_string(), 40)),
-            banks_by_memories: vec![
-                ("full-one".to_string(), 40),
-                ("other".to_string(), 2),
-            ],
+            banks_by_memories: vec![("full-one".to_string(), 40), ("other".to_string(), 2)],
             harness_banks: Vec::new(),
             stale_serve: None,
         };
@@ -1092,10 +1143,7 @@ server     up"
         // Read-only: the warning is a report, not a repair. Both banks stand.
         let after = MemoryService::new(SqliteStore::open(&store).expect("open"));
         assert_eq!(
-            after
-                .bank_stats("derived-name")
-                .expect("new bank")
-                .memories,
+            after.bank_stats("derived-name").expect("new bank").memories,
             0,
             "doctor must not move memories"
         );
@@ -1130,7 +1178,8 @@ server     up"
     /// happened.
     #[test]
     fn a_legacy_bank_row_with_no_memories_should_stay_quiet() {
-        let dir = std::env::temp_dir().join(format!("mw-doctor-emptylegacy-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("mw-doctor-emptylegacy-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).expect("tmp");
         let store = dir.join("memory.db");
@@ -1157,7 +1206,8 @@ server     up"
         let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
         svc.store.put_bank(&bank("omp")).expect("bank");
         for i in 0..3 {
-            svc.retain("omp", &format!("corpus memory {i}"), None).expect("retain");
+            svc.retain("omp", &format!("corpus memory {i}"), None)
+                .expect("retain");
         }
 
         let r = collect_at("http://127.0.0.1:1", "ishan-parihar-memory-wire", &store);
@@ -1172,7 +1222,10 @@ server     up"
         // Read-only, like every other finding here.
         let after = MemoryService::new(SqliteStore::open(&store).expect("open"));
         assert_eq!(
-            after.bank_stats("ishan-parihar-memory-wire").expect("new bank").memories,
+            after
+                .bank_stats("ishan-parihar-memory-wire")
+                .expect("new bank")
+                .memories,
             0,
             "doctor must not move memories"
         );
@@ -1189,8 +1242,10 @@ server     up"
         std::fs::create_dir_all(&dir).expect("tmp");
         let store = dir.join("memory.db");
         let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
-        svc.retain("this-repo", "auth uses jose", None).expect("retain");
-        svc.retain("other-repo", "something else entirely", None).expect("retain");
+        svc.retain("this-repo", "auth uses jose", None)
+            .expect("retain");
+        svc.retain("other-repo", "something else entirely", None)
+            .expect("retain");
 
         let r = collect_at("http://127.0.0.1:1", "this-repo", &store);
         assert_eq!(r.elsewhere, None, "{r:?}");

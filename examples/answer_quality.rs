@@ -128,11 +128,13 @@ struct Entry {
 
 /// A LongMemEval date (`2023/05/20 (Sat) 02:21`) in the store's `created_at` shape.
 fn lme_date(raw: &str) -> Result<String> {
-    Ok(chrono::NaiveDateTime::parse_from_str(raw, "%Y/%m/%d (%a) %H:%M")
-        .with_context(|| format!("unparseable LongMemEval date {raw:?}"))?
-        .and_utc()
-        .format(CREATED_AT_FORMAT)
-        .to_string())
+    Ok(
+        chrono::NaiveDateTime::parse_from_str(raw, "%Y/%m/%d (%a) %H:%M")
+            .with_context(|| format!("unparseable LongMemEval date {raw:?}"))?
+            .and_utc()
+            .format(CREATED_AT_FORMAT)
+            .to_string(),
+    )
 }
 
 // ---------------------------------------------------------------- LLM plumbing
@@ -1087,7 +1089,10 @@ mod tests {
     fn closed_book_prompt_is_the_same_prompt_without_memories() {
         let book = answer_prompt("q?", "d", &[]);
         let served = answer_prompt("q?", "d", &["a".to_string(), "b".to_string()]);
-        assert!(book.contains("Question (asked on d): q?"), "both arms are dated");
+        assert!(
+            book.contains("Question (asked on d): q?"),
+            "both arms are dated"
+        );
         assert!(book.contains("no memories were retrieved"));
         assert!(!book.contains("[memory 0]"));
         assert!(served.contains("[memory 0]\na"));
@@ -1102,7 +1107,10 @@ mod tests {
     /// stamp a `format: "full"` recall would serve.
     #[test]
     fn lme_dates_take_the_stores_shape() {
-        assert_eq!(lme_date("2023/05/20 (Sat) 02:21").expect("date"), "2023-05-20T02:21:00.000Z");
+        assert_eq!(
+            lme_date("2023/05/20 (Sat) 02:21").expect("date"),
+            "2023-05-20T02:21:00.000Z"
+        );
         assert!(lme_date("May 20").is_err());
     }
 

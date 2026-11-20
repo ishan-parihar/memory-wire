@@ -86,12 +86,22 @@ fn dcg(rels: &[bool], k: usize) -> f64 {
     rels.iter()
         .take(k)
         .enumerate()
-        .map(|(i, r)| if *r { 1.0 / ((i + 2) as f64).log2() } else { 0.0 })
+        .map(|(i, r)| {
+            if *r {
+                1.0 / ((i + 2) as f64).log2()
+            } else {
+                0.0
+            }
+        })
         .sum()
 }
 
 fn ndcg(retrieved: &[String], gold: &HashSet<String>, k: usize) -> f64 {
-    let rels: Vec<bool> = retrieved.iter().take(k).map(|id| gold.contains(id)).collect();
+    let rels: Vec<bool> = retrieved
+        .iter()
+        .take(k)
+        .map(|id| gold.contains(id))
+        .collect();
     let ideal = dcg(&vec![true; gold.len().min(k)], k);
     if ideal == 0.0 {
         return 0.0;
@@ -173,7 +183,9 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let data = bench_common::arg(&args, "--data", "eval/data/longmemeval_s_cleaned.json");
     let n: usize = bench_common::arg(&args, "--n", "0").parse().unwrap_or(0);
-    let seed: u64 = bench_common::arg(&args, "--seed", "42").parse().unwrap_or(42);
+    let seed: u64 = bench_common::arg(&args, "--seed", "42")
+        .parse()
+        .unwrap_or(42);
     // Both artifacts are temp-defaulted, unlike `longmemeval`'s committed
     // `results.json`: a grid's per-question dump is not the reviewable record
     // for the suite, and two harnesses defaulting to the same committed path is
@@ -183,7 +195,10 @@ fn main() -> anyhow::Result<()> {
         Some(p) => p,
         None => {
             let p = std::env::temp_dir().join("sweep_fusion.json");
-            eprintln!("no --out-json given: writing per-question data to {}", p.display());
+            eprintln!(
+                "no --out-json given: writing per-question data to {}",
+                p.display()
+            );
             p.display().to_string()
         }
     };
@@ -198,7 +213,10 @@ fn main() -> anyhow::Result<()> {
     // Row 0 is the control, so the diff baseline is index 0 and always exists.
     grid.push((
         CONTROL_LABEL.to_string(),
-        FusionWeights { overlap: 1.0, ..FusionWeights::SHIPPED },
+        FusionWeights {
+            overlap: 1.0,
+            ..FusionWeights::SHIPPED
+        },
     ));
     grid.push((SHIPPED_LABEL.to_string(), FusionWeights::SHIPPED));
     // A: the overlap weight, BM25 pinned at 1.0 and k at 60.
@@ -206,7 +224,10 @@ fn main() -> anyhow::Result<()> {
     while w <= 2.0 + 1e-9 {
         grid.push((
             format!("A: overlap={w:.2}"),
-            FusionWeights { overlap: w, ..FusionWeights::SHIPPED },
+            FusionWeights {
+                overlap: w,
+                ..FusionWeights::SHIPPED
+            },
         ));
         w += 0.25;
     }
@@ -218,7 +239,11 @@ fn main() -> anyhow::Result<()> {
     for k in [10.0, 20.0, 120.0] {
         grid.push((
             format!("B: equal weight, k={k:.0}"),
-            FusionWeights { overlap: 1.0, k, ..FusionWeights::SHIPPED },
+            FusionWeights {
+                overlap: 1.0,
+                k,
+                ..FusionWeights::SHIPPED
+            },
         ));
     }
     // C: the cross-stream agreement bonus, as its own section rather than folded
@@ -229,7 +254,10 @@ fn main() -> anyhow::Result<()> {
     for a in [0.05, 0.10, 0.25, 0.50] {
         grid.push((
             format!("C: shipped + agreement={a:.2}"),
-            FusionWeights { agreement: a, ..FusionWeights::SHIPPED },
+            FusionWeights {
+                agreement: a,
+                ..FusionWeights::SHIPPED
+            },
         ));
     }
     // D: diagnostics — one stream at a time, which A's endpoints already cover
@@ -237,11 +265,17 @@ fn main() -> anyhow::Result<()> {
     // all, and are reported as such rather than as candidates.
     grid.push((
         "D: bm25 only".to_string(),
-        FusionWeights { overlap: 0.0, ..FusionWeights::SHIPPED },
+        FusionWeights {
+            overlap: 0.0,
+            ..FusionWeights::SHIPPED
+        },
     ));
     grid.push((
         "D: overlap only".to_string(),
-        FusionWeights { bm25: 0.0, ..FusionWeights::SHIPPED },
+        FusionWeights {
+            bm25: 0.0,
+            ..FusionWeights::SHIPPED
+        },
     ));
     // E: the interaction. B swept k at *equal* weights, which is a configuration
     // this sweep has already shown to be the wrong place to ask the question —
@@ -257,7 +291,11 @@ fn main() -> anyhow::Result<()> {
         for k in ks {
             grid.push((
                 format!("E: overlap={ov:.2}, k={k:.0}"),
-                FusionWeights { overlap: ov, k, ..FusionWeights::SHIPPED },
+                FusionWeights {
+                    overlap: ov,
+                    k,
+                    ..FusionWeights::SHIPPED
+                },
             ));
         }
     }
@@ -280,16 +318,26 @@ fn main() -> anyhow::Result<()> {
     for (i, (label, _)) in grid.iter().enumerate() {
         per_config.push((label.clone(), grid[i].1, Vec::with_capacity(order.len())));
     }
-    let mut per_type: Vec<BTreeMap<String, Agg>> = (0..grid.len()).map(|_| BTreeMap::new()).collect();
+    let mut per_type: Vec<BTreeMap<String, Agg>> =
+        (0..grid.len()).map(|_| BTreeMap::new()).collect();
     let index_start = Instant::now();
 
     for (qi, &ei) in order.iter().enumerate() {
         let e = &entries[ei];
         let store = SqliteStore::open_in_memory()?;
-        store.put_bank(&Bank { id: "eval".into(), name: "eval".into() })?;
-        for (sid, turns) in e.haystack_session_ids.iter().zip(e.haystack_sessions.iter()) {
-            let text: Vec<String> =
-                turns.iter().map(|t| format!("{}: {}", t.role, t.content)).collect();
+        store.put_bank(&Bank {
+            id: "eval".into(),
+            name: "eval".into(),
+        })?;
+        for (sid, turns) in e
+            .haystack_session_ids
+            .iter()
+            .zip(e.haystack_sessions.iter())
+        {
+            let text: Vec<String> = turns
+                .iter()
+                .map(|t| format!("{}: {}", t.role, t.content))
+                .collect();
             store.put(&Memory {
                 id: sid.clone(),
                 bank_id: "eval".into(),
@@ -465,11 +513,13 @@ fn main() -> anyhow::Result<()> {
     md.push_str(&matrix("R@5", Agg::r5));
     md.push_str(&matrix("R@10", Agg::r10));
 
-    md.push_str("## Per-question data\n\n\
+    md.push_str(
+        "## Per-question data\n\n\
         `--out-json` carries `question_id`, `question_type` and all five retrieval \
         values for every question under every configuration, so any cell above can \
         be re-derived. The `R@5 up/down/same` column in the aggregate table counts \
-        individual questions against the control.\n\n");
+        individual questions against the control.\n\n",
+    );
     md.push_str(&format!(
         "Wrote `{out_md}` and `{out_json}`.\n\n{}",
         bench_common::provenance()
@@ -518,7 +568,8 @@ fn main() -> anyhow::Result<()> {
         b5,
         bn
     );
-    let any_pass = (1..grid.len()).any(|i| totals[i].r5() > b5 && totals[i].ndcg10() > bn && totals[i].r20() >= b20);
+    let any_pass = (1..grid.len())
+        .any(|i| totals[i].r5() > b5 && totals[i].ndcg10() > bn && totals[i].r20() >= b20);
     if !any_pass {
         println!("NO CONFIGURATION PASSES THE GATE — equal-weight k=60 stands.");
     }

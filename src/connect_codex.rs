@@ -30,8 +30,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::connect_common::{mcp_url, preserve_comment};
 use crate::connect::{backup, timestamp, Host, Outcome, MARKER};
+use crate::connect_common::{mcp_url, preserve_comment};
 use crate::paths;
 
 /// `~/.codex/config.toml`, home-relative. Codex reads hooks from `hooks.json`
@@ -96,9 +96,15 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
                 "no memory-wire MCP entry in config.toml".to_string()
             });
         }
-        if let Err(e) =
-            write_url(&raw, &path, Url::Remove { restore: previous.clone() }, &mut events, bank)
-        {
+        if let Err(e) = write_url(
+            &raw,
+            &path,
+            Url::Remove {
+                restore: previous.clone(),
+            },
+            &mut events,
+            bank,
+        ) {
             return Outcome::Failed(e);
         }
         if events.is_empty() {
@@ -108,7 +114,11 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
         if previous.is_some() {
             notes.push("config.toml: the previous url is back in place".to_string());
         }
-        return Outcome::Unwired { backup: saved, events, notes };
+        return Outcome::Unwired {
+            backup: saved,
+            events,
+            notes,
+        };
     }
 
     let url = mcp_url(bank);
@@ -130,9 +140,14 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
         return Outcome::Failed(e);
     }
     if previous.is_some() {
-        notes.push("config.toml: the previous url is recorded; --uninstall restores it".to_string());
+        notes
+            .push("config.toml: the previous url is recorded; --uninstall restores it".to_string());
     }
-    Outcome::Wired { backup: saved, events, notes }
+    Outcome::Wired {
+        backup: saved,
+        events,
+        notes,
+    }
 }
 /// Whether the entry in the file is still the one we installed.
 ///
@@ -203,7 +218,10 @@ fn find_entry(text: &str) -> Result<Option<Entry>, String> {
     let lines: Vec<&str> = text.lines().collect();
     for (i, line) in lines.iter().enumerate() {
         if line.matches('"').count() % 2 == 1 {
-            return Err(format!("line {} has an unterminated string; left untouched", i + 1));
+            return Err(format!(
+                "line {} has an unterminated string; left untouched",
+                i + 1
+            ));
         }
         let t = line.trim();
         if t.starts_with('[') && !t.ends_with(']') {
@@ -222,14 +240,18 @@ fn find_entry(text: &str) -> Result<Option<Entry>, String> {
         .map(|(i, _)| i)
         .collect();
     if heads.len() > 1 {
-        return Err(format!("more than one `{entry_header}` table; left untouched"));
+        return Err(format!(
+            "more than one `{entry_header}` table; left untouched"
+        ));
     }
     // `mcp_servers` as a scalar has no table to extend.
-    if let Some(i) = lines
-        .iter()
-        .position(|l| l.trim_start().starts_with("mcp_servers") && l.contains(" = ") && !l.contains('['))
-    {
-        return Err(format!("`mcp_servers` on line {} is not a table; left untouched", i + 1));
+    if let Some(i) = lines.iter().position(|l| {
+        l.trim_start().starts_with("mcp_servers") && l.contains(" = ") && !l.contains('[')
+    }) {
+        return Err(format!(
+            "`mcp_servers` on line {} is not a table; left untouched",
+            i + 1
+        ));
     }
 
     let Some(head) = heads.pop() else {
@@ -270,7 +292,9 @@ fn find_entry(text: &str) -> Result<Option<Entry>, String> {
             continue;
         }
         if url.is_some() {
-            return Err(format!("more than one `url` in {entry_header}; left untouched"));
+            return Err(format!(
+                "more than one `url` in {entry_header}; left untouched"
+            ));
         }
         // Only a plain double-quoted scalar is a shape we may replace. A bare
         // token, a single-quoted string or a block scalar would come back as a
@@ -280,7 +304,10 @@ fn find_entry(text: &str) -> Result<Option<Entry>, String> {
             .strip_prefix('"')
             .and_then(|v| v.strip_suffix('"'))
             .ok_or_else(|| {
-                format!("`url` on line {} is not a plain quoted string; left untouched", i + 1)
+                format!(
+                    "`url` on line {} is not a plain quoted string; left untouched",
+                    i + 1
+                )
             })?;
         url = Some((i - head - 1, inner.to_string()));
     }
@@ -295,7 +322,9 @@ fn find_entry(text: &str) -> Result<Option<Entry>, String> {
 /// a directory of someone else's configuration is not ours to empty.
 fn set_url(text: &str, op: &Url, bank: Option<&str>) -> Result<String, String> {
     let Some(entry) = find_entry(text)? else {
-        let Url::Set(v) = op else { return Ok(text.to_string()) };
+        let Url::Set(v) = op else {
+            return Ok(text.to_string());
+        };
         let mut out = text.to_string();
         if !out.is_empty() {
             if !out.ends_with('\n') {
@@ -316,7 +345,12 @@ fn set_url(text: &str, op: &Url, bank: Option<&str>) -> Result<String, String> {
         (Some(i), Url::Set(v)) => {
             body[i] = preserve_comment(&body[i], &format!("url = \"{v}\""));
         }
-        (Some(i), Url::Remove { restore: Some(previous) }) if body_is_ours(&body[i], bank) => {
+        (
+            Some(i),
+            Url::Remove {
+                restore: Some(previous),
+            },
+        ) if body_is_ours(&body[i], bank) => {
             body[i] = preserve_comment(&body[i], &format!("url = \"{previous}\""));
         }
         (Some(i), Url::Remove { restore: None }) if body_is_ours(&body[i], bank) => {
@@ -330,8 +364,9 @@ fn set_url(text: &str, op: &Url, bank: Option<&str>) -> Result<String, String> {
 
     // A table emptied of everything, including anything a user added, goes with
     // its header. A table that still holds a real key is theirs and stays.
-    let keep_head =
-        !body.iter().all(|l| l.trim().is_empty() || l.trim().starts_with('#'));
+    let keep_head = !body
+        .iter()
+        .all(|l| l.trim().is_empty() || l.trim().starts_with('#'));
     let mut out: Vec<String> = all[..entry.head].to_vec();
     if keep_head {
         out.push(all[entry.head].clone());
@@ -360,7 +395,11 @@ fn state_previous_url(config: &Path) -> Result<Option<String>, String> {
     };
     Ok(serde_json::from_str::<serde_json::Value>(&text)
         .ok()
-        .and_then(|v| v.get("previous_url").and_then(|p| p.as_str()).map(str::to_string)))
+        .and_then(|v| {
+            v.get("previous_url")
+                .and_then(|p| p.as_str())
+                .map(str::to_string)
+        }))
 }
 
 /// Record the `url` we are about to displace, so `--uninstall` can put it back.
@@ -378,9 +417,8 @@ fn write_state(config: &Path, previous: String, _bank: Option<&str>) -> Result<(
             return Ok(());
         }
     }
-    let mut text =
-        serde_json::to_string_pretty(&serde_json::json!({ "previous_url": previous }))
-            .unwrap_or_default();
+    let mut text = serde_json::to_string_pretty(&serde_json::json!({ "previous_url": previous }))
+        .unwrap_or_default();
     text.push('\n');
     paths::write_atomic(&state, &text).map_err(|e| format!("{}: {e}", state.display()))
 }
@@ -455,7 +493,10 @@ url = \"http://127.0.0.1:9012/mcp\"
     #[test]
     fn setting_the_url_leaves_every_other_line_byte_identical() {
         let out = set_url(REAL, &Url::Set(ours()), None).expect("set");
-        assert_eq!(out, format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", ours()));
+        assert_eq!(
+            out,
+            format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", ours())
+        );
     }
 
     #[test]
@@ -481,7 +522,9 @@ url = \"http://127.0.0.1:9012/mcp\"
         // …and uninstall hands the user's value back rather than dropping the key.
         let back = set_url(
             &taken,
-            &Url::Remove { restore: Some("http://elsewhere/mcp".to_string()) },
+            &Url::Remove {
+                restore: Some("http://elsewhere/mcp".to_string()),
+            },
             None,
         )
         .expect("restore");
@@ -498,16 +541,27 @@ url = \"http://127.0.0.1:9012/mcp\"
             hand
         );
         assert_eq!(
-            set_url(&hand, &Url::Remove { restore: Some("x".to_string()) }, None).expect("remove"),
+            set_url(
+                &hand,
+                &Url::Remove {
+                    restore: Some("x".to_string())
+                },
+                None
+            )
+            .expect("remove"),
             hand
         );
     }
 
     #[test]
     fn a_trailing_comment_on_our_url_line_survives_a_reinstall() {
-        let pre = format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"http://old/mcp\"  # pinned\n");
+        let pre =
+            format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"http://old/mcp\"  # pinned\n");
         let out = set_url(&pre, &Url::Set(ours()), None).expect("set");
-        assert!(out.contains("# pinned"), "a user's comment was dropped: {out}");
+        assert!(
+            out.contains("# pinned"),
+            "a user's comment was dropped: {out}"
+        );
     }
 
     // -- refusals: every one leaves the text exactly as it found it --------
@@ -520,7 +574,10 @@ url = \"http://127.0.0.1:9012/mcp\"
         );
         let err = find_entry(&dup).expect_err("duplicate must refuse");
         assert!(err.contains("more than one"), "{err}");
-        assert!(set_url(&dup, &Url::Set(ours()), None).is_err(), "and does not edit");
+        assert!(
+            set_url(&dup, &Url::Set(ours()), None).is_err(),
+            "and does not edit"
+        );
     }
 
     #[test]
@@ -552,8 +609,14 @@ url = \"http://127.0.0.1:9012/mcp\"
     fn a_dotted_key_entry_is_refused() {
         let dotted = "memory-wire.url = \"http://x/mcp\"\n";
         let err = find_entry(dotted).expect_err("dotted must refuse");
-        assert!(err.contains("not a table") || err.contains("not a shape"), "{err}");
-        assert!(set_url(dotted, &Url::Set(ours()), None).is_err(), "and does not edit");
+        assert!(
+            err.contains("not a table") || err.contains("not a shape"),
+            "{err}"
+        );
+        assert!(
+            set_url(dotted, &Url::Set(ours()), None).is_err(),
+            "and does not edit"
+        );
     }
 
     #[test]
@@ -565,8 +628,14 @@ url = \"http://127.0.0.1:9012/mcp\"
     #[test]
     fn a_malformed_document_is_refused() {
         for (broken, needle) in [
-            ("model = \"gpt\n\n[mcp_servers.memory-wire]\n", "unterminated string"),
-            ("[mcp_servers.memory-wire\nurl = \"http://x/mcp\"\n", "never closes"),
+            (
+                "model = \"gpt\n\n[mcp_servers.memory-wire]\n",
+                "unterminated string",
+            ),
+            (
+                "[mcp_servers.memory-wire\nurl = \"http://x/mcp\"\n",
+                "never closes",
+            ),
         ] {
             let err = find_entry(broken).expect_err("broken must refuse");
             assert!(err.contains(needle), "{err}");
@@ -600,12 +669,22 @@ url = \"http://127.0.0.1:9012/mcp\"
         let out = toml_only(&home, false);
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let installed = read_config(&home);
-        assert!(installed.contains("[mcp_servers.memory-wire]"), "{installed}");
-        assert!(installed.starts_with(REAL.trim()), "the foreign entry survives: {installed}");
+        assert!(
+            installed.contains("[mcp_servers.memory-wire]"),
+            "{installed}"
+        );
+        assert!(
+            installed.starts_with(REAL.trim()),
+            "the foreign entry survives: {installed}"
+        );
 
         let out = toml_only(&home, true);
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
-        assert_eq!(read_config(&home), REAL, "uninstall restores the file exactly");
+        assert_eq!(
+            read_config(&home),
+            REAL,
+            "uninstall restores the file exactly"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -620,28 +699,73 @@ url = \"http://127.0.0.1:9012/mcp\"
         let data = home.join("data");
         std::fs::create_dir_all(&data).expect("data dir");
 
-        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, false, no_path, &data, None);
+        let out = crate::connect::apply(
+            Host::Codex,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let hooks = std::fs::read_to_string(home.join(".codex").join("hooks.json"))
             .expect("hooks.json is wired");
-        for ev in ["SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "SessionEnd"] {
+        for ev in [
+            "SessionStart",
+            "UserPromptSubmit",
+            "Stop",
+            "PreCompact",
+            "SessionEnd",
+        ] {
             assert!(hooks.contains(ev), "{ev} missing: {hooks}");
         }
         let toml = read_config(&home);
-        assert!(toml.contains("[mcp_servers.memory-wire]"), "no MCP entry: {toml}");
+        assert!(
+            toml.contains("[mcp_servers.memory-wire]"),
+            "no MCP entry: {toml}"
+        );
         assert!(toml.contains(&ours()), "the MCP entry has no url: {toml}");
 
         // A second call changes neither file.
         let before = (read_config(&home), hooks);
-        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, false, no_path, &data, None);
-        assert!(matches!(out, Outcome::Already { .. }), "a re-install must be Already: {out:?}");
-        assert_eq!((read_config(&home), std::fs::read_to_string(home.join(".codex").join("hooks.json")).expect("read")), before);
+        let out = crate::connect::apply(
+            Host::Codex,
+            "/bin/memory-wire",
+            &home,
+            false,
+            no_path,
+            &data,
+            None,
+        );
+        assert!(
+            matches!(out, Outcome::Already { .. }),
+            "a re-install must be Already: {out:?}"
+        );
+        assert_eq!(
+            (
+                read_config(&home),
+                std::fs::read_to_string(home.join(".codex").join("hooks.json")).expect("read")
+            ),
+            before
+        );
 
         // Uninstall takes out the tools and reports the hooks it did not own —
         // `hooks.json` was created by this same call, so it goes too.
-        let out = crate::connect::apply(Host::Codex, "/bin/memory-wire", &home, true, no_path, &data, None);
+        let out = crate::connect::apply(
+            Host::Codex,
+            "/bin/memory-wire",
+            &home,
+            true,
+            no_path,
+            &data,
+            None,
+        );
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
-        assert!(!home.join(".codex").join(STATE_FILE).exists(), "the state file survived");
+        assert!(
+            !home.join(".codex").join(STATE_FILE).exists(),
+            "the state file survived"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -651,8 +775,15 @@ url = \"http://127.0.0.1:9012/mcp\"
         write_config(&home, REAL);
         toml_only(&home, false);
         let after_first = read_config(&home);
-        assert!(matches!(toml_only(&home, false), Outcome::Already { .. }), "must be Already");
-        assert_eq!(read_config(&home), after_first, "the file is byte-identical");
+        assert!(
+            matches!(toml_only(&home, false), Outcome::Already { .. }),
+            "must be Already"
+        );
+        assert_eq!(
+            read_config(&home),
+            after_first,
+            "the file is byte-identical"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -662,8 +793,15 @@ url = \"http://127.0.0.1:9012/mcp\"
         let broken = "model = \"gpt\n\n[mcp_servers.memory-wire]\nurl = \"http://x/mcp\"\n";
         write_config(&home, broken);
         let before = std::fs::read(home.join(config_rel())).expect("bytes");
-        assert!(matches!(toml_only(&home, false), Outcome::Failed(_)), "must refuse");
-        assert_eq!(std::fs::read(home.join(config_rel())).expect("bytes"), before, "a refused install writes nothing");
+        assert!(
+            matches!(toml_only(&home, false), Outcome::Failed(_)),
+            "must refuse"
+        );
+        assert_eq!(
+            std::fs::read(home.join(config_rel())).expect("bytes"),
+            before,
+            "a refused install writes nothing"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -671,9 +809,15 @@ url = \"http://127.0.0.1:9012/mcp\"
     fn install_onto_a_foreign_url_takes_it_over_and_uninstall_restores_it() {
         let home = tmp_home("takeover");
         let foreign = "http://127.0.0.1:7777/mcp";
-        write_config(&home, &format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{foreign}\"\n"));
+        write_config(
+            &home,
+            &format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{foreign}\"\n"),
+        );
         toml_only(&home, false);
-        assert!(read_config(&home).contains(&ours()), "we did not take it over");
+        assert!(
+            read_config(&home).contains(&ours()),
+            "we did not take it over"
+        );
 
         // The displaced value is on record, so `--uninstall` owes it back.
         let state: serde_json::Value = serde_json::from_str(
@@ -684,7 +828,10 @@ url = \"http://127.0.0.1:9012/mcp\"
 
         toml_only(&home, true);
         let after = read_config(&home);
-        assert!(after.contains(foreign), "the user's url was not restored: {after}");
+        assert!(
+            after.contains(foreign),
+            "the user's url was not restored: {after}"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -697,12 +844,21 @@ url = \"http://127.0.0.1:9012/mcp\"
             ours()
         );
         write_config(&home, &pre);
-        assert!(matches!(toml_only(&home, false), Outcome::Already { .. }), "already ours");
+        assert!(
+            matches!(toml_only(&home, false), Outcome::Already { .. }),
+            "already ours"
+        );
 
         toml_only(&home, true);
         let after = read_config(&home);
-        assert!(after.contains("env = { FOO = \"bar\" }"), "a user's key was deleted: {after}");
-        assert!(after.contains("[mcp_servers.memory-wire]"), "the table was dropped: {after}");
+        assert!(
+            after.contains("env = { FOO = \"bar\" }"),
+            "a user's key was deleted: {after}"
+        );
+        assert!(
+            after.contains("[mcp_servers.memory-wire]"),
+            "the table was dropped: {after}"
+        );
         assert!(!after.contains(&ours()), "our url survived: {after}");
         std::fs::remove_dir_all(&home).ok();
     }
@@ -711,7 +867,10 @@ url = \"http://127.0.0.1:9012/mcp\"
     fn uninstall_leaves_a_url_somebody_else_rewrote_entirely_alone() {
         let home = tmp_home("rewritten");
         let edited = "http://127.0.0.1:1234/mcp";
-        write_config(&home, &format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", ours()));
+        write_config(
+            &home,
+            &format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", ours()),
+        );
         toml_only(&home, false);
         // The user repoints the entry after we installed it.
         let path = home.join(config_rel());
@@ -720,14 +879,20 @@ url = \"http://127.0.0.1:9012/mcp\"
 
         let before = std::fs::read_to_string(&path).expect("read");
         let out = toml_only(&home, true);
-        assert!(matches!(out, Outcome::Skipped(_)), "a url that is not ours is not removed: {out:?}");
+        assert!(
+            matches!(out, Outcome::Skipped(_)),
+            "a url that is not ours is not removed: {out:?}"
+        );
         assert_eq!(read_config(&home), before, "and the file is byte-identical");
         std::fs::remove_dir_all(&home).ok();
     }
 
     #[test]
     fn the_url_points_at_the_mcp_mount_on_the_one_default_endpoint() {
-        assert_eq!(mcp_url(None), format!("{}/mcp", paths::endpoint().trim_end_matches('/')));
+        assert_eq!(
+            mcp_url(None),
+            format!("{}/mcp", paths::endpoint().trim_end_matches('/'))
+        );
     }
 
     // -- the bank in the URL ---------------------------------------------
@@ -740,8 +905,15 @@ url = \"http://127.0.0.1:9012/mcp\"
     #[test]
     fn no_bank_is_the_bare_mount_and_carries_no_segment() {
         let url = mcp_url(None);
-        assert_eq!(url, format!("{}/mcp", paths::endpoint().trim_end_matches('/')));
-        assert_eq!(url.matches("/mcp").count(), 1, "one `/mcp`, no bank after it: {url}");
+        assert_eq!(
+            url,
+            format!("{}/mcp", paths::endpoint().trim_end_matches('/'))
+        );
+        assert_eq!(
+            url.matches("/mcp").count(),
+            1,
+            "one `/mcp`, no bank after it: {url}"
+        );
     }
 
     #[test]
@@ -758,7 +930,10 @@ url = \"http://127.0.0.1:9012/mcp\"
         // trailing `/mcp/` would name a mount the server does not serve, and the
         // mismatch would only show up as a failed tool call in a coding session.
         assert_eq!(mcp_url(Some("")), mcp_url(None));
-        assert!(!mcp_url(Some("")).ends_with("/mcp/"), "an empty bank left a slash");
+        assert!(
+            !mcp_url(Some("")).ends_with("/mcp/"),
+            "an empty bank left a slash"
+        );
     }
 
     #[test]
@@ -774,14 +949,30 @@ url = \"http://127.0.0.1:9012/mcp\"
 
     #[test]
     fn an_entry_written_under_one_bank_is_not_ours_under_another() {
-        let text =
-            format!("{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n", mcp_url(Some("omp")));
-        let entry = find_entry(&text).expect("parseable").expect("the entry is there");
+        let text = format!(
+            "{REAL}\n[mcp_servers.memory-wire]\nurl = \"{}\"\n",
+            mcp_url(Some("omp"))
+        );
+        let entry = find_entry(&text)
+            .expect("parseable")
+            .expect("the entry is there");
 
-        assert!(owned_by_us(Some(&entry), Some("omp")), "written by us, still ours");
-        assert!(!owned_by_us(Some(&entry), None), "the default mount did not write it");
-        assert!(!owned_by_us(Some(&entry), Some("other")), "a different bank did not write it");
-        assert!(!owned_by_us(None, Some("omp")), "no entry at all is not ours");
+        assert!(
+            owned_by_us(Some(&entry), Some("omp")),
+            "written by us, still ours"
+        );
+        assert!(
+            !owned_by_us(Some(&entry), None),
+            "the default mount did not write it"
+        );
+        assert!(
+            !owned_by_us(Some(&entry), Some("other")),
+            "a different bank did not write it"
+        );
+        assert!(
+            !owned_by_us(None, Some("omp")),
+            "no entry at all is not ours"
+        );
     }
 
     // Whether that last `false` is right is a product decision, not a detail, so
@@ -794,27 +985,48 @@ url = \"http://127.0.0.1:9012/mcp\"
         let home = tmp_home("bank-change");
         write_config(&home, REAL);
 
-        assert!(matches!(toml_with_bank(&home, false, Some("omp")), Outcome::Wired { .. }));
-        assert!(read_config(&home).contains("/mcp/omp"), "the bank never reached the url");
+        assert!(matches!(
+            toml_with_bank(&home, false, Some("omp")),
+            Outcome::Wired { .. }
+        ));
+        assert!(
+            read_config(&home).contains("/mcp/omp"),
+            "the bank never reached the url"
+        );
 
         // Install overwrites in place: the old entry is ours-or-not, `Set` writes.
-        assert!(matches!(toml_with_bank(&home, false, Some("other")), Outcome::Wired { .. }));
+        assert!(matches!(
+            toml_with_bank(&home, false, Some("other")),
+            Outcome::Wired { .. }
+        ));
         let now = read_config(&home);
         assert!(now.contains("/mcp/other"), "{now}");
-        assert!(!now.contains("/mcp/omp"), "the previous bank's url survived: {now}");
+        assert!(
+            !now.contains("/mcp/omp"),
+            "the previous bank's url survived: {now}"
+        );
 
         // Uninstall does not: it removes only the url matching the bank it was
         // called with, so asking for `omp` finds a value it did not write.
         let before = read_config(&home);
         let out = toml_with_bank(&home, true, Some("omp"));
-        assert!(matches!(out, Outcome::Skipped(_)), "a bank mismatch must refuse: {out:?}");
+        assert!(
+            matches!(out, Outcome::Skipped(_)),
+            "a bank mismatch must refuse: {out:?}"
+        );
         assert_eq!(read_config(&home), before, "and the file is byte-identical");
 
         // The bank that did write it removes it — and the url it displaced during
         // the bank change goes back, because that is what the state file owes.
-        assert!(matches!(toml_with_bank(&home, true, Some("other")), Outcome::Unwired { .. }));
+        assert!(matches!(
+            toml_with_bank(&home, true, Some("other")),
+            Outcome::Unwired { .. }
+        ));
         let after = read_config(&home);
-        assert!(after.contains("/mcp/omp"), "the displaced url is back: {after}");
+        assert!(
+            after.contains("/mcp/omp"),
+            "the displaced url is back: {after}"
+        );
         assert!(!after.contains("/mcp/other"), "our url survived: {after}");
         std::fs::remove_dir_all(&home).ok();
     }

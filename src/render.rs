@@ -206,7 +206,11 @@ pub fn object(fields: &[(String, Cell)]) -> String {
 /// delimiter symbol omitted because comma is active (§11).
 fn tabular_header(name: &str, fields: &[String], count: usize) -> String {
     let encoded: Vec<String> = fields.iter().map(|f| key(f)).collect();
-    format!("{}[{count}]{{{}}}:", key(name), encoded.join(&DELIM.to_string()))
+    format!(
+        "{}[{count}]{{{}}}:",
+        key(name),
+        encoded.join(&DELIM.to_string())
+    )
 }
 
 /// Pick the form §9 mandates for these rows.
@@ -220,10 +224,9 @@ fn array_form(rows: &[Row]) -> ArrayForm {
         return ArrayForm::Empty;
     };
     let fields: Vec<&String> = first.iter().map(|(k, _)| k).collect();
-    let uniform = rows.iter().all(|row| {
-        row.len() == fields.len()
-            && row.iter().zip(&fields).all(|((k, _), f)| &k == f)
-    });
+    let uniform = rows
+        .iter()
+        .all(|row| row.len() == fields.len() && row.iter().zip(&fields).all(|((k, _), f)| &k == f));
     if uniform {
         ArrayForm::Tabular {
             fields: fields.into_iter().cloned().collect(),
@@ -456,7 +459,11 @@ mod tests {
         assert_eq!(encode_cell(&Cell::Number("2".to_string())), "2");
         assert_eq!(encode_cell(&Cell::Number("0".to_string())), "0");
         assert_eq!(
-            document(&[("total".to_string(), Cell::Number("2".to_string()))], "m", &[]),
+            document(
+                &[("total".to_string(), Cell::Number("2".to_string()))],
+                "m",
+                &[]
+            ),
             "total: 2\nm: []"
         );
     }
@@ -503,8 +510,16 @@ mod tests {
     #[test]
     fn a_uniform_table_takes_the_tabular_form() {
         let rows = vec![
-            row(&[("id", "f9fbd954"), ("created_at", "2026-09-29T10:04:11Z"), ("content", "deploy key rotates")]),
-            row(&[("id", "a1c2e3f4"), ("created_at", "2026-09-28T08:11:00Z"), ("content", "auth uses jose")]),
+            row(&[
+                ("id", "f9fbd954"),
+                ("created_at", "2026-09-29T10:04:11Z"),
+                ("content", "deploy key rotates"),
+            ]),
+            row(&[
+                ("id", "a1c2e3f4"),
+                ("created_at", "2026-09-28T08:11:00Z"),
+                ("content", "auth uses jose"),
+            ]),
         ];
         assert_eq!(
             document(&[num(2)], "memories", &rows),
@@ -568,7 +583,11 @@ mod tests {
         // is not a uniform table and §9.3's tabular form is not available.
         let rows = vec![
             row(&[("id", "a"), ("content", "first")]),
-            row(&[("id", "b"), ("content", "second"), ("context", "saw the prompt")]),
+            row(&[
+                ("id", "b"),
+                ("content", "second"),
+                ("context", "saw the prompt"),
+            ]),
         ];
         let out = document(&[], "memories", &rows);
         assert_eq!(
@@ -580,7 +599,10 @@ mod tests {
     #[test]
     fn an_empty_array_takes_the_empty_value_form() {
         // §9.1: `name: []`. The legacy `name[0]:` form MUST NOT be emitted.
-        assert_eq!(document(&[num(0)], "memories", &[]), "total: 0\nmemories: []");
+        assert_eq!(
+            document(&[num(0)], "memories", &[]),
+            "total: 0\nmemories: []"
+        );
     }
 
     #[test]
@@ -593,14 +615,14 @@ mod tests {
 
     #[test]
     fn the_document_never_ends_with_a_newline() {
-        let rows = vec![row(&[("id", "a"), ("content", "x")]), row(&[("id", "b"), ("content", "y")])];
+        let rows = vec![
+            row(&[("id", "a"), ("content", "x")]),
+            row(&[("id", "b"), ("content", "y")]),
+        ];
         let tabular = document(&[num(2)], "memories", &rows);
         assert!(!tabular.ends_with('\n'), "tabular: {tabular:?}");
 
-        let mixed = vec![
-            row(&[("id", "a")]),
-            row(&[("id", "b"), ("context", "c")]),
-        ];
+        let mixed = vec![row(&[("id", "a")]), row(&[("id", "b"), ("context", "c")])];
         let list = document(&[], "memories", &mixed);
         assert!(!list.ends_with('\n'), "list: {list:?}");
 
@@ -611,7 +633,10 @@ mod tests {
     #[test]
     fn no_line_carries_trailing_spaces_and_indent_is_spaces() {
         let mixed = vec![row(&[("id", "a")]), row(&[("id", "b"), ("context", "c")])];
-        for out in [document(&[], "memories", &mixed), document(&[], "memories", &[])] {
+        for out in [
+            document(&[], "memories", &mixed),
+            document(&[], "memories", &[]),
+        ] {
             for line in out.lines() {
                 assert!(!line.ends_with(' '), "trailing space in {line:?}");
                 assert!(!line.contains('\t'), "tab in {line:?}");
@@ -628,7 +653,10 @@ mod tests {
         assert_eq!(
             object(&[
                 ("id".to_string(), Cell::Text("f9fbd954".to_string())),
-                ("content".to_string(), Cell::Text("auth uses jose".to_string())),
+                (
+                    "content".to_string(),
+                    Cell::Text("auth uses jose".to_string())
+                ),
             ]),
             "id: f9fbd954\ncontent: auth uses jose"
         );

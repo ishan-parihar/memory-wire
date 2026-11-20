@@ -5322,3 +5322,90 @@ extraction (§64), `memory_redact` on MCP (§65), and the doctor bank breakdown
 requires. Those are the user's call and cost nothing until made.
 
 Next free CONSISTENCY section: **§69**.
+
+## §69. 2026-11-20 — context-pack round 5 (Hydrogen/xhigh): the review found two real defects I had shipped
+
+Fifth round of the fresh-context review protocol. Venue `aistudio`,
+`gemini-4-hydrogen` at `xhigh`, page 340, reply 22,209 chars, verified line by
+line in `research/audits/context-pack-2026-11-20-round5/VERIFICATION.md`.
+
+**Why this round and not a re-run of round 2.** Round 2 asked the same question
+and its headline was adopted. What changed is the *evidence*: a door turned out
+to have never loaded on its host (D1), round 4's falsifier became measurable
+(52% of `connect_*` is inline tests), and three gates were wired that had run
+nowhere (D5). Round 4 itself was **never verified** — sent at 23:52 and no
+`VERIFICATION.md` written — so this round's first job was to re-check its two
+live claims. Both were already closed by the next morning's commits (D0).
+
+**The reviewer's headline, adopted with a correction to my framing.** It chose
+(B) verification over (A) per-turn injection, and the causal chain is the
+strongest thing in the reply: `trust_gate_test.sh` ran nowhere; it then missed
+the post-slice starvation bug and the export-shape bug; `golden_install_shapes`
+verified self-authored bytes and therefore could not see that opencode 2.x
+never loads a flat file; `memory_redact`'s first test used a string its own
+redactor eats. Every recent high-severity defect came from a check that ran
+nowhere or verified the wrong thing. I had framed C-ASK as (A) vs (B) when the
+pack's own evidence already favoured (B).
+
+**Two real code defects, both in code I wrote this session:**
+
+1. **`injectedQuery` cached an empty block across a failed recall**
+   (`opencode-plugin/memory-wire.ts`). `var block = Array.isArray(items) ? … : ""`
+   then `injectedQuery = query` **unconditionally**. A failed `post` therefore
+   cached `""` under the query, and the next turn with the same prompt hit
+   `query === injectedQuery` and injected nothing — a transient outage froze
+   recall until the user retyped. I rewrote this file in B0 and verified it
+   *loads* and *injects*; I never exercised the failure path.
+   **Fixed**, with the cache write now guarded on `Array.isArray(items)` and
+   the failure branch clearing it so a recovered server is picked up next turn.
+
+2. **`"…and N more"` understated the omitted count** (`src/hooks.rs`,
+   `hermes/__init__.py`). The footer printed `hits.len() - MAX_LINES`, but the
+   loop can exit on the **character** cap before reaching `MAX_LINES`, in which
+   case the real remainder is larger. Both languages share it because I ported
+   the Rust shape to hermes. **Fixed** in both, with a `shown` counter, and
+   with a new Rust test that reproduces the early-break path — every existing
+   test used hits small enough that the line cap was always binding, which is
+   exactly why it survived. Mutation-checked: restoring the old footer fails
+   the new test.
+
+**One latent divergence, filed rather than fixed (2c).** The TS doors skip
+blank content before the take; Rust and hermes count it. Verified as a
+difference, then narrowed: `src/api.rs:749` rejects blank content on every
+retain path, so a blank row cannot be written by this build. The schema has
+`content TEXT NOT NULL` with no `CHECK`, so it is *schema-legal* — an older
+build or a raw insert could produce one. Filed with that reasoning rather than
+fixed, because a change made because a review mentioned it, with no case that
+reproduces, is a change made on assertion (AGENTS §8's lesson).
+
+**Three of my own arithmetic errors, all caught by the reviewer recomputing
+rather than reading:**
+
+- `B-DELTA` D6 said "7 modules" over a table of 8. The sums were right; the
+  count was a slip.
+- `B-DELTA` D2 said "six byte-identical helpers" and tabulated five. The sixth
+  is `version`, which I left in place because its two copies differ by a
+  comment. Now named in the table so the count is checkable.
+- `B-DELTA` D7 said the footprint delta was "+5 KB". It is **+24,808 B
+  (+24.2 KiB)**, and 11,166,048 B is **10.65 MiB**, not 10.64. That made
+  `AGENTS.md` §1 stale; corrected in the same commit, with the sentence that
+  already warned about this now recording its second instance.
+
+**What the reviewer asked for that the pack lacks, and it is right:** live
+end-to-end evidence. `agent-memory-bench` (TODO row 10) is still open, so every
+ranking above is inference from static retrieval benchmarks and unit checks.
+Recorded as the honest limit of the round.
+
+**Nothing in the reply was refuted.** Across five rounds that is unusual, and it
+is evidence the pack was specific enough to be checkable.
+
+**Convergence worth noting:** rounds 4 and 5 independently reached the same
+instrument for the `connect_*` question — an *enumerated parity check sourced
+from `Host::ALL`*, not a shared trait — from different evidence. That is the
+strongest signal in the whole review record, and it is now the shape to build
+next.
+
+Gate: 669 tests, clippy 0, doc 0 warnings, trust gate green (now 8 checks,
+including two new ones for the opencode cache rule).
+
+Next free CONSISTENCY section: **§70**.

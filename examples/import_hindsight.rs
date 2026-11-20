@@ -82,7 +82,9 @@ fn turn_delim() -> Regex {
 /// First inline `[timestamp: ...]` in a slice, if any.
 fn timestamp_of(block: &str) -> Option<String> {
     let re = Regex::new(r"\[timestamp: ([^\]]+)\]").expect("timestamp regex is valid");
-    re.captures(block).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
+    re.captures(block)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 /// Normalise an export timestamp to the RFC 3339 form `created_at` expects.
@@ -227,11 +229,11 @@ fn main() -> anyhow::Result<()> {
     for path in &args.files {
         let text = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
-        let parsed: Value = serde_json::from_str(&text)
-            .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
-        let items = parsed
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("{}: expected a JSON array of documents", path.display()))?;
+        let parsed: Value =
+            serde_json::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+        let items = parsed.as_array().ok_or_else(|| {
+            anyhow::anyhow!("{}: expected a JSON array of documents", path.display())
+        })?;
         docs.extend(items.iter().cloned());
     }
     if docs.is_empty() {
@@ -247,11 +249,19 @@ fn main() -> anyhow::Result<()> {
     let mut sessions: BTreeSet<String> = BTreeSet::new();
     let mut stamps: Vec<String> = Vec::new();
     for doc in &docs {
-        let text = doc.get("original_text").and_then(Value::as_str).unwrap_or("");
+        let text = doc
+            .get("original_text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         if text.trim().is_empty() {
             continue;
         }
-        for t in doc.get("tags").and_then(Value::as_array).into_iter().flatten() {
+        for t in doc
+            .get("tags")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             if let Some(s) = t.as_str() {
                 tags.insert(s.to_string());
             }
@@ -271,10 +281,11 @@ fn main() -> anyhow::Result<()> {
             planned += 1;
             total_chars += c.text.len();
             largest = largest.max(c.text.len());
-            let raw = c
-                .stamp
-                .clone()
-                .or_else(|| doc.get("created_at").and_then(Value::as_str).map(str::to_string));
+            let raw = c.stamp.clone().or_else(|| {
+                doc.get("created_at")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
             if let Some(n) = raw.as_deref().and_then(normalise_timestamp) {
                 stamps.push(n);
             }
@@ -284,9 +295,7 @@ fn main() -> anyhow::Result<()> {
     stamps.sort();
     println!("source documents : {}", docs.len());
     println!("memories planned : {planned}");
-    println!(
-        "  split at turns : {split_docs} documents (the rest import whole)"
-    );
+    println!("  split at turns : {split_docs} documents (the rest import whole)");
     println!("total bytes      : {total_chars}");
     println!("largest memory   : {largest} bytes");
     println!("distinct tags    : {}", tags.len());
@@ -311,7 +320,10 @@ fn main() -> anyhow::Result<()> {
     let mut failed = 0usize;
     let mut failures: Vec<String> = Vec::new();
     for doc in &docs {
-        let text = doc.get("original_text").and_then(Value::as_str).unwrap_or("");
+        let text = doc
+            .get("original_text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         if text.trim().is_empty() {
             continue;
         }
@@ -334,22 +346,26 @@ fn main() -> anyhow::Result<()> {
 
         let chunks = chunk_document(text, args.chunk_bytes);
         for (i, chunk) in chunks.iter().enumerate() {
-              let document_id = if chunks.len() > 1 {
-                  format!("{}:{source_id}#{i}", args.source)
-              } else {
-                  format!("{}:{source_id}", args.source)
-              };
+            let document_id = if chunks.len() > 1 {
+                format!("{}:{source_id}#{i}", args.source)
+            } else {
+                format!("{}:{source_id}", args.source)
+            };
             let stamp = chunk
                 .stamp
                 .clone()
-                .or_else(|| doc.get("created_at").and_then(Value::as_str).map(str::to_string))
+                .or_else(|| {
+                    doc.get("created_at")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
                 .as_deref()
                 .and_then(normalise_timestamp);
-              let context = format!(
-                  "imported from {} doc {source_id}, session {session}, part {}",
-                  args.source,
-                  i + 1
-              );
+            let context = format!(
+                "imported from {} doc {source_id}, session {session}, part {}",
+                args.source,
+                i + 1
+            );
             let memory = Memory {
                 id: uuid::Uuid::new_v4().to_string(),
                 bank_id: args.bank.clone(),

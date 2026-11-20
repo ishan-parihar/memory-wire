@@ -28,7 +28,12 @@ fn session(needle: &str, chars: usize) -> String {
 
 fn svc() -> MemoryService<SqliteStore> {
     let store = SqliteStore::open_in_memory().expect("open");
-    store.put_bank(&Bank { id: "b".into(), name: "b".into() }).expect("bank");
+    store
+        .put_bank(&Bank {
+            id: "b".into(),
+            name: "b".into(),
+        })
+        .expect("bank");
     MemoryService::new(store)
 }
 
@@ -39,18 +44,23 @@ fn a_median_size_session_must_survive_the_default_budget_whole() {
     // choose rather than return everything.
     let median = session("jose migration", MEDIAN_SESSION_CHARS);
     svc.retain("b", &median, None).expect("retain median");
-    svc.retain("b", "unrelated note about the release checklist", None).expect("retain short");
+    svc.retain("b", "unrelated note about the release checklist", None)
+        .expect("retain short");
 
     let hits = svc
         .recall_filtered("b", "jose migration", None, &[], &[])
         .expect("recall under the shipped default budget");
-    let served = hits.iter().find(|h| h.memory.content.starts_with("jose migration"));
+    let served = hits
+        .iter()
+        .find(|h| h.memory.content.starts_with("jose migration"));
 
     assert!(
         served.is_some(),
         "the median-size session was dropped at a {DEFAULT_RECALL_BUDGET}-token budget; \
          served: {:?}",
-        hits.iter().map(|h| h.memory.id.as_str()).collect::<Vec<_>>()
+        hits.iter()
+            .map(|h| h.memory.id.as_str())
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         served.expect("present").memory.content.chars().count(),
@@ -63,8 +73,12 @@ fn a_median_size_session_must_survive_the_default_budget_whole() {
 fn the_default_budget_must_admit_several_median_size_sessions_not_one() {
     let svc = svc();
     for i in 0..4 {
-        svc.retain("b", &session(&format!("session{i} topic"), MEDIAN_SESSION_CHARS), None)
-            .expect("retain");
+        svc.retain(
+            "b",
+            &session(&format!("session{i} topic"), MEDIAN_SESSION_CHARS),
+            None,
+        )
+        .expect("retain");
     }
     let hits = svc
         .recall_filtered("b", "session1 topic", None, &[], &[])

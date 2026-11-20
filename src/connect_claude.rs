@@ -24,8 +24,8 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-use crate::connect_common::mcp_url;
 use crate::connect::{backup, timestamp, Host, Outcome};
+use crate::connect_common::mcp_url;
 use crate::paths;
 
 /// Where Claude Code keeps MCP servers, home-relative. Distinct from the hooks
@@ -80,7 +80,13 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
                 crate::connect::MARKER
             ));
         }
-        let saved = match backup(data_root, home, Host::ClaudeCode, &timestamp(), Path::new(rel)) {
+        let saved = match backup(
+            data_root,
+            home,
+            Host::ClaudeCode,
+            &timestamp(),
+            Path::new(rel),
+        ) {
             Ok(b) => b,
             Err(e) => return Outcome::Failed(e),
         };
@@ -108,7 +114,10 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
 
     if current == Some(ours.clone()) {
         return Outcome::Already {
-            notes: vec![format!("{rel}: mcpServers.{} url already current", crate::connect::MARKER)],
+            notes: vec![format!(
+                "{rel}: mcpServers.{} url already current",
+                crate::connect::MARKER
+            )],
         };
     }
     // A `memory-wire` key whose url is not ours was written by somebody else
@@ -120,7 +129,13 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
             crate::connect::MARKER
         ));
     }
-    let saved = match backup(data_root, home, Host::ClaudeCode, &timestamp(), Path::new(rel)) {
+    let saved = match backup(
+        data_root,
+        home,
+        Host::ClaudeCode,
+        &timestamp(),
+        Path::new(rel),
+    ) {
         Ok(b) => b,
         Err(e) => return Outcome::Failed(e),
     };
@@ -128,9 +143,7 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
         let obj = root
             .as_object_mut()
             .expect("root checked to be an object above");
-        let servers = obj
-            .entry(SERVERS_KEY)
-            .or_insert_with(|| json!({}));
+        let servers = obj.entry(SERVERS_KEY).or_insert_with(|| json!({}));
         let Some(map) = servers.as_object_mut() else {
             return Outcome::Failed(format!(
                 "{}: `{SERVERS_KEY}` is not an object; left untouched",
@@ -184,7 +197,10 @@ mod tests {
     #[test]
     fn install_adds_our_key_and_preserves_the_rest() {
         let home = tmp_home("install");
-        write(&home, r#"{"numStartups":42,"mcpServers":{"other":{"url":"http://x/mcp","type":"http"}}}"#);
+        write(
+            &home,
+            r#"{"numStartups":42,"mcpServers":{"other":{"url":"http://x/mcp","type":"http"}}}"#,
+        );
         let out = apply(&home, false, &home.join("data"), Some("omp"));
         assert!(matches!(out, Outcome::Wired { .. }), "{out:?}");
         let doc = read(&home);
@@ -208,7 +224,10 @@ mod tests {
         let after = std::fs::read_to_string(home.join(CONFIG_REL)).expect("read");
         let second = apply(&home, false, &home.join("data"), None);
         assert!(matches!(second, Outcome::Already { .. }), "{second:?}");
-        assert_eq!(std::fs::read_to_string(home.join(CONFIG_REL)).expect("read"), after);
+        assert_eq!(
+            std::fs::read_to_string(home.join(CONFIG_REL)).expect("read"),
+            after
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -234,8 +253,14 @@ mod tests {
         let out = apply(&home, true, &home.join("data"), Some("omp"));
         assert!(matches!(out, Outcome::Unwired { .. }), "{out:?}");
         let doc = read(&home);
-        assert!(doc.get("mcpServers").and_then(|s| s.get(crate::connect::MARKER)).is_none());
-        assert!(doc["mcpServers"].get("other").is_some(), "foreign server survives");
+        assert!(doc
+            .get("mcpServers")
+            .and_then(|s| s.get(crate::connect::MARKER))
+            .is_none());
+        assert!(
+            doc["mcpServers"].get("other").is_some(),
+            "foreign server survives"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -245,23 +270,33 @@ mod tests {
     /// leave the file byte-identical.
     #[test]
     fn a_foreign_entry_under_our_name_is_refused_both_ways() {
-        let foreign = r#"{"mcpServers":{"memory-wire":{"url":"http://elsewhere/mcp","type":"http"}}}"#;
+        let foreign =
+            r#"{"mcpServers":{"memory-wire":{"url":"http://elsewhere/mcp","type":"http"}}}"#;
         let home = tmp_home("foreign-in");
         write(&home, foreign);
         let out = apply(&home, false, &home.join("data"), None);
-        assert!(matches!(&out, Outcome::Failed(why) if why.contains("not ours")), "{out:?}");
+        assert!(
+            matches!(&out, Outcome::Failed(why) if why.contains("not ours")),
+            "{out:?}"
+        );
         assert_eq!(
             std::fs::read_to_string(home.join(CONFIG_REL)).expect("read"),
             foreign,
             "refusal must leave the file byte-identical"
         );
-        assert!(!home.join("data/backups").exists(), "no backup for a refusal");
+        assert!(
+            !home.join("data/backups").exists(),
+            "no backup for a refusal"
+        );
         std::fs::remove_dir_all(&home).ok();
 
         let home = tmp_home("foreign-un");
         write(&home, foreign);
         let out = apply(&home, true, &home.join("data"), None);
-        assert!(matches!(&out, Outcome::Skipped(why) if why.contains("not ours")), "{out:?}");
+        assert!(
+            matches!(&out, Outcome::Skipped(why) if why.contains("not ours")),
+            "{out:?}"
+        );
         assert_eq!(
             std::fs::read_to_string(home.join(CONFIG_REL)).expect("read"),
             foreign
@@ -281,9 +316,15 @@ mod tests {
             Outcome::Wired { .. }
         ));
         let out = apply(&home, true, &home.join("data"), Some("other"));
-        assert!(matches!(&out, Outcome::Skipped(why) if why.contains("not ours")), "{out:?}");
+        assert!(
+            matches!(&out, Outcome::Skipped(why) if why.contains("not ours")),
+            "{out:?}"
+        );
         let doc = read(&home);
-        assert!(doc["mcpServers"].get(crate::connect::MARKER).is_some(), "entry kept");
+        assert!(
+            doc["mcpServers"].get(crate::connect::MARKER).is_some(),
+            "entry kept"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -294,8 +335,14 @@ mod tests {
         let home = tmp_home("malformed");
         write(&home, "{ oops");
         let out = apply(&home, false, &home.join("data"), None);
-        assert!(matches!(&out, Outcome::Failed(why) if why.contains("malformed")), "{out:?}");
-        assert_eq!(std::fs::read_to_string(home.join(CONFIG_REL)).expect("read"), "{ oops");
+        assert!(
+            matches!(&out, Outcome::Failed(why) if why.contains("malformed")),
+            "{out:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(home.join(CONFIG_REL)).expect("read"),
+            "{ oops"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -305,7 +352,10 @@ mod tests {
     fn an_absent_config_is_skipped_without_creating_it() {
         let home = tmp_home("absent");
         let out = apply(&home, false, &home.join("data"), None);
-        assert!(matches!(&out, Outcome::Skipped(why) if why.contains("absent")), "{out:?}");
+        assert!(
+            matches!(&out, Outcome::Skipped(why) if why.contains("absent")),
+            "{out:?}"
+        );
         assert!(!home.join(CONFIG_REL).exists(), "nothing may be created");
         std::fs::remove_dir_all(&home).ok();
     }

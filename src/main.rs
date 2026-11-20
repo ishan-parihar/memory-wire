@@ -1,8 +1,8 @@
 mod cli_home;
 mod connect;
 mod connect_claude;
-mod connect_common;
 mod connect_codex;
+mod connect_common;
 mod connect_copilot;
 mod connect_ext;
 mod connect_opencode;
@@ -10,15 +10,15 @@ mod connect_plugin;
 mod daemon;
 mod doctor;
 mod guidelines;
-mod skills;
 mod hooks;
 mod http;
 mod mcp;
 mod mcp_http;
-mod update;
 mod paths;
 mod seed;
+mod skills;
 mod sweep;
+mod update;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -36,8 +36,7 @@ use tracing_subscriber::EnvFilter;
 
 use memory_wire::api::{
     bank_config_routes, blocking, full_hit_json, http_error, hygiene_routes, memories_routes,
-    parse_created_at, summary_hit_json,
-    parse_update_mode, ApiError, MemoryService,
+    parse_created_at, parse_update_mode, summary_hit_json, ApiError, MemoryService,
 };
 use memory_wire::grounding;
 use memory_wire::memory::Bank;
@@ -331,7 +330,14 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Daemon { action } => {
             std::process::exit(daemon::run(action));
         }
-        Cmd::Connect { agent, uninstall, guidelines, list, bank, with_skills } => {
+        Cmd::Connect {
+            agent,
+            uninstall,
+            guidelines,
+            list,
+            bank,
+            with_skills,
+        } => {
             // A name that is not a host is a usage error, not a wiring failure,
             // so it goes out the same way a bad flag does: the reason and this
             // subcommand's own help together, for a caller to correct in one turn.
@@ -342,7 +348,9 @@ async fn main() -> anyhow::Result<()> {
                     why,
                 )),
             };
-            if let Some(why) = connect_conflict(hosts.len(), uninstall, guidelines, list, with_skills) {
+            if let Some(why) =
+                connect_conflict(hosts.len(), uninstall, guidelines, list, with_skills)
+            {
                 eprintln!("memory-wire: {why}");
                 std::process::exit(1);
             }
@@ -366,7 +374,11 @@ async fn main() -> anyhow::Result<()> {
                 // written nothing, so the documented form of the command was a
                 // silent no-op.
                 let implicit = hosts.is_empty();
-                let selected = if implicit { connect::IMPLICIT.to_vec() } else { hosts };
+                let selected = if implicit {
+                    connect::IMPLICIT.to_vec()
+                } else {
+                    hosts
+                };
                 let failed = skills::apply_all(&selected, &home, &data, uninstall);
                 if implicit {
                     // The same sentence `wire` prints, built the same way, so the
@@ -396,20 +408,25 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Cmd::Hook { lifecycle, bank, endpoint } => {
+        Cmd::Hook {
+            lifecycle,
+            bank,
+            endpoint,
+        } => {
             std::process::exit(hooks::run(lifecycle, bank.as_deref(), endpoint.as_deref()));
         }
-        Cmd::Doctor { db, strict, all_hosts } => {
+        Cmd::Doctor {
+            db,
+            strict,
+            all_hosts,
+        } => {
             // No `--db`: `doctor::run` is the original path, untouched. With one,
             // the same report is collected from that file instead of the default.
             if all_hosts {
                 match paths::home() {
                     Ok(home) => println!(
                         "{}",
-                        doctor::hosts_screen(
-                            &home,
-                            &std::env::current_exe().unwrap_or_default()
-                        )
+                        doctor::hosts_screen(&home, &std::env::current_exe().unwrap_or_default())
                     ),
                     Err(e) => eprintln!("memory-wire: {e}"),
                 }
@@ -449,7 +466,12 @@ async fn main() -> anyhow::Result<()> {
             let store = open_store(&db.unwrap_or_else(default_db_path))?;
             println!("{}", sweep::run(&store, dry_run)?.render(dry_run));
         }
-        Cmd::Seed { commits, transcripts, bank, db } => {
+        Cmd::Seed {
+            commits,
+            transcripts,
+            bank,
+            db,
+        } => {
             // The same opener and default path `serve` uses, so a seeded bank
             // lands in the store the server already serves. `--bank` wins;
             // `resolve_bank` is the work-tree basename, else `memory-wire`.
@@ -460,7 +482,13 @@ async fn main() -> anyhow::Result<()> {
                 seed::run(&MemoryService::new(store), &bank, commits, transcripts).render(&bank)
             );
         }
-        Cmd::Redact { bank, id, pattern, name, db } => {
+        Cmd::Redact {
+            bank,
+            id,
+            pattern,
+            name,
+            db,
+        } => {
             let store = open_store(&db.unwrap_or_else(default_db_path))?;
             let svc = MemoryService::new(store);
             // The guard lives in `redact_memory` rather than in this match arm,
@@ -471,16 +499,24 @@ async fn main() -> anyhow::Result<()> {
             // addendum; TODO row 31). When that changes, this arm is already
             // covered.
             let rows = svc.redact_memory(&bank, &id, &pattern, &name)?;
-            println!(
-                "redacted `{name}` in bank `{bank}` memory `{id}`: {rows} row(s) rewritten"
-            );
+            println!("redacted `{name}` in bank `{bank}` memory `{id}`: {rows} row(s) rewritten");
             if rows == 0 {
                 println!("  (nothing to do: unknown id, or the pattern no longer matches)");
             }
         }
-        Cmd::Grounding { bank, max_lines, max_bytes, path, db } => {
+        Cmd::Grounding {
+            bank,
+            max_lines,
+            max_bytes,
+            path,
+            db,
+        } => {
             let store = open_store(&db.unwrap_or_else(default_db_path))?;
-            let opts = grounding::CapsuleOptions { max_lines, max_bytes, active_paths: path };
+            let opts = grounding::CapsuleOptions {
+                max_lines,
+                max_bytes,
+                active_paths: path,
+            };
             let capsule = grounding::build_capsule(&store, &bank, &opts)?;
             if capsule.is_empty() {
                 println!("no grounding lines for bank `{bank}`");
@@ -491,10 +527,7 @@ async fn main() -> anyhow::Result<()> {
                     println!("{line}");
                 }
                 let bytes: usize = capsule.iter().map(|l| l.to_string().len()).sum();
-                eprintln!(
-                    "{} line(s), {bytes} byte(s) — bank `{bank}`",
-                    capsule.len()
-                );
+                eprintln!("{} line(s), {bytes} byte(s) — bank `{bank}`", capsule.len());
             }
         }
         // Phase D's visible surface. Present only in a build that carries the
@@ -503,8 +536,8 @@ async fn main() -> anyhow::Result<()> {
         // pass would strip.
         #[cfg(feature = "embed")]
         Cmd::Embed { text } => {
-            let mut embedder = memory_wire::vector::Embedder::new()
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let mut embedder =
+                memory_wire::vector::Embedder::new().map_err(|e| anyhow::anyhow!("{e}"))?;
             let vector = embedder.embed(&text).map_err(|e| anyhow::anyhow!("{e}"))?;
             // A bare JSON array of 384 floats, so it pipes straight into
             // whatever compares two of them.
@@ -561,7 +594,10 @@ fn list_hosts() {
         }
     };
     for host in connect::ALL {
-        println!("{}", connect::listing(*host, &home, connect::binary_on_path));
+        println!(
+            "{}",
+            connect::listing(*host, &home, connect::binary_on_path)
+        );
     }
 }
 
@@ -581,7 +617,11 @@ fn wire(hosts: Vec<connect::Host>, uninstall: bool, bank: Option<&str>) -> bool 
     // below. A caller who names every host has still chosen, and is not told
     // about the one they left out.
     let implicit = hosts.is_empty();
-    let selected = if implicit { connect::IMPLICIT.to_vec() } else { hosts };
+    let selected = if implicit {
+        connect::IMPLICIT.to_vec()
+    } else {
+        hosts
+    };
     let mut failed = false;
     for host in selected {
         let outcome = connect::run(host, &exe, &home, uninstall, bank);
@@ -832,7 +872,9 @@ async fn shutdown_signal() {
     {
         use tokio::signal::unix::{signal, SignalKind};
         let interrupted = async {
-            tokio::signal::ctrl_c().await.expect("install SIGINT handler");
+            tokio::signal::ctrl_c()
+                .await
+                .expect("install SIGINT handler");
         };
         let terminated = async {
             signal(SignalKind::terminate())
@@ -847,7 +889,9 @@ async fn shutdown_signal() {
     }
     #[cfg(not(unix))]
     {
-        tokio::signal::ctrl_c().await.expect("install SIGINT handler");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("install SIGINT handler");
     }
 }
 
@@ -870,7 +914,10 @@ async fn shutdown_signal() {
 /// hostname, a Unix path) is unproven rather than proven-open, and is reported on
 /// the same reasoning: warn unless loopback can be shown.
 fn exposure_warning(addr: &str) -> Option<String> {
-    if addr.parse::<SocketAddr>().is_ok_and(|a| a.ip().is_loopback()) {
+    if addr
+        .parse::<SocketAddr>()
+        .is_ok_and(|a| a.ip().is_loopback())
+    {
         return None;
     }
     Some(format!(
@@ -909,7 +956,10 @@ fn router(svc: Svc) -> Router {
         // ask what is in the bank at all. `recall` is for relevance, these are
         // for custody — an agent that stored a secret needs to find and delete it.
         .merge(memories_routes::<SqliteStore>())
-        .route("/banks/:id/memories/:mid", axum::routing::delete(delete_memory))
+        .route(
+            "/banks/:id/memories/:mid",
+            axum::routing::delete(delete_memory),
+        )
         .route("/banks/:id/stats", get(bank_stats))
         // GET/PUT /banks/:id/config — recallMaxTokens, retainTags, and the hooks'
         // `GET .../config` preamble probe. The handlers live next to the service
@@ -944,7 +994,10 @@ async fn retain(
     // default, so a partial object means "this field, everything else default".
     let meta = req.meta.map(|m| memory_wire::memory::MemoryMeta {
         scope: m.scope.map(memory_wire::memory::Scope).unwrap_or_default(),
-        aspect: m.aspect.map(memory_wire::memory::Aspect).unwrap_or_default(),
+        aspect: m
+            .aspect
+            .map(memory_wire::memory::Aspect)
+            .unwrap_or_default(),
         lifecycle: m
             .lifecycle
             .map(memory_wire::memory::Lifecycle)
@@ -1036,7 +1089,11 @@ async fn recall(
                 .map(|h| summary_hit_json(h, &bank_for_serve))
                 .collect(),
         ),
-        _ => Value::Array(hits.into_iter().map(|h| Value::String(h.memory.content)).collect()),
+        _ => Value::Array(
+            hits.into_iter()
+                .map(|h| Value::String(h.memory.content))
+                .collect(),
+        ),
     }))
 }
 
@@ -1068,7 +1125,11 @@ async fn bank_stats(
     State(svc): State<Svc>,
     Path(bank): Path<String>,
 ) -> Result<Json<BankStats>, HttpErr> {
-    Ok(Json(blocking(move || svc.bank_stats(&bank)).await.map_err(to_http)?))
+    Ok(Json(
+        blocking(move || svc.bank_stats(&bank))
+            .await
+            .map_err(to_http)?,
+    ))
 }
 
 /// Client-facing error: an opaque status + message pair.
@@ -1087,9 +1148,9 @@ fn to_http(e: ApiError) -> HttpErr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use crate::http;
     use memory_wire::memory::Memory;
+    use serde_json::json;
     use std::time::Duration;
 
     /// The real router on an ephemeral port, over a throwaway store file.
@@ -1128,12 +1189,8 @@ mod tests {
     }
 
     fn post(base: &str, path: &str, body: &str) -> http::Response {
-        let r = http::post_json(
-            &format!("{base}{path}"),
-            body,
-            Duration::from_secs(10),
-        )
-        .expect("request");
+        let r = http::post_json(&format!("{base}{path}"), body, Duration::from_secs(10))
+            .expect("request");
         assert!(r.ok(), "POST {path} -> {} {}", r.status, r.body);
         r
     }
@@ -1152,7 +1209,11 @@ mod tests {
     #[test]
     fn config_routes_should_be_merged_into_the_serve_router() {
         let (base, _db) = serve_scratch("config");
-        post(&base, "/banks/demo/retain", r#"{"content":"auth uses jose middleware"}"#);
+        post(
+            &base,
+            "/banks/demo/retain",
+            r#"{"content":"auth uses jose middleware"}"#,
+        );
 
         // A bank that exists, with no config yet: 200 and an empty object,
         // not the 404 the hook probe used to see.
@@ -1165,18 +1226,25 @@ mod tests {
 
         // PUT replaces the whole config; GET serves it back verbatim, including
         // the keys this build stores but does not act on.
-        let cfg = r#"{"recallMaxTokens":128,"retainTags":["ops"],"retain_mission":"own the release"}"#;
+        let cfg =
+            r#"{"recallMaxTokens":128,"retainTags":["ops"],"retain_mission":"own the release"}"#;
         put(&base, "/banks/demo/config", cfg);
         let after: serde_json::Value =
             serde_json::from_str(&get(&base, "/banks/demo/config").body).expect("json");
         assert_eq!(after["recallMaxTokens"], serde_json::json!(128));
         assert_eq!(after["retainTags"], serde_json::json!(["ops"]));
-        assert_eq!(after["retain_mission"], serde_json::json!("own the release"));
+        assert_eq!(
+            after["retain_mission"],
+            serde_json::json!("own the release")
+        );
 
         // A bank that was never created is a 404, not an empty config — a typo
         // must not read back as "this bank has no settings".
-        let ghost = http::get(&format!("{base}/banks/ghost/config"), Duration::from_secs(10))
-            .expect("request");
+        let ghost = http::get(
+            &format!("{base}/banks/ghost/config"),
+            Duration::from_secs(10),
+        )
+        .expect("request");
         assert_eq!(ghost.status, 404, "{}", ghost.body);
         assert_eq!(ghost.body, "unknown bank");
     }
@@ -1186,10 +1254,17 @@ mod tests {
     #[test]
     fn hygiene_routes_should_be_merged_into_the_serve_router() {
         let (base, _db) = serve_scratch("hygiene");
-        post(&base, "/banks/demo/retain", r#"{"content":"we shipped it yesterday"}"#);
+        post(
+            &base,
+            "/banks/demo/retain",
+            r#"{"content":"we shipped it yesterday"}"#,
+        );
 
-        let got = http::get(&format!("{base}/banks/demo/hygiene"), Duration::from_secs(10))
-            .expect("request");
+        let got = http::get(
+            &format!("{base}/banks/demo/hygiene"),
+            Duration::from_secs(10),
+        )
+        .expect("request");
         assert_eq!(got.status, 200, "{}", got.body);
         let report: serde_json::Value = serde_json::from_str(&got.body).expect("json");
         assert_eq!(report["bank"], serde_json::json!("demo"));
@@ -1199,14 +1274,19 @@ mod tests {
         // detector is not running.
         let candidates = report["candidates"].as_array().expect("candidates array");
         assert!(
-            candidates.iter().any(|c| c["kind"] == serde_json::json!("anchor")),
+            candidates
+                .iter()
+                .any(|c| c["kind"] == serde_json::json!("anchor")),
             "the relative-date detector must fire on 'yesterday': {report}"
         );
 
         // A bank nothing was ever written to is a 404, not an empty report that
         // reads as "this bank is clean".
-        let ghost = http::get(&format!("{base}/banks/ghost/hygiene"), Duration::from_secs(10))
-            .expect("request");
+        let ghost = http::get(
+            &format!("{base}/banks/ghost/hygiene"),
+            Duration::from_secs(10),
+        )
+        .expect("request");
         assert_eq!(ghost.status, 404, "{}", ghost.body);
     }
 
@@ -1218,10 +1298,19 @@ mod tests {
             "/banks/t/retain",
             r#"{"content":"auth uses jose middleware","tags":["Auth"]}"#,
         );
-        post(&base, "/banks/t/retain", r#"{"content":"auth uses jose untagged"}"#);
+        post(
+            &base,
+            "/banks/t/retain",
+            r#"{"content":"auth uses jose untagged"}"#,
+        );
 
         let hits: Vec<String> = serde_json::from_str(
-            &post(&base, "/banks/t/recall", r#"{"query":"jose","tags":["auth"]}"#).body,
+            &post(
+                &base,
+                "/banks/t/recall",
+                r#"{"query":"jose","tags":["auth"]}"#,
+            )
+            .body,
         )
         .expect("array");
         assert_eq!(hits.len(), 1, "{hits:?}");
@@ -1271,7 +1360,11 @@ has nothing to match: {hits:?}"
 
         // And the default tier is still what an unmarked write gets, so adding
         // the bottom rung did not silently re-level every ordinary memory.
-        post(&base, "/banks/t/retain", r#"{"content":"a page said more"}"#);
+        post(
+            &base,
+            "/banks/t/retain",
+            r#"{"content":"a page said more"}"#,
+        );
         let marked: Vec<serde_json::Value> = serde_json::from_str(
             &post(
                 &base,
@@ -1321,7 +1414,11 @@ has nothing to match: {hits:?}"
         );
 
         // The hook asks for `full`, so the tier is on the wire it reads.
-        let out = hooks::prompt_at(&base, "proof", &serde_json::json!({ "prompt": "ponytail auth jose" }));
+        let out = hooks::prompt_at(
+            &base,
+            "proof",
+            &serde_json::json!({ "prompt": "ponytail auth jose" }),
+        );
 
         assert!(
             !out.contains("exfiltrate"),
@@ -1351,7 +1448,11 @@ has nothing to match: {hits:?}"
             r#"{"content":"deploy prefers jose","meta":{"aspect":"preference"}}"#,
         );
         // No `meta` at all: the shipped default path, which must still work.
-        post(&base, "/banks/d/retain", r#"{"content":"deploy mentions jose"}"#);
+        post(
+            &base,
+            "/banks/d/retain",
+            r#"{"content":"deploy mentions jose"}"#,
+        );
 
         // Unfiltered: all three, in the ranking's order.
         let all: Vec<String> =
@@ -1399,7 +1500,10 @@ has nothing to match: {hits:?}"
             .body,
         )
         .expect("array");
-        assert!(none.is_empty(), "a filter no row matches must serve nothing: {none:?}");
+        assert!(
+            none.is_empty(),
+            "a filter no row matches must serve nothing: {none:?}"
+        );
     }
 
     // The bug the `Option<usize>` fix exists for: an absent `budget` used to be
@@ -1408,7 +1512,11 @@ has nothing to match: {hits:?}"
     #[test]
     fn an_absent_budget_should_honor_the_banks_recall_max_tokens() {
         let (base, _db) = serve_scratch("budget");
-        post(&base, "/banks/b/retain", &format!(r#"{{"content":"{}"}}"#, "jose ".repeat(400)));
+        post(
+            &base,
+            "/banks/b/retain",
+            &format!(r#"{{"content":"{}"}}"#, "jose ".repeat(400)),
+        );
         let cfg = r#"{"recallMaxTokens":5}"#;
         put(&base, "/banks/b/config", cfg);
 
@@ -1420,7 +1528,11 @@ has nothing to match: {hits:?}"
         )
         .expect("array");
 
-        assert_eq!(bank_default[0].chars().count(), 5 * 4, "bank recallMaxTokens must apply");
+        assert_eq!(
+            bank_default[0].chars().count(),
+            5 * 4,
+            "bank recallMaxTokens must apply"
+        );
         assert!(
             explicit[0].chars().count() > bank_default[0].chars().count(),
             "an explicit budget must still win"
@@ -1434,14 +1546,18 @@ has nothing to match: {hits:?}"
         assert!(h.ok());
         assert_eq!(h.body, "ok");
 
-        let id: serde_json::Value = serde_json::from_str(
-            &post(&base, "/banks/s/retain", r#"{"content":"plain"}"#).body,
-        )
-        .expect("json");
+        let id: serde_json::Value =
+            serde_json::from_str(&post(&base, "/banks/s/retain", r#"{"content":"plain"}"#).body)
+                .expect("json");
         assert!(id["id"].as_str().is_some(), "{id}");
 
         let r: Vec<String> = serde_json::from_str(
-            &post(&base, "/banks/s/recall", r#"{"query":"plain","budget":2000}"#).body,
+            &post(
+                &base,
+                "/banks/s/recall",
+                r#"{"query":"plain","budget":2000}"#,
+            )
+            .body,
         )
         .expect("array");
         assert_eq!(r.len(), 1, "{r:?}");
@@ -1454,8 +1570,10 @@ has nothing to match: {hits:?}"
         use std::io::{Read, Write};
         let host = base.trim_start_matches("http://");
         let mut sock = std::net::TcpStream::connect(host).expect("connect");
-        sock.set_read_timeout(Some(Duration::from_secs(10))).expect("read timeout");
-        sock.set_write_timeout(Some(Duration::from_secs(10))).expect("write timeout");
+        sock.set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("read timeout");
+        sock.set_write_timeout(Some(Duration::from_secs(10)))
+            .expect("write timeout");
         let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n");
         if !body.is_empty() {
             req.push_str(&format!(
@@ -1479,7 +1597,10 @@ has nothing to match: {hits:?}"
 
     fn put(base: &str, path: &str, body: &str) -> String {
         let (status, text) = raw(base, "PUT", path, body);
-        assert!((200..300).contains(&status), "PUT {path} -> {status}: {text}");
+        assert!(
+            (200..300).contains(&status),
+            "PUT {path} -> {status}: {text}"
+        );
         text
     }
 
@@ -1487,7 +1608,11 @@ has nothing to match: {hits:?}"
     /// sent only when non-empty, so the same helper serves GET and PUT.
     fn body_of(base: &str, method: &str, path: &str, body: &str) -> (u16, String) {
         let (status, text) = raw(base, method, path, body);
-        let body = text.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("").to_string();
+        let body = text
+            .split_once("\r\n\r\n")
+            .map(|(_, b)| b)
+            .unwrap_or("")
+            .to_string();
         (status, body)
     }
 
@@ -1506,7 +1631,11 @@ has nothing to match: {hits:?}"
         )
         .expect("json");
         let id = with_ctx["id"].as_str().expect("id").to_string();
-        post(&base, "/banks/l/retain", r#"{"content":"rate limiting via token bucket"}"#);
+        post(
+            &base,
+            "/banks/l/retain",
+            r#"{"content":"rate limiting via token bucket"}"#,
+        );
 
         // List: both memories, `created_at` always, `context` only when present.
         let list: Vec<Value> =
@@ -1520,7 +1649,10 @@ has nothing to match: {hits:?}"
                 "created_at must always be present: {m}"
             );
         }
-        let with = list.iter().find(|m| m["id"] == json!(id)).expect("our memory");
+        let with = list
+            .iter()
+            .find(|m| m["id"] == json!(id))
+            .expect("our memory");
         assert_eq!(with["context"], json!("hook:stop"));
         let without = list
             .iter()
@@ -1535,15 +1667,18 @@ has nothing to match: {hits:?}"
         let one: Vec<Value> =
             serde_json::from_str(&get(&base, "/banks/l/memories?limit=1").body).expect("array");
         assert_eq!(one.len(), 1, "{one:?}");
-        let next: Vec<Value> = serde_json::from_str(
-            &get(&base, "/banks/l/memories?limit=1&offset=1").body,
-        )
-        .expect("array");
+        let next: Vec<Value> =
+            serde_json::from_str(&get(&base, "/banks/l/memories?limit=1&offset=1").body)
+                .expect("array");
         assert_eq!(next.len(), 1, "{next:?}");
         assert_ne!(one[0]["id"], next[0]["id"], "offset must advance the page");
         let capped: Vec<Value> =
             serde_json::from_str(&get(&base, "/banks/l/memories?limit=99999").body).expect("array");
-        assert_eq!(capped.len(), 2, "an over-large limit is capped, not refused");
+        assert_eq!(
+            capped.len(),
+            2,
+            "an over-large limit is capped, not refused"
+        );
 
         // Read one back.
         let got = get(&base, &format!("/banks/l/memories/{id}"));
@@ -1573,7 +1708,10 @@ has nothing to match: {hits:?}"
             json!(false),
             "{body}"
         );
-        assert_eq!(body_of(&base, "GET", &format!("/banks/l/memories/{id}"), "").0, 404);
+        assert_eq!(
+            body_of(&base, "GET", &format!("/banks/l/memories/{id}"), "").0,
+            404
+        );
         let after: Vec<Value> =
             serde_json::from_str(&get(&base, "/banks/l/memories").body).expect("array");
         assert_eq!(after.len(), 1, "{after:?}");
@@ -1592,7 +1730,11 @@ has nothing to match: {hits:?}"
             "/banks/r/retain",
             r#"{"content":"auth uses jose middleware","tags":["auth"]}"#,
         );
-        post(&base, "/banks/r/retain", r#"{"content":"deployment runs on fridays"}"#);
+        post(
+            &base,
+            "/banks/r/retain",
+            r#"{"content":"deployment runs on fridays"}"#,
+        );
 
         let hit: String = serde_json::from_str(
             &post(
@@ -1615,7 +1757,10 @@ has nothing to match: {hits:?}"
             .body,
         )
         .expect("json");
-        assert_eq!(miss, "no relevant memories", "a tag no memory carries finds nothing");
+        assert_eq!(
+            miss, "no relevant memories",
+            "a tag no memory carries finds nothing"
+        );
     }
 
     // `format: "full"` is the citing shape; without it recall is unchanged.
@@ -1650,7 +1795,10 @@ has nothing to match: {hits:?}"
         .expect("array of objects");
         assert_eq!(full.len(), 1, "{full:?}");
         assert_eq!(full[0]["id"], json!(id), "{full:?}");
-        assert_eq!(full[0]["content"].as_str(), Some("auth uses jose middleware"));
+        assert_eq!(
+            full[0]["content"].as_str(),
+            Some("auth uses jose middleware")
+        );
         // The score served is the fused RRF one, not a token count: the single
         // hit ranks 1st in both streams, so it carries each stream's weight over
         // (k + 1). Built from the shipped weights rather than written out, so
@@ -1674,7 +1822,10 @@ has nothing to match: {hits:?}"
             .body,
         )
         .expect("array of strings");
-        assert_eq!(other, plain, "an unrecognised format must not change the shape");
+        assert_eq!(
+            other, plain,
+            "an unrecognised format must not change the shape"
+        );
     }
 
     // `format: "summary"` serves capsules: same object shape as `full`, the
@@ -1691,7 +1842,10 @@ A third line exists so the remainder is definitely hidden."#;
             &post(
                 &base,
                 "/banks/f2/retain",
-                &format!(r#"{{"content":{}}}"#, serde_json::to_string(multi).expect("ser")),
+                &format!(
+                    r#"{{"content":{}}}"#,
+                    serde_json::to_string(multi).expect("ser")
+                ),
             )
             .body,
         )
@@ -1728,7 +1882,10 @@ A third line exists so the remainder is definitely hidden."#;
         // The ranking gate: identical ids, identical order, both formats.
         let summary_ids: Vec<&str> = summary.iter().filter_map(|h| h["id"].as_str()).collect();
         let full_ids: Vec<&str> = full.iter().filter_map(|h| h["id"].as_str()).collect();
-        assert_eq!(summary_ids, full_ids, "the serve mode must not touch ranking");
+        assert_eq!(
+            summary_ids, full_ids,
+            "the serve mode must not touch ranking"
+        );
         assert!(summary_ids.contains(&id_multi["id"].as_str().expect("id")));
 
         // The multi-line hit: first line + the pointer, nothing of line two.
@@ -1737,9 +1894,13 @@ A third line exists so the remainder is definitely hidden."#;
             .find(|h| h["id"] == id_multi["id"])
             .expect("multi hit");
         let served = multi_hit["content"].as_str().expect("content");
-        assert!(served.starts_with("gold marker: the auth stack uses jose middleware."), "{served}");
         assert!(
-            served.contains("[summary of ") && served.contains("chars; full: GET /banks/f2/memories/"),
+            served.starts_with("gold marker: the auth stack uses jose middleware."),
+            "{served}"
+        );
+        assert!(
+            served.contains("[summary of ")
+                && served.contains("chars; full: GET /banks/f2/memories/"),
             "pointer to the whole: {served}"
         );
         assert!(!served.contains("keys rotate quarterly"), "{served}");
@@ -1750,7 +1911,10 @@ A third line exists so the remainder is definitely hidden."#;
             .iter()
             .find(|h| h["id"] == id_short["id"])
             .expect("short hit");
-        assert_eq!(short_hit["content"].as_str(), Some("short line about jose jwks"));
+        assert_eq!(
+            short_hit["content"].as_str(),
+            Some("short line about jose jwks")
+        );
     }
 
     // An occurrence time round-trips: retain dates the memory, `full` recall
@@ -1769,7 +1933,12 @@ A third line exists so the remainder is definitely hidden."#;
         post(&base, "/banks/c/retain", r#"{"content":"jose undated"}"#);
 
         let full: Vec<Value> = serde_json::from_str(
-            &post(&base, "/banks/c/recall", r#"{"query":"jose","format":"full"}"#).body,
+            &post(
+                &base,
+                "/banks/c/recall",
+                r#"{"query":"jose","format":"full"}"#,
+            )
+            .body,
         )
         .expect("array of objects");
         let at = |c: &str| {
@@ -1778,9 +1947,20 @@ A third line exists so the remainder is definitely hidden."#;
                 .expect("created_at is always served")
                 .to_string()
         };
-        assert_eq!(at("jose offset"), "2023-05-08T08:26:00.000Z", "converted to UTC");
-        assert_eq!(at("jose day"), "2023-05-08T00:00:00.000Z", "a bare date is its midnight");
-        assert!(at("jose undated").as_str() > "2026", "absent is stamped now");
+        assert_eq!(
+            at("jose offset"),
+            "2023-05-08T08:26:00.000Z",
+            "converted to UTC"
+        );
+        assert_eq!(
+            at("jose day"),
+            "2023-05-08T00:00:00.000Z",
+            "a bare date is its midnight"
+        );
+        assert!(
+            at("jose undated").as_str() > "2026",
+            "absent is stamped now"
+        );
 
         for bad in ["8 May, 2023", "2023-13-01", "yesterday"] {
             let body = json!({ "content": "jose bad", "created_at": bad }).to_string();
@@ -1829,7 +2009,11 @@ A third line exists so the remainder is definitely hidden."#;
         // byte-unchanged, and no second row was added.
         let after: Vec<Value> =
             serde_json::from_str(&get(&base, "/banks/u/memories").body).expect("array");
-        assert_eq!(after.len(), 1, "a refused retain must not supersede: {after:?}");
+        assert_eq!(
+            after.len(),
+            1,
+            "a refused retain must not supersede: {after:?}"
+        );
         assert_eq!(after[0]["content"], json!("jose v1"));
 
         // The two documented values still work. `append` gets a fresh document id
@@ -1876,8 +2060,16 @@ A third line exists so the remainder is definitely hidden."#;
             if !path.extension().is_some_and(|e| e == "rs") {
                 continue;
             }
-            let file = path.file_name().expect("file name").to_string_lossy().into_owned();
-            for (n, line) in std::fs::read_to_string(&path).expect("read source").lines().enumerate() {
+            let file = path
+                .file_name()
+                .expect("file name")
+                .to_string_lossy()
+                .into_owned();
+            for (n, line) in std::fs::read_to_string(&path)
+                .expect("read source")
+                .lines()
+                .enumerate()
+            {
                 if line.trim_start().starts_with("tracing::error!") {
                     sites.push((file.clone(), n + 1, line.trim().to_string()));
                 }
@@ -1897,7 +2089,10 @@ A third line exists so the remainder is definitely hidden."#;
             .nth(1)
             .and_then(|rest| rest.split("}").next())
             .unwrap_or_default();
-        assert!(arm.contains("tracing::error!"), "the log must be on the 500 arm: {arm}");
+        assert!(
+            arm.contains("tracing::error!"),
+            "the log must be on the 500 arm: {arm}"
+        );
     }
 
     // The memory-list paging bounds (default 50, cap 500) moved to
@@ -1910,11 +2105,19 @@ A third line exists so the remainder is definitely hidden."#;
         let first = get(&base, "/banks/pb/memories");
         assert_eq!(first.status, 200, "{}", first.body);
         let arr: Vec<Value> = serde_json::from_str(&first.body).expect("array body");
-        assert!(arr.len() <= memory_wire::api::MAX_PAGE, "{} rows", arr.len());
+        assert!(
+            arr.len() <= memory_wire::api::MAX_PAGE,
+            "{} rows",
+            arr.len()
+        );
         let capped = get(&base, "/banks/pb/memories?limit=10000");
         assert_eq!(capped.status, 200, "{}", capped.body);
         let capped: Vec<Value> = serde_json::from_str(&capped.body).expect("array body");
-        assert!(capped.len() <= memory_wire::api::MAX_PAGE, "{} rows", capped.len());
+        assert!(
+            capped.len() <= memory_wire::api::MAX_PAGE,
+            "{} rows",
+            capped.len()
+        );
         assert_eq!(capped.len(), arr.len(), "an empty bank is empty either way");
         let default_body: Vec<Value> = serde_json::from_str(&first.body).expect("array body");
         assert!(default_body.is_empty(), "a fresh bank lists nothing");
@@ -1962,23 +2165,90 @@ A third line exists so the remainder is definitely hidden."#;
 
         const MATRIX: &[BankOpCase] = &[
             // retain names no resource that has to exist — it is what makes one.
-            ("retain", "POST", "/banks/{b}/retain", r#"{"content":"jose note"}"#, 200, 200,
-             ["\"id\"", "\"id\""]),
+            (
+                "retain",
+                "POST",
+                "/banks/{b}/retain",
+                r#"{"content":"jose note"}"#,
+                200,
+                200,
+                ["\"id\"", "\"id\""],
+            ),
             // Collections and aggregates: an absent bank *is* the empty answer.
-            ("recall", "POST", "/banks/{b}/recall", r#"{"query":"jose"}"#, 200, 200, ["[]", "[]"]),
-            ("reflect", "POST", "/banks/{b}/reflect", r#"{"query":"jose"}"#, 200, 200,
-             ["no relevant memories", "no relevant memories"]),
-            ("memories", "GET", "/banks/{b}/memories", "", 200, 200, ["[]", "[]"]),
-            ("stats", "GET", "/banks/{b}/stats", "", 200, 200, ["\"memories\":0", "\"memories\":0"]),
+            (
+                "recall",
+                "POST",
+                "/banks/{b}/recall",
+                r#"{"query":"jose"}"#,
+                200,
+                200,
+                ["[]", "[]"],
+            ),
+            (
+                "reflect",
+                "POST",
+                "/banks/{b}/reflect",
+                r#"{"query":"jose"}"#,
+                200,
+                200,
+                ["no relevant memories", "no relevant memories"],
+            ),
+            (
+                "memories",
+                "GET",
+                "/banks/{b}/memories",
+                "",
+                200,
+                200,
+                ["[]", "[]"],
+            ),
+            (
+                "stats",
+                "GET",
+                "/banks/{b}/stats",
+                "",
+                200,
+                200,
+                ["\"memories\":0", "\"memories\":0"],
+            ),
             // A named resource: absent is 404, never a plausible empty answer.
-            ("get memory", "GET", "/banks/{b}/memories/nope", "", 404, 404,
-             ["unknown memory", "unknown memory"]),
-            ("get config", "GET", "/banks/{b}/config", "", 404, 200, ["unknown bank", "{}"]),
-            ("put config", "PUT", "/banks/{b}/config", r#"{"recallMaxTokens":64}"#, 404, 200,
-             ["unknown bank", "recallMaxTokens"]),
+            (
+                "get memory",
+                "GET",
+                "/banks/{b}/memories/nope",
+                "",
+                404,
+                404,
+                ["unknown memory", "unknown memory"],
+            ),
+            (
+                "get config",
+                "GET",
+                "/banks/{b}/config",
+                "",
+                404,
+                200,
+                ["unknown bank", "{}"],
+            ),
+            (
+                "put config",
+                "PUT",
+                "/banks/{b}/config",
+                r#"{"recallMaxTokens":64}"#,
+                404,
+                200,
+                ["unknown bank", "recallMaxTokens"],
+            ),
             // Named, but idempotent by contract: 200 with the flag saying no.
-            ("delete memory", "DELETE", "/banks/{b}/memories/nope", "", 200, 200,
-             ["\"deleted\":false", "\"deleted\":false"]),
+            (
+                "delete memory",
+                "DELETE",
+                "/banks/{b}/memories/nope",
+                "",
+                200,
+                200,
+                ["\"deleted\":false", "\"deleted\":false"],
+            ),
         ];
 
         // Each row gets its own pair of banks, so a row that writes (retain, put
@@ -1987,21 +2257,32 @@ A third line exists so the remainder is definitely hidden."#;
         // retain, then the delete that empties it again.
         for (i, (op, method, path, body, unknown, empty, want)) in MATRIX.iter().enumerate() {
             let exists = format!("empty{i}");
-            post(&base, &format!("/banks/{exists}/retain"), r#"{"content":"temporary jose row"}"#);
+            post(
+                &base,
+                &format!("/banks/{exists}/retain"),
+                r#"{"content":"temporary jose row"}"#,
+            );
             let listed: Vec<Value> =
                 serde_json::from_str(&get(&base, &format!("/banks/{exists}/memories")).body)
                     .expect("array");
             let temp = listed[0]["id"].as_str().expect("id").to_string();
             assert_eq!(
-                body_of(&base, "DELETE", &format!("/banks/{exists}/memories/{temp}"), "").0,
+                body_of(
+                    &base,
+                    "DELETE",
+                    &format!("/banks/{exists}/memories/{temp}"),
+                    ""
+                )
+                .0,
                 200,
                 "the fixture bank must be emptied through the route"
             );
 
             // `ghost{i}` is never created, so it stands for a bank that does not
             // exist; `empty{i}` exists and holds nothing.
-            for (n, (bank, expected)) in
-                [(format!("ghost{i}"), *unknown), (exists, *empty)].into_iter().enumerate()
+            for (n, (bank, expected)) in [(format!("ghost{i}"), *unknown), (exists, *empty)]
+                .into_iter()
+                .enumerate()
             {
                 let (status, got) = body_of(&base, method, &path.replace("{b}", &bank), body);
                 assert_eq!(status, expected, "{method} {path} on bank {bank}: {got}");
@@ -2017,7 +2298,10 @@ A third line exists so the remainder is definitely hidden."#;
         // exists once something has been retained into it, and `PUT .../config`
         // is not a way to conjure one.
         let (status, text) = raw(&base, "PUT", "/banks/ghost/config", "{}");
-        assert_eq!(status, 404, "a refused PUT must not create the bank: {text}");
+        assert_eq!(
+            status, 404,
+            "a refused PUT must not create the bank: {text}"
+        );
         assert_eq!(
             body_of(&base, "GET", "/banks/ghost/config", "").0,
             404,
@@ -2036,8 +2320,14 @@ A third line exists so the remainder is definitely hidden."#;
         assert_eq!(connect_conflict(0, true, false, false, false), None);
         assert_eq!(connect_conflict(0, false, true, false, false), None);
         // `--list` reports and writes nothing, so it cannot stand in for a change.
-        assert_eq!(connect_conflict(0, true, false, true, false), Some("--list wires nothing; drop it to make a change"));
-        assert_eq!(connect_conflict(1, false, false, true, false), Some("--list takes no host; `memory-wire connect <host>` wires one"));
+        assert_eq!(
+            connect_conflict(0, true, false, true, false),
+            Some("--list wires nothing; drop it to make a change")
+        );
+        assert_eq!(
+            connect_conflict(1, false, false, true, false),
+            Some("--list takes no host; `memory-wire connect <host>` wires one")
+        );
         assert_eq!(connect_conflict(0, false, false, true, false), None);
 
         // `--with-skills --uninstall` is the documented teardown half of the
@@ -2073,13 +2363,19 @@ A third line exists so the remainder is definitely hidden."#;
             .expect("run memory-wire");
         let err = String::from_utf8_lossy(&out.stderr).into_owned();
         assert_eq!(out.status.code(), Some(1), "stderr: {err}");
-        assert!(err.contains("cannot combine --uninstall with --guidelines"), "{err}");
+        assert!(
+            err.contains("cannot combine --uninstall with --guidelines"),
+            "{err}"
+        );
         let left: Vec<String> = std::fs::read_dir(&dir)
             .expect("readdir")
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
-        assert!(left.is_empty(), "a refused combination must write nothing: {left:?}");
+        assert!(
+            left.is_empty(),
+            "a refused combination must write nothing: {left:?}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -2094,7 +2390,11 @@ A third line exists so the remainder is definitely hidden."#;
                 if path.is_dir() {
                     queue.push(path);
                 } else {
-                    let rel = path.strip_prefix(root).expect("under root").display().to_string();
+                    let rel = path
+                        .strip_prefix(root)
+                        .expect("under root")
+                        .display()
+                        .to_string();
                     out.insert(rel, std::fs::read(&path).expect("read"));
                 }
             }
@@ -2138,16 +2438,30 @@ A third line exists so the remainder is definitely hidden."#;
         )
         .expect("write");
         std::fs::create_dir_all(home.join(".claude")).expect("mkdir");
-        std::fs::write(home.join(".claude/settings.json"), "{\n  \"model\": \"opus\"\n}\n")
-            .expect("write");
+        std::fs::write(
+            home.join(".claude/settings.json"),
+            "{\n  \"model\": \"opus\"\n}\n",
+        )
+        .expect("write");
         let before = snapshot(&home);
 
         let (out, err, code) = connect_run(&["connect", "--list"], &home);
-        assert_eq!(code, 0, "a machine with no host at all is not an error: {err}");
-        assert_eq!(snapshot(&home), before, "--list must not create, edit or remove a file");
+        assert_eq!(
+            code, 0,
+            "a machine with no host at all is not an error: {err}"
+        );
+        assert_eq!(
+            snapshot(&home),
+            before,
+            "--list must not create, edit or remove a file"
+        );
 
         let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
-        assert_eq!(lines.len(), connect::ALL.len(), "one line per host, no banner: {out}");
+        assert_eq!(
+            lines.len(),
+            connect::ALL.len(),
+            "one line per host, no banner: {out}"
+        );
         for (line, host) in lines.iter().zip(connect::ALL) {
             assert!(line.starts_with(&format!("{:<12}", host.id())), "{line}");
         }
@@ -2161,7 +2475,10 @@ A third line exists so the remainder is definitely hidden."#;
                 .collect()
         };
         assert_eq!(fields("codex"), ["codex", "detected=yes", "wired=yes"]);
-        assert_eq!(fields("claude-code"), ["claude-code", "detected=yes", "wired=no"]);
+        assert_eq!(
+            fields("claude-code"),
+            ["claude-code", "detected=yes", "wired=no"]
+        );
         assert_eq!(fields("hermes"), ["hermes", "detected=no", "wired=no"]);
         // pi and omp take an extension as well as a config, and a host with
         // neither surface on this machine still has to be named.
@@ -2207,21 +2524,30 @@ A third line exists so the remainder is definitely hidden."#;
             let (out, err, code) = connect_run(argv, &home);
             assert_eq!(code, 0, "{argv:?} stderr: {err}");
             let report: Vec<&str> = out.lines().filter(|l| l.starts_with("codex")).collect();
-            assert_eq!(report.len(), 1, "{argv:?} reported codex {} times:\n{out}", report.len());
+            assert_eq!(
+                report.len(),
+                1,
+                "{argv:?} reported codex {} times:\n{out}",
+                report.len()
+            );
             assert!(report[0].contains(" wired"), "{out}");
             // Counted structurally rather than by the marker substring: the exe
             // path this run wires in is the build tree, whose directory is named
             // after the project too, so one entry can carry the marker twice.
-            let doc: serde_json::Value =
-                serde_json::from_str(&std::fs::read_to_string(home.join(".codex/hooks.json")).expect("read"))
-                    .expect("json");
+            let doc: serde_json::Value = serde_json::from_str(
+                &std::fs::read_to_string(home.join(".codex/hooks.json")).expect("read"),
+            )
+            .expect("json");
             let entries: usize = doc["hooks"]
                 .as_object()
                 .expect("hooks")
                 .values()
                 .map(|ev| ev.as_array().map_or(0, Vec::len))
                 .sum();
-            assert_eq!(entries, 5, "{argv:?} must leave one entry per lifecycle event");
+            assert_eq!(
+                entries, 5,
+                "{argv:?} must leave one entry per lifecycle event"
+            );
             std::fs::remove_dir_all(&home).ok();
         }
     }
@@ -2236,9 +2562,16 @@ A third line exists so the remainder is definitely hidden."#;
         let said = format!("{out}{err}");
         assert!(said.contains("claude_code"), "{said}");
         for host in connect::ALL {
-            assert!(said.contains(host.id()), "{} missing from the refusal:\n{said}", host.id());
+            assert!(
+                said.contains(host.id()),
+                "{} missing from the refusal:\n{said}",
+                host.id()
+            );
         }
-        assert!(snapshot(&home).is_empty(), "a refused call must write nothing");
+        assert!(
+            snapshot(&home).is_empty(),
+            "a refused call must write nothing"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -2253,7 +2586,11 @@ A third line exists so the remainder is definitely hidden."#;
 
     /// One run of the compiled binary with `RUST_LOG` at `level`, both streams
     /// captured separately.
-    fn run_cli(level: &str, args: &[String], home: &std::path::Path) -> (String, String, Option<i32>) {
+    fn run_cli(
+        level: &str,
+        args: &[String],
+        home: &std::path::Path,
+    ) -> (String, String, Option<i32>) {
         let out = std::process::Command::new(crate::bin())
             .args(args)
             .current_dir(home)
@@ -2320,7 +2657,10 @@ A third line exists so the remainder is definitely hidden."#;
             );
             if name == "seed" {
                 // The startup line exists, and it is on the other stream.
-                assert!(err.contains("memory-wire db:"), "the store it opened: {err:?}");
+                assert!(
+                    err.contains("memory-wire db:"),
+                    "the store it opened: {err:?}"
+                );
                 assert!(!quiet.contains("memory-wire db:"), "{quiet:?}");
             }
         }
@@ -2369,8 +2709,14 @@ A third line exists so the remainder is definitely hidden."#;
         }
         let _ = child.kill();
         let out = child.wait_with_output().expect("wait for serve");
-        assert!(seen.contains("memory-wire db:"), "the store it opened: {seen:?}");
-        assert!(seen.contains("serving on"), "the address it bound: {seen:?}");
+        assert!(
+            seen.contains("memory-wire db:"),
+            "the store it opened: {seen:?}"
+        );
+        assert!(
+            seen.contains("serving on"),
+            "the address it bound: {seen:?}"
+        );
         assert!(
             out.stdout.is_empty(),
             "stdout is not a channel serve may write to: {:?}",
@@ -2389,7 +2735,12 @@ A third line exists so the remainder is definitely hidden."#;
         let db = dir.join("memory.db");
         {
             let store = open_store(&db).expect("store");
-            store.put_bank(&Bank { id: "aging".into(), name: "aging".into() }).expect("bank");
+            store
+                .put_bank(&Bank {
+                    id: "aging".into(),
+                    name: "aging".into(),
+                })
+                .expect("bank");
             store
                 .set_bank_config("aging", r#"{"ttl_days":1}"#)
                 .expect("config");
@@ -2402,7 +2753,11 @@ A third line exists so the remainder is definitely hidden."#;
                 meta: memory_wire::memory::MemoryMeta::default(),
             };
             store
-                .put(&row("gone", "jose middleware from last year", "2020-01-01T00:00:00.000Z"))
+                .put(&row(
+                    "gone",
+                    "jose middleware from last year",
+                    "2020-01-01T00:00:00.000Z",
+                ))
                 .expect("put");
             // `None`, so the store stamps it on insert: newer than a one-day cutoff.
             store
@@ -2451,7 +2806,11 @@ A third line exists so the remainder is definitely hidden."#;
         assert_eq!(left.len(), 1, "{left:?}");
         assert_eq!(left[0].id, "kept");
         assert!(
-            store.keyword_search("aging", "middleware", 10).expect("search").len() == 1,
+            store
+                .keyword_search("aging", "middleware", 10)
+                .expect("search")
+                .len()
+                == 1,
             "the expired row must leave the index with it"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -2465,7 +2824,12 @@ A third line exists so the remainder is definitely hidden."#;
         let db = dir.join("memory.db");
         {
             let store = open_store(&db).expect("store");
-            store.put_bank(&Bank { id: "forever".into(), name: "forever".into() }).expect("bank");
+            store
+                .put_bank(&Bank {
+                    id: "forever".into(),
+                    name: "forever".into(),
+                })
+                .expect("bank");
             store
                 .set_bank_config("forever", r#"{"ttl_days":4294967295}"#)
                 .expect("config");
@@ -2482,13 +2846,21 @@ A third line exists so the remainder is definitely hidden."#;
         }
         let (out, _, code) = run_cli(
             "off",
-            &["sweep".to_string(), "--db".to_string(), db.display().to_string()],
+            &[
+                "sweep".to_string(),
+                "--db".to_string(),
+                db.display().to_string(),
+            ],
             &dir,
         );
         assert_eq!(code, Some(0), "{out}");
         assert!(out.contains("skipped"), "{out}");
         assert_eq!(
-            SqliteStore::open(&db).expect("reopen").list("forever").expect("list").len(),
+            SqliteStore::open(&db)
+                .expect("reopen")
+                .list("forever")
+                .expect("list")
+                .len(),
             1,
             "a skipped bank keeps everything"
         );
@@ -2504,7 +2876,12 @@ A third line exists so the remainder is definitely hidden."#;
         let db = dir.join("memory.db");
         {
             let store = open_store(&db).expect("store");
-            store.put_bank(&Bank { id: "demo".into(), name: "demo".into() }).expect("bank");
+            store
+                .put_bank(&Bank {
+                    id: "demo".into(),
+                    name: "demo".into(),
+                })
+                .expect("bank");
             // A context row beside the content row: both carry the pattern and
             // both must be rewritten.
             store
@@ -2656,7 +3033,10 @@ A third line exists so the remainder is definitely hidden."#;
         let wide = exposure_warning("0.0.0.0:8899").expect("0.0.0.0 is not loopback");
         assert!(wide.contains("0.0.0.0:8899"), "{wide}");
         assert!(wide.contains("no authentication"), "{wide}");
-        assert!(!wide.contains('\n'), "one line, or it is a paragraph: {wide}");
+        assert!(
+            !wide.contains('\n'),
+            "one line, or it is a paragraph: {wide}"
+        );
         assert!(exposure_warning("192.168.1.5:8899").is_some());
         assert!(exposure_warning("localhost:8899").is_some());
     }
@@ -2684,12 +3064,12 @@ A third line exists so the remainder is definitely hidden."#;
             }
             // Bound to a local: the iterator borrows `cmd`, and naming it in the
             // chain leaves a temporary that outlives the value it borrows from.
-            let arg = cmd
-                .get_arguments()
-                .find(|a| a.get_id() == "addr")
-                .cloned();
-            let found = arg
-                .and_then(|a| a.get_default_values().first().map(|v| v.to_string_lossy().into_owned()));
+            let arg = cmd.get_arguments().find(|a| a.get_id() == "addr").cloned();
+            let found = arg.and_then(|a| {
+                a.get_default_values()
+                    .first()
+                    .map(|v| v.to_string_lossy().into_owned())
+            });
             found.unwrap_or_else(|| panic!("`{}` has no --addr default", path.join(" ")))
         }
 
@@ -2706,7 +3086,10 @@ A third line exists so the remainder is definitely hidden."#;
         // because `endpoint()` also consults a running daemon's `serve.json` --
         // which is the point of it, and which would make this test depend on
         // whether a daemon happens to be up on the machine running it.
-        assert_eq!(paths::default_endpoint(), format!("http://{}", paths::DEFAULT_ADDR));
+        assert_eq!(
+            paths::default_endpoint(),
+            format!("http://{}", paths::DEFAULT_ADDR)
+        );
     }
 
     // The drain, driven directly instead of by signalling a real process.
@@ -2740,9 +3123,13 @@ A third line exists so the remainder is definitely hidden."#;
                     let shutdown = async {
                         let _ = stop_rx.await;
                     };
-                    serve_until(listener, router(Arc::new(MemoryService::new(store))), shutdown)
-                        .await
-                        .expect("serve");
+                    serve_until(
+                        listener,
+                        router(Arc::new(MemoryService::new(store))),
+                        shutdown,
+                    )
+                    .await
+                    .expect("serve");
                     stopped_tx.send(()).ok();
                 });
         });
@@ -2751,7 +3138,9 @@ A third line exists so the remainder is definitely hidden."#;
         // The blocker goes first: the handler must already be waiting on the lock
         // by the time the signal fires, and it cannot pass this point until later.
         let blocker = rusqlite::Connection::open(&db).expect("open blocker");
-        blocker.execute_batch("BEGIN IMMEDIATE").expect("hold the write lock");
+        blocker
+            .execute_batch("BEGIN IMMEDIATE")
+            .expect("hold the write lock");
 
         let body = format!(r#"{{"content":"{}"}}"#, "jose middleware ".repeat(500));
         let mut sock = std::net::TcpStream::connect(addr).expect("connect");
@@ -2780,12 +3169,17 @@ A third line exists so the remainder is definitely hidden."#;
                 }
             }
         }
-        assert!(!answered, "the handler cannot finish while the write lock is held");
+        assert!(
+            !answered,
+            "the handler cannot finish while the write lock is held"
+        );
 
         // The signal lands with that handler still running, and the lock is
         // released behind it.
         stop_tx.send(()).ok();
-        blocker.execute_batch("ROLLBACK").expect("release the write lock");
+        blocker
+            .execute_batch("ROLLBACK")
+            .expect("release the write lock");
 
         sock.set_read_timeout(Some(Duration::from_secs(20)))
             .expect("long read timeout");
@@ -2807,7 +3201,11 @@ A third line exists so the remainder is definitely hidden."#;
         );
         // The drained write landed, not just a response header: the memory is there.
         assert_eq!(
-            SqliteStore::open(&db).expect("reopen").list("drain").expect("list").len(),
+            SqliteStore::open(&db)
+                .expect("reopen")
+                .list("drain")
+                .expect("list")
+                .len(),
             1,
             "the retained row must survive the shutdown that followed it"
         );
@@ -2854,9 +3252,13 @@ A third line exists so the remainder is definitely hidden."#;
                     let shutdown = async {
                         let _ = stop_rx.await;
                     };
-                    serve_until(listener, router(Arc::new(MemoryService::new(store))), shutdown)
-                        .await
-                        .expect("serve");
+                    serve_until(
+                        listener,
+                        router(Arc::new(MemoryService::new(store))),
+                        shutdown,
+                    )
+                    .await
+                    .expect("serve");
                 });
         });
         let addr = bound_rx.recv().expect("server never bound");
@@ -2943,7 +3345,11 @@ A third line exists so the remainder is definitely hidden."#;
             if !path.extension().is_some_and(|e| e == "rs") {
                 continue;
             }
-            let file = path.file_name().expect("file name").to_string_lossy().into_owned();
+            let file = path
+                .file_name()
+                .expect("file name")
+                .to_string_lossy()
+                .into_owned();
             let source = std::fs::read_to_string(&path).expect("read source");
             let lines: Vec<&str> = source.lines().collect();
             for (n, line) in lines.iter().enumerate() {

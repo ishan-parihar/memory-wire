@@ -117,10 +117,10 @@ mod tests {
     fn a_negative_cosine_is_ranked_last_and_only_a_missing_vector_is_unranked() {
         // query points along +x.
         let ids = vec![
-            "aligned".to_string(),   // cos  1.0
-            "oblique".to_string(),   // cos  0.6
+            "aligned".to_string(),    // cos  1.0
+            "oblique".to_string(),    // cos  0.6
             "orthogonal".to_string(), // cos  0.0
-            "opposed".to_string(),   // cos -1.0
+            "opposed".to_string(),    // cos -1.0
         ];
         let out = rank_by_cosine(
             &ids,
@@ -133,13 +133,21 @@ mod tests {
             ],
         );
         // Every candidate that was handed a vector is ranked — four in, four out.
-        assert_eq!(out.len(), 4, "a stored vector is always ranked: {}", out.len());
+        assert_eq!(
+            out.len(),
+            4,
+            "a stored vector is always ranked: {}",
+            out.len()
+        );
         assert_eq!(
             out.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
             ["aligned", "oblique", "orthogonal", "opposed"],
             "non-negative scores keep their order, and the negative one sorts below all of them"
         );
-        assert!(out[3].1 < 0.0, "the last row is the opposed one, and it is negative");
+        assert!(
+            out[3].1 < 0.0,
+            "the last row is the opposed one, and it is negative"
+        );
 
         // And the counterpart: an id with no vector is *unranked*, not ranked at
         // `0.0`. Same shape `vector_stream` builds — an id is paired with a

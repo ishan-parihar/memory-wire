@@ -63,7 +63,11 @@ fn parse_url(url: &str) -> std::io::Result<Target> {
         return Err(io_err(format!("no host in URL {url}")));
     }
     let (host, port) = match authority.rsplit_once(':') {
-        Some((h, p)) => (h, p.parse::<u16>().map_err(|_| io_err(format!("bad port in {url}")))?),
+        Some((h, p)) => (
+            h,
+            p.parse::<u16>()
+                .map_err(|_| io_err(format!("bad port in {url}")))?,
+        ),
         None => (authority, 80),
     };
     Ok(Target {
@@ -208,7 +212,10 @@ mod tests {
         assert!(resp.ok());
         assert_eq!(resp.status, 200);
         assert_eq!(resp.body, "[\"jose\",\"jwt\"]");
-        assert!(req.starts_with("POST /banks/demo/recall HTTP/1.1\r\n"), "{req}");
+        assert!(
+            req.starts_with("POST /banks/demo/recall HTTP/1.1\r\n"),
+            "{req}"
+        );
         assert!(req.contains("Content-Type: application/json\r\n"));
         assert!(req.contains("Content-Length: 16\r\n"), "{req}");
         assert!(req.ends_with(r#"{"query":"jose"}"#), "{req}");
@@ -256,7 +263,10 @@ mod tests {
     fn remaining_should_shrink_and_never_reach_zero() {
         let deadline = Instant::now() + Duration::from_millis(50);
         let left = remaining(deadline);
-        assert!(left <= Duration::from_millis(50) && left >= Duration::from_millis(1), "{left:?}");
+        assert!(
+            left <= Duration::from_millis(50) && left >= Duration::from_millis(1),
+            "{left:?}"
+        );
         let spent = Instant::now() - Duration::from_secs(1);
         assert_eq!(remaining(spent), Duration::from_millis(1));
     }
@@ -264,9 +274,15 @@ mod tests {
     #[test]
     fn parse_url_should_default_the_port_and_path() {
         let t = parse_url("http://127.0.0.1:8888/banks/a/recall").expect("parse");
-        assert_eq!((t.host.as_str(), t.port, t.path.as_str()), ("127.0.0.1", 8888, "/banks/a/recall"));
+        assert_eq!(
+            (t.host.as_str(), t.port, t.path.as_str()),
+            ("127.0.0.1", 8888, "/banks/a/recall")
+        );
         let t = parse_url("http://localhost").expect("parse");
-        assert_eq!((t.host.as_str(), t.port, t.path.as_str()), ("localhost", 80, "/"));
+        assert_eq!(
+            (t.host.as_str(), t.port, t.path.as_str()),
+            ("localhost", 80, "/")
+        );
         assert!(parse_url("https://example.com").is_err());
     }
 

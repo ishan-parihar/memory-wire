@@ -326,7 +326,13 @@ pub fn flush_at(endpoint: &str, bank: &str, input: &Value, event: &str) {
     if !why.is_empty() {
         head.push_str(&format!(" ({why})"));
     }
-    retain(endpoint, bank, &format!("{head}\n{digest}"), &format!("hook:{event}"), &[]);
+    retain(
+        endpoint,
+        bank,
+        &format!("{head}\n{digest}"),
+        &format!("hook:{event}"),
+        &[],
+    );
 }
 
 /// The tail of a transcript's prose, or `None` when it carries none.
@@ -369,7 +375,8 @@ fn tail_window(path: &str) -> Option<String> {
     if len == 0 {
         return None;
     }
-    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES))).ok()?;
+    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES)))
+        .ok()?;
     let mut buf = Vec::new();
     file.take(TAIL_BYTES).read_to_end(&mut buf).ok()?;
     Some(String::from_utf8_lossy(&buf).into_owned())
@@ -465,7 +472,11 @@ fn preamble(endpoint: &str, bank: &str) -> String {
 /// when it answers 404) the historian framing is the right default anyway,
 /// since that is what `reflect` synthesises with.
 fn server_preamble_at(endpoint: &str, bank: &str) -> Option<String> {
-    let resp = http::get(&format!("{endpoint}/banks/{bank}/config"), paths::IO_TIMEOUT).ok()?;
+    let resp = http::get(
+        &format!("{endpoint}/banks/{bank}/config"),
+        paths::IO_TIMEOUT,
+    )
+    .ok()?;
     if !resp.ok() {
         return None;
     }
@@ -579,7 +590,11 @@ fn wire_format_from(explicit: Option<&str>) -> &'static str {
 /// fails is not an error — the hook contract is never-fail, and the env path
 /// still holds.
 fn bank_injection_format_at(endpoint: &str, bank: &str) -> Option<&'static str> {
-    let resp = http::get(&format!("{endpoint}/banks/{bank}/config"), paths::IO_TIMEOUT).ok()?;
+    let resp = http::get(
+        &format!("{endpoint}/banks/{bank}/config"),
+        paths::IO_TIMEOUT,
+    )
+    .ok()?;
     if !resp.ok() {
         return None;
     }
@@ -752,10 +767,10 @@ fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
     if hits.is_empty() {
         return String::new();
     }
-    let mut out = format!(
-        "\n### memory-wire recall — `{bank}`\n(recalled by relevance, unverified)\n\n"
-    );
+    let mut out =
+        format!("\n### memory-wire recall — `{bank}`\n(recalled by relevance, unverified)\n\n");
     let mut left = SECTION_CAP_CHARS;
+    let mut shown = 0usize;
     for hit in hits.iter().take(MAX_LINES) {
         // The date prefix is the serving-shape change H12 measured: a reader
         // resolving "what did we decide last week" is blind without it, and the
@@ -774,9 +789,16 @@ fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
         }
         out.push_str(&entry);
         left -= entry.chars().count();
+        shown += 1;
     }
-    if hits.len() > MAX_LINES {
-        out.push_str(&format!("- …and {} more\n", hits.len() - MAX_LINES));
+    // The count is `hits.len() - shown`, not `hits.len() - MAX_LINES`: the loop
+    // can stop on the *character* cap before it reaches `MAX_LINES`, and the
+    // footer used to claim only the line-cap remainder was dropped. Found by the
+    // round-5 review (2026-11-20), which read the early-`break` path this line
+    // had never been exercised against. The two caps stop the loop for different
+    // reasons and only the first is `MAX_LINES`.
+    if hits.len() > shown {
+        out.push_str(&format!("- …and {} more\n", hits.len() - shown));
     }
     out
 }
@@ -832,7 +854,11 @@ mod tests {
                     }
                 }
                 let text = String::from_utf8_lossy(&raw).into_owned();
-                let head = text.split("\r\n\r\n").next().unwrap_or_default().to_string();
+                let head = text
+                    .split("\r\n\r\n")
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
                 let req_body = text.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
                 let path = head
                     .split_whitespace()
@@ -914,7 +940,10 @@ mod tests {
         // Order matters: the preamble probes `/config` before the recall runs.
         let (ep, rx) = canned(vec![
             ("/config", "{}"),
-            ("/recall", r#"["auth uses jose","rate limit is token bucket"]"#),
+            (
+                "/recall",
+                r#"["auth uses jose","rate limit is token bucket"]"#,
+            ),
         ]);
         let out = session_start_at(&ep, "demo", &json!({ "prompt": "how does auth work" }));
         assert!(out.contains("## memory-wire — bank `demo`"));
@@ -924,7 +953,11 @@ mod tests {
         assert!(out.contains("- rate limit is token bucket"));
 
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 3, "preamble config, injection-format probe, recall: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            3,
+            "preamble config, injection-format probe, recall: {seen:?}"
+        );
         assert!(seen[0].starts_with("/banks/demo/config"), "{seen:?}");
         assert!(
             seen[1].starts_with("/banks/demo/config"),
@@ -946,8 +979,16 @@ mod tests {
         assert_eq!(wire_format_from(Some("  summary ")), "summary");
         // Misspelled or future values degrade to the default rather than
         // erroring — a knob a host sets wrong must not cost the recall.
-        assert_eq!(wire_format_from(Some("Summary")), "summary", "case-insensitive");
-        assert_eq!(wire_format_from(Some("citations")), "full", "unknown degrades");
+        assert_eq!(
+            wire_format_from(Some("Summary")),
+            "summary",
+            "case-insensitive"
+        );
+        assert_eq!(
+            wire_format_from(Some("citations")),
+            "full",
+            "unknown degrades"
+        );
     }
 
     /// Under the knob a hook asks for capsules and injects what it is served:
@@ -1005,7 +1046,10 @@ mod tests {
 
     #[test]
     fn server_config_should_override_the_default_framing_when_present() {
-        let (ep, _rx) = canned(vec![("/config", r#"{"background":"BANK-SPECIFIC FRAMING"}"#)]);
+        let (ep, _rx) = canned(vec![(
+            "/config",
+            r#"{"background":"BANK-SPECIFIC FRAMING"}"#,
+        )]);
         let out = session_start_at(&ep, "demo", &json!({}));
         assert!(out.contains("BANK-SPECIFIC FRAMING"), "{out}");
         assert!(!out.contains("historian"), "{out}");
@@ -1029,7 +1073,11 @@ mod tests {
         assert!(!seen[0].contains("/tmp"), "{:?}", seen[0]);
         // The marker rides the write as a tag, so auto-injection can exclude
         // the row without deleting it from an explicit recall's reach.
-        assert!(seen[0].contains("\"marker\""), "the marker tag is missing: {:?}", seen[0]);
+        assert!(
+            seen[0].contains("\"marker\""),
+            "the marker tag is missing: {:?}",
+            seen[0]
+        );
     }
 
     /// `stop` fires on every turn. Its content is deliberately stable for the
@@ -1084,7 +1132,11 @@ mod tests {
     fn stop_without_a_transcript_should_do_nothing() {
         // Port 1 is closed: any request would be an error, so a silent no-op
         // and a silent failure are indistinguishable — which is the contract.
-        stop_at("http://127.0.0.1:1", "demo", &json!({ "session_id": "s-7" }));
+        stop_at(
+            "http://127.0.0.1:1",
+            "demo",
+            &json!({ "session_id": "s-7" }),
+        );
     }
 
     /// A host transcript in Claude Code's JSONL shape: a bare-string turn, a
@@ -1112,9 +1164,7 @@ mod tests {
     /// `trigger`, `SessionEnd` sends `reason`.
     fn flush_should_never_fail(lifecycle: &str, qualifier: &str) {
         let path = transcript(lifecycle);
-        let payload = format!(
-            r#"{{"session_id":"s-7","transcript_path":"{path}",{qualifier}}}"#
-        );
+        let payload = format!(r#"{{"session_id":"s-7","transcript_path":"{path}",{qualifier}}}"#);
 
         // Well-formed: the conversation's own prose is what lands, and the path
         // to it does not — the distinction `stop` gets wrong.
@@ -1139,7 +1189,11 @@ mod tests {
 
         // Missing payload fields: no transcript, so no work and no request.
         let (ep, rx) = canned(vec![("/retain", r#"{"id":"m1"}"#)]);
-        for empty in [r#"{}"#, r#"{"session_id":"s-7"}"#, r#"{"transcript_path":""}"#] {
+        for empty in [
+            r#"{}"#,
+            r#"{"session_id":"s-7"}"#,
+            r#"{"transcript_path":""}"#,
+        ] {
             let got = run_hook(lifecycle, Some(empty), &ep, "off");
             assert_eq!(got.code, Some(0), "{lifecycle} {empty}: {}", got.stderr);
             assert_eq!(got.stdout, "", "{lifecycle} {empty}");
@@ -1159,8 +1213,15 @@ mod tests {
         // A server that is down: exit 0, no stdout, and no budget spent.
         let got = run_hook(lifecycle, Some(&payload), "http://127.0.0.1:1", "off");
         assert_eq!(got.code, Some(0), "{lifecycle}: {}", got.stderr);
-        assert_eq!(got.stdout, "", "{lifecycle}: an unreachable server says nothing");
-        assert!(got.elapsed < Duration::from_secs(5), "{lifecycle}: {:?}", got.elapsed);
+        assert_eq!(
+            got.stdout, "",
+            "{lifecycle}: an unreachable server says nothing"
+        );
+        assert!(
+            got.elapsed < Duration::from_secs(5),
+            "{lifecycle}: {:?}",
+            got.elapsed
+        );
 
         std::fs::remove_file(&path).ok();
     }
@@ -1181,7 +1242,10 @@ mod tests {
         assert!(prompt_at(ep, "demo", &json!({ "prompt": "anything" })).is_empty());
         let out = session_start_at(ep, "demo", &json!({ "prompt": "anything" }));
         assert!(out.contains("## memory-wire"), "preamble still local");
-        assert!(!out.contains("### memory-wire recall"), "no fabricated recall");
+        assert!(
+            !out.contains("### memory-wire recall"),
+            "no fabricated recall"
+        );
     }
 
     /// A producer that stalls must cost the hook `cap`, not the session.
@@ -1269,11 +1333,16 @@ mod tests {
             .unwrap_or_else(|| panic!("no recall request: {seen:?}"));
         assert!(recall.contains("how does auth work"), "{:?}", recall);
         assert!(
-            got.stdout.starts_with(&format!("## memory-wire — bank `{bank}`\n")),
+            got.stdout
+                .starts_with(&format!("## memory-wire — bank `{bank}`\n")),
             "the preamble leads: {:?}",
             got.stdout
         );
-        assert!(got.stdout.contains("BANK-SPECIFIC FRAMING"), "{:?}", got.stdout);
+        assert!(
+            got.stdout.contains("BANK-SPECIFIC FRAMING"),
+            "{:?}",
+            got.stdout
+        );
         assert!(
             got.stdout.ends_with("- auth uses jose\n"),
             "the recall trails: {:?}",
@@ -1282,7 +1351,12 @@ mod tests {
 
         // prompt: the recall lines and nothing else.
         let (ep, rx) = canned(vec![("/recall", r#"["one","two"]"#)]);
-        let got = run_hook("prompt", Some(r#"{"prompt":"what about auth"}"#), &ep, "off");
+        let got = run_hook(
+            "prompt",
+            Some(r#"{"prompt":"what about auth"}"#),
+            &ep,
+            "off",
+        );
         assert_eq!(got.code, Some(0), "{}", got.stderr);
         let bank = bank_of(&rx.try_iter().next().expect("one recall"));
         assert_eq!(
@@ -1320,14 +1394,27 @@ mod tests {
         let (ep, rx) = canned(vec![("/recall", r#"["from the override"]"#)]);
         let hit = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), &ep, "off");
         assert_eq!(hit.code, Some(0), "{}", hit.stderr);
-        assert!(hit.stdout.contains("- from the override"), "{:?}", hit.stdout);
+        assert!(
+            hit.stdout.contains("- from the override"),
+            "{:?}",
+            hit.stdout
+        );
 
         // Same binary, same stdin, an endpoint that is not this listener: a
         // refused connect, and nothing the canned server can see.
-        let missed = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), "http://127.0.0.1:1", "off");
+        let missed = run_hook(
+            "prompt",
+            Some(r#"{"prompt":"auth"}"#),
+            "http://127.0.0.1:1",
+            "off",
+        );
         assert_eq!(missed.code, Some(0), "{}", missed.stderr);
         assert_eq!(missed.stdout, "", "an unreachable server says nothing");
-        assert_eq!(rx.try_iter().count(), 2, "the override run's probe and recall both reached this server");
+        assert_eq!(
+            rx.try_iter().count(),
+            2,
+            "the override run's probe and recall both reached this server"
+        );
     }
 
     // H4.2, the claim itself. A host that never writes its stdin plus a server
@@ -1351,7 +1438,11 @@ mod tests {
 
         let got = run_hook("session-start", None, &format!("http://{addr}"), "off");
         assert_eq!(got.code, Some(0), "{}", got.stderr);
-        assert!(got.stdout.contains("## memory-wire"), "the preamble is local: {:?}", got.stdout);
+        assert!(
+            got.stdout.contains("## memory-wire"),
+            "the preamble is local: {:?}",
+            got.stdout
+        );
         assert!(
             !got.stdout.contains("### memory-wire recall"),
             "no fabricated recall: {:?}",
@@ -1389,12 +1480,23 @@ mod tests {
             ("/retain", r#"{"id":"m1"}"#),
         ]);
         let payload = r#"{"prompt":"auth","session_id":"s-1","transcript_path":"/tmp/nope.jsonl"}"#;
-        for lifecycle in ["session-start", "prompt", "stop", "pre-compact", "session-end"] {
+        for lifecycle in [
+            "session-start",
+            "prompt",
+            "stop",
+            "pre-compact",
+            "session-end",
+        ] {
             let quiet = run_hook(lifecycle, Some(payload), &ep, "off");
             assert_eq!(quiet.code, Some(0), "{lifecycle}: {}", quiet.stderr);
             for level in ["error", "warn", "info", "debug", "trace"] {
                 let got = run_hook(lifecycle, Some(payload), &ep, level);
-                assert_eq!(got.code, Some(0), "hook {lifecycle} at {level}: {}", got.stderr);
+                assert_eq!(
+                    got.code,
+                    Some(0),
+                    "hook {lifecycle} at {level}: {}",
+                    got.stderr
+                );
                 assert_eq!(
                     got.stdout, quiet.stdout,
                     "hook {lifecycle} at RUST_LOG={level} changed stdout — a log line reached the host's channel"
@@ -1451,7 +1553,11 @@ mod tests {
 
         // Neither ever reaches the host's channel.
         assert!(!dead.stdout.contains("unreachable"), "{}", dead.stdout);
-        assert!(!garbled.stdout.contains("cannot parse"), "{}", garbled.stdout);
+        assert!(
+            !garbled.stdout.contains("cannot parse"),
+            "{}",
+            garbled.stdout
+        );
 
         // With logging off, the silence is total again.
         let quiet = run_hook(
@@ -1479,11 +1585,54 @@ mod tests {
     #[test]
     fn recall_section_should_cap_lines() {
         let hits: Vec<ScoredHit> = (0..MAX_LINES + 3)
-            .map(|i| ScoredHit { content: format!("hit {i}"), created_at: None, score: Some(0.0), trust: None })
+            .map(|i| ScoredHit {
+                content: format!("hit {i}"),
+                created_at: None,
+                score: Some(0.0),
+                trust: None,
+            })
             .collect();
         let out = recall_section("b", &hits);
         assert!(out.contains(&format!("- hit {}", MAX_LINES - 1)));
         assert!(out.contains("…and 3 more"), "{out}");
+    }
+
+    /// The footer must count what was actually dropped, not what the line cap
+    /// alone would have dropped.
+    ///
+    /// `MAX_LINES` is 5 and `SECTION_CAP_CHARS` is 2000, so three 400-char
+    /// entries fill the section and the loop stops on the **character** cap
+    /// after `shown` = 3 -- not on `MAX_LINES`. The old footer printed
+    /// `hits.len() - MAX_LINES`, which for 8 hits said "3 more" when 5 were
+    /// actually omitted. That is the shape the round-5 review found by reading
+    /// the early-`break` path, and no test had exercised it: every other case
+    /// used hits small enough that the line cap was always the binding one.
+    #[test]
+    fn the_footer_counts_what_the_character_cap_dropped_too() {
+        // Each entry renders as "- " + content + "\n" and is clamped to
+        // ENTRY_CAP_CHARS, so 400 chars of body is comfortably one entry and
+        // three of them exceed SECTION_CAP_CHARS.
+        let body = "x".repeat(ENTRY_CAP_CHARS);
+        let hits: Vec<ScoredHit> = (0..MAX_LINES + 3)
+            .map(|_| ScoredHit {
+                content: body.clone(),
+                created_at: None,
+                score: Some(0.0),
+                trust: None,
+            })
+            .collect();
+        let out = recall_section("b", &hits);
+        // The character cap bound the loop, so fewer than MAX_LINES rendered.
+        let shown = out.matches("- x").count();
+        assert!(
+            shown < MAX_LINES,
+            "the character cap should bind first: {shown}"
+        );
+        // And the footer names the real remainder: 8 hits, `shown` rendered.
+        assert!(
+            out.contains(&format!("…and {} more", hits.len() - shown)),
+            "footer must be hits.len() - shown, not hits.len() - MAX_LINES:\n{out}"
+        );
     }
 
     // The trust gate. A memory ingested from a web page lands as
@@ -1509,8 +1658,14 @@ mod tests {
                 hit("a real note", Some("human_stated")),
             ],
         );
-        assert!(!out.contains("fetched page text"), "untrusted row injected: {out}");
-        assert!(out.contains("a real note"), "the trusted row must survive: {out}");
+        assert!(
+            !out.contains("fetched page text"),
+            "untrusted row injected: {out}"
+        );
+        assert!(
+            out.contains("a real note"),
+            "the trusted row must survive: {out}"
+        );
     }
 
     #[test]
@@ -1519,11 +1674,17 @@ mod tests {
         // Dropping those would turn a missing field into a silent recall
         // outage, which is the never-fail rule read backwards.
         let out = recall_section("b", &[hit("an old server's row", None)]);
-        assert!(out.contains("an old server's row"), "a missing tier is not a refusal: {out}");
+        assert!(
+            out.contains("an old server's row"),
+            "a missing tier is not a refusal: {out}"
+        );
 
         // A tier a newer server invented is likewise not this build's to judge.
         let out = recall_section("b", &[hit("a tier from the future", Some("moon_protocol"))]);
-        assert!(out.contains("a tier from the future"), "unknown tiers are kept: {out}");
+        assert!(
+            out.contains("a tier from the future"),
+            "unknown tiers are kept: {out}"
+        );
 
         // Every tier this build defines except the one is kept.
         for tier in ["agent_inferred", "human_stated", "verified"] {
@@ -1531,7 +1692,10 @@ mod tests {
             assert!(out.contains("- row"), "{tier} must not be gated: {out}");
         }
         assert!(is_untrusted(Some(UNTRUSTED_TIER)));
-        assert!(!is_untrusted(Some("untrusted-external")), "the match is exact, not a prefix");
+        assert!(
+            !is_untrusted(Some("untrusted-external")),
+            "the match is exact, not a prefix"
+        );
     }
 
     #[test]
@@ -1547,13 +1711,19 @@ mod tests {
         let out = recall_section("b", &hits);
         assert!(!out.contains("poison"), "{out}");
         let rendered = out.matches("- good ").count();
-        assert_eq!(rendered, MAX_LINES, "the cap counts trusted rows only: {out}");
+        assert_eq!(
+            rendered, MAX_LINES,
+            "the cap counts trusted rows only: {out}"
+        );
     }
 
     #[test]
     fn the_gate_can_empty_the_block_and_callers_survive_that() {
         let out = recall_section("b", &[hit("only poison", Some("untrusted_external"))]);
-        assert!(out.is_empty(), "an all-untrusted recall renders nothing: {out}");
+        assert!(
+            out.is_empty(),
+            "an all-untrusted recall renders nothing: {out}"
+        );
         // `prompt_at` must return "" rather than a header with no rows under it.
         let (ep, _rx) = canned(vec![(
             "/recall",
@@ -1574,20 +1744,42 @@ mod tests {
         let out = prompt_at(&ep, "demo", &json!({ "prompt": wrapped }));
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
-        assert!(seen[1].contains("How does auth work"), "the user's words query: {seen:?}");
-        assert!(!seen[1].contains("system-notice"), "envelope text leaked: {seen:?}");
-        assert!(!seen[1].contains("Session idle"), "envelope text leaked: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "the injection-format probe, then the recall: {seen:?}"
+        );
+        assert!(
+            seen[1].contains("How does auth work"),
+            "the user's words query: {seen:?}"
+        );
+        assert!(
+            !seen[1].contains("system-notice"),
+            "envelope text leaked: {seen:?}"
+        );
+        assert!(
+            !seen[1].contains("Session idle"),
+            "envelope text leaked: {seen:?}"
+        );
 
         let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
-        let wrapped =
-            "<system-reminder>Reminder 1 of 3.</system-reminder> How does auth work?";
+        let wrapped = "<system-reminder>Reminder 1 of 3.</system-reminder> How does auth work?";
         let out = prompt_at(&ep, "demo", &json!({ "prompt": wrapped }));
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
-        assert!(!seen[1].contains("system-reminder"), "envelope text leaked: {seen:?}");
-        assert!(!seen[1].contains("Reminder 1"), "envelope text leaked: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "the injection-format probe, then the recall: {seen:?}"
+        );
+        assert!(
+            !seen[1].contains("system-reminder"),
+            "envelope text leaked: {seen:?}"
+        );
+        assert!(
+            !seen[1].contains("Reminder 1"),
+            "envelope text leaked: {seen:?}"
+        );
     }
 
     // A prompt that is only an envelope is, as far as this hook can tell, not a
@@ -1616,9 +1808,19 @@ mod tests {
         );
         assert!(out.contains("- one"), "{out}");
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
-        assert!(seen[1].contains("auth uses jose"), "the borrowed answer: {seen:?}");
-        assert!(seen[1].contains("Continue"), "the prompt still steers: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "the injection-format probe, then the recall: {seen:?}"
+        );
+        assert!(
+            seen[1].contains("auth uses jose"),
+            "the borrowed answer: {seen:?}"
+        );
+        assert!(
+            seen[1].contains("Continue"),
+            "the prompt still steers: {seen:?}"
+        );
         std::fs::remove_file(&path).ok();
     }
 
@@ -1649,10 +1851,21 @@ mod tests {
         let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
         let long = "x".repeat(SHORT_PROMPT_CHARS + 1);
         let path = transcript("long-prompt");
-        let _ = prompt_at(&ep, "demo", &json!({ "prompt": long, "transcript_path": path }));
+        let _ = prompt_at(
+            &ep,
+            "demo",
+            &json!({ "prompt": long, "transcript_path": path }),
+        );
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
-        assert!(!seen[1].contains("auth uses jose"), "not borrowed: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "the injection-format probe, then the recall: {seen:?}"
+        );
+        assert!(
+            !seen[1].contains("auth uses jose"),
+            "not borrowed: {seen:?}"
+        );
         std::fs::remove_file(&path).ok();
     }
 
@@ -1662,17 +1875,30 @@ mod tests {
     fn one_entry_cannot_take_the_whole_section() {
         let out = recall_section(
             "b",
-            &[ScoredHit { content: "x".repeat(5000), created_at: None, score: Some(0.0), trust: None }],
+            &[ScoredHit {
+                content: "x".repeat(5000),
+                created_at: None,
+                score: Some(0.0),
+                trust: None,
+            }],
         );
         assert!(out.chars().count() < 500, "{} chars", out.chars().count());
-        assert!(out.trim_end().ends_with('…'), "a cut entry is marked: {out}");
+        assert!(
+            out.trim_end().ends_with('…'),
+            "a cut entry is marked: {out}"
+        );
         assert!(out.contains("(recalled by relevance, unverified)"));
     }
 
     #[test]
     fn the_section_has_a_hard_ceiling() {
         let hits: Vec<ScoredHit> = (0..MAX_LINES)
-            .map(|_| ScoredHit { content: "y".repeat(ENTRY_CAP_CHARS * 2), created_at: None, score: None, trust: None })
+            .map(|_| ScoredHit {
+                content: "y".repeat(ENTRY_CAP_CHARS * 2),
+                created_at: None,
+                score: None,
+                trust: None,
+            })
             .collect();
         let out = recall_section("b", &hits);
         assert!(
@@ -1701,9 +1927,16 @@ mod tests {
         let (ep, rx) = canned(vec![("/recall", r#"["one"]"#)]);
         let _ = prompt_at(&ep, "demo", &json!({ "prompt": "auth" }));
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "the injection-format probe, then the recall: {seen:?}"
+        );
         assert!(seen[1].contains("exclude_tags"), "{seen:?}");
-        assert!(seen[1].contains("transcript") && seen[1].contains("marker"), "{seen:?}");
+        assert!(
+            seen[1].contains("transcript") && seen[1].contains("marker"),
+            "{seen:?}"
+        );
     }
 
     // The test with teeth, and the core of the fix. The defect this closes is an
@@ -1727,20 +1960,29 @@ mod tests {
         );
         let (ep, rx) = canned(vec![("/recall", String::leak(body))]);
 
-        let hits = recall_at(&ep, "demo", "how does auth work").expect("a recall this build can read");
+        let hits =
+            recall_at(&ep, "demo", "how does auth work").expect("a recall this build can read");
         assert_eq!(hits.len(), 2, "{hits:?}");
 
         // The score itself, on the value the renderer is handed — not on stdout.
         assert_eq!(hits[0].score, Some(RRF_RANK_ONE), "the score must survive");
         assert_eq!(hits[0].content, "auth uses jose");
-        assert_eq!(hits[1].score, Some(0.0139), "and for every hit, not just the first");
+        assert_eq!(
+            hits[1].score,
+            Some(0.0139),
+            "and for every hit, not just the first"
+        );
         assert_eq!(hits[1].content, "rate limit is token bucket");
 
         // `format: "full"` is what puts the score on the wire at all, so it is
         // load-bearing rather than decorative: drop it and the server answers
         // with bare strings and there is nothing left to carry.
         let seen: Vec<String> = rx.try_iter().collect();
-        assert_eq!(seen.len(), 2, "the injection-format probe, then the recall: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "the injection-format probe, then the recall: {seen:?}"
+        );
         let recall = &seen[1];
         assert!(
             recall.contains("\"format\":\"full\""),
@@ -1759,8 +2001,18 @@ mod tests {
         let scored = recall_section(
             "demo",
             &[
-                ScoredHit { content: "one".into(), created_at: None, score: Some(0.016), trust: None },
-                ScoredHit { content: "two".into(), created_at: None, score: Some(0.014), trust: None },
+                ScoredHit {
+                    content: "one".into(),
+                    created_at: None,
+                    score: Some(0.016),
+                    trust: None,
+                },
+                ScoredHit {
+                    content: "two".into(),
+                    created_at: None,
+                    score: Some(0.014),
+                    trust: None,
+                },
             ],
         );
         assert_eq!(bare, scored);
@@ -1771,7 +2023,12 @@ mod tests {
     }
 
     fn plain(content: &str) -> ScoredHit {
-        ScoredHit { content: content.to_string(), created_at: None, score: None, trust: None }
+        ScoredHit {
+            content: content.to_string(),
+            created_at: None,
+            score: None,
+            trust: None,
+        }
     }
 
     /// The H12 serving shape, at the product surface: a hit that carried its
@@ -1795,12 +2052,25 @@ mod tests {
         // The degrade paths: no wire time, and a wire time too short to hold a
         // date, both render the pre-2026-10-17 shape.
         for hit in [
-            ScoredHit { content: "bare".into(), created_at: None, score: None, trust: None },
-            ScoredHit { content: "short stamp".into(), created_at: Some("2026".into()), score: None, trust: None },
+            ScoredHit {
+                content: "bare".into(),
+                created_at: None,
+                score: None,
+                trust: None,
+            },
+            ScoredHit {
+                content: "short stamp".into(),
+                created_at: Some("2026".into()),
+                score: None,
+                trust: None,
+            },
         ] {
             let out = recall_section("b", std::slice::from_ref(&hit));
             assert!(out.contains(&format!("- {}\n", hit.content)), "{out}");
-            assert!(!out.contains("[2026"), "no date may render from a stamp that has none: {out}");
+            assert!(
+                !out.contains("[2026"),
+                "no date may render from a stamp that has none: {out}"
+            );
         }
     }
 
@@ -1813,12 +2083,18 @@ mod tests {
         // Resolution, pure — no environment touched (tests run in parallel
         // threads and the env is process-global).
         assert_eq!(resolve_injection_format(Some("summary"), None), "summary");
-        assert_eq!(resolve_injection_format(Some("summary"), Some("full")), "summary",
-            "the bank is the more specific scope; its ratification wins");
+        assert_eq!(
+            resolve_injection_format(Some("summary"), Some("full")),
+            "summary",
+            "the bank is the more specific scope; its ratification wins"
+        );
         assert_eq!(resolve_injection_format(None, Some("summary")), "summary");
         assert_eq!(resolve_injection_format(None, None), "full");
-        assert_eq!(resolve_injection_format(None, Some("citations")), "full",
-            "an env nobody recognizes degrades, as it always has");
+        assert_eq!(
+            resolve_injection_format(None, Some("citations")),
+            "full",
+            "an env nobody recognizes degrades, as it always has"
+        );
 
         // The config fetch: a real canned server, both answers and absence.
         let (ep, _rx) = canned(vec![("/config", r#"{"injectionFormat":"summary"}"#)]);
@@ -1826,10 +2102,16 @@ mod tests {
         let (ep, _rx) = canned(vec![("/config", r#"{}"#)]);
         assert_eq!(bank_injection_format_at(&ep, "b"), None, "unset is unset");
         let (ep, _rx) = canned(vec![("/config", r#"{"injectionFormat":"citations"}"#)]);
-        assert_eq!(bank_injection_format_at(&ep, "b"), None,
-            "a value this build cannot ask for reads as unset, never as an error");
-        assert_eq!(bank_injection_format_at("http://127.0.0.1:1", "b"), None,
-            "an unreachable server is the env path, never an error");
+        assert_eq!(
+            bank_injection_format_at(&ep, "b"),
+            None,
+            "a value this build cannot ask for reads as unset, never as an error"
+        );
+        assert_eq!(
+            bank_injection_format_at("http://127.0.0.1:1", "b"),
+            None,
+            "an unreachable server is the env path, never an error"
+        );
     }
 
     // Version skew is the whole reason `WireHit::Bare` exists: `format: "full"`
@@ -1885,6 +2167,9 @@ mod tests {
         let (ep, _rx) = canned(vec![("/recall", "nope")]);
         let got = run_hook("prompt", Some(r#"{"prompt":"auth"}"#), &ep, "trace");
         assert_eq!(got.code, Some(0), "{}", got.stderr);
-        assert_eq!(got.stdout, "", "an unreadable body is silence, not an error");
+        assert_eq!(
+            got.stdout, "",
+            "an unreadable body is silence, not an error"
+        );
     }
 }

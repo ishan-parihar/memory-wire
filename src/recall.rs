@@ -884,32 +884,32 @@ pub fn overlap_score(query_tokens: &[String], doc: &str) -> usize {
 /// [`overlap_score`] scores it — this can only ever *lower* a score, never lose
 /// one.
 ///
-    /// # Invariants
-    ///
-    /// - `best_sentence_overlap <= overlap_score` for every document. Each segment's
-    ///   token set is a subset of the document's, so its distinct-query-token count
-    ///   cannot exceed the document's, and the max over segments cannot either. A
-    ///   boundary-free document *is* a single segment, so the two scores are equal
-    ///   for it and the scope choice cannot perturb a one-sentence memory.
+/// # Invariants
+///
+/// - `best_sentence_overlap <= overlap_score` for every document. Each segment's
+///   token set is a subset of the document's, so its distinct-query-token count
+///   cannot exceed the document's, and the max over segments cannot either. A
+///   boundary-free document *is* a single segment, so the two scores are equal
+///   for it and the scope choice cannot perturb a one-sentence memory.
 /// - Same tokenization as everything else: the same internal scorer and the same
 ///   scratch-buffer tokenizer, so this is a change of *granularity* and not of
 ///   definition. `overlap_score` is not touched.
-    ///
-    /// Cost is one pass over the document's tokens either way — the segments
-    /// partition it — so this is not a slower scorer, only a differently-partitioned
-    /// one.
-    ///
-    /// # How much it can move, before anyone goes looking
-    ///
-    /// Against a `1.0`-weighted BM25 and a `0.25`-weighted overlap stream, this
-    /// scope can only reorder rows the overlap stream separates by enough ranks.
-    /// Moving a document up one overlap rank is worth `0.25·(1/61 − 1/62) ≈
-    /// 2.6e-4`, while BM25's own adjacent-rank gap is `≈ 2.6e-4` unwidened — so a
-    /// one-rank swap is a coin flip and a small pool never flips at all. A real
-    /// flip needs the scattered document to fall several ranks down the overlap
-    /// stream, which needs a pool with several denser documents in it. It is not a
-    /// dead mechanism, but it is a narrow one, and the narrowness is a property
-    /// of the shipped weights rather than of the scorer.
+///
+/// Cost is one pass over the document's tokens either way — the segments
+/// partition it — so this is not a slower scorer, only a differently-partitioned
+/// one.
+///
+/// # How much it can move, before anyone goes looking
+///
+/// Against a `1.0`-weighted BM25 and a `0.25`-weighted overlap stream, this
+/// scope can only reorder rows the overlap stream separates by enough ranks.
+/// Moving a document up one overlap rank is worth `0.25·(1/61 − 1/62) ≈
+/// 2.6e-4`, while BM25's own adjacent-rank gap is `≈ 2.6e-4` unwidened — so a
+/// one-rank swap is a coin flip and a small pool never flips at all. A real
+/// flip needs the scattered document to fall several ranks down the overlap
+/// stream, which needs a pool with several denser documents in it. It is not a
+/// dead mechanism, but it is a narrow one, and the narrowness is a property
+/// of the shipped weights rather than of the scorer.
 pub fn best_sentence_overlap(query_tokens: &[String], doc: &str) -> usize {
     let (index, mut seen) = build_query_index(query_tokens);
     best_sentence_overlap_indexed(doc, &index, &mut seen, &mut String::new())
@@ -988,11 +988,7 @@ where
 /// two scopes differ in exactly one place: the per-document number. The `> 0.0`
 /// retain still means "matched at least one query token" under either scope, and
 /// the position tiebreak is still the one the E1 sweep rows were measured with.
-pub fn rank_candidates_scoped<'a, I>(
-    query: &str,
-    docs: I,
-    scope: OverlapScope,
-) -> Vec<(usize, f64)>
+pub fn rank_candidates_scoped<'a, I>(query: &str, docs: I, scope: OverlapScope) -> Vec<(usize, f64)>
 where
     I: IntoIterator<Item = &'a str>,
 {
@@ -1009,7 +1005,10 @@ where
                 .into_iter()
                 .enumerate()
                 .map(|(i, d)| {
-                    (i, best_sentence_overlap_indexed(d, &index, &mut seen, &mut buf) as f64)
+                    (
+                        i,
+                        best_sentence_overlap_indexed(d, &index, &mut seen, &mut buf) as f64,
+                    )
                 })
                 .collect();
             out.retain(|&(_, score)| score > 0.0);
@@ -1206,11 +1205,7 @@ static TEMPORAL_RE: LazyLock<Regex> = LazyLock::new(|| {
 /// unknown age is the epoch sentinel the store itself writes for rows that
 /// predate timestamping, and its honest reading is "least recent", the same
 /// reading `expire_before` gives it.
-pub fn recency_rank(
-    mems: &[Memory],
-    now: DateTime<Utc>,
-    half_life_days: f64,
-) -> Vec<RankedHit> {
+pub fn recency_rank(mems: &[Memory], now: DateTime<Utc>, half_life_days: f64) -> Vec<RankedHit> {
     if mems.is_empty() {
         return Vec::new();
     }
@@ -1248,7 +1243,10 @@ pub fn recency_rank(
     scored
         .into_iter()
         .enumerate()
-        .map(|(i, (_, id))| RankedHit { id: id.to_string(), rank: i + 1 })
+        .map(|(i, (_, id))| RankedHit {
+            id: id.to_string(),
+            rank: i + 1,
+        })
         .collect()
 }
 
@@ -1357,18 +1355,33 @@ mod tests {
     #[test]
     fn rrf_should_rank_shared_hits_first() {
         let a = vec![
-            RankedHit { id: "m1".to_string(), rank: 1 },
-            RankedHit { id: "m2".to_string(), rank: 2 },
+            RankedHit {
+                id: "m1".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "m2".to_string(),
+                rank: 2,
+            },
         ];
-        let b = vec![RankedHit { id: "m2".to_string(), rank: 1 }];
+        let b = vec![RankedHit {
+            id: "m2".to_string(),
+            rank: 1,
+        }];
         let fused = rrf_fuse(&[a, b], &FusionWeights::SHIPPED);
         assert_eq!(fused[0].0, "m2");
     }
 
     #[test]
     fn rrf_should_clamp_non_positive_k() {
-        let stream = vec![vec![RankedHit { id: "m1".to_string(), rank: 1 }]];
-        let at = |k: f64| FusionWeights { k, ..FusionWeights::SHIPPED };
+        let stream = vec![vec![RankedHit {
+            id: "m1".to_string(),
+            rank: 1,
+        }]];
+        let at = |k: f64| FusionWeights {
+            k,
+            ..FusionWeights::SHIPPED
+        };
         let safe = rrf_fuse(&stream, &at(1.0));
         for bad_k in [0.0, -5.0, f64::NAN] {
             let got = rrf_fuse(&stream, &at(bad_k));
@@ -1389,18 +1402,35 @@ mod tests {
     #[test]
     fn unit_weights_should_reproduce_plain_rrf() {
         let a = vec![
-            RankedHit { id: "m1".to_string(), rank: 1 },
-            RankedHit { id: "m2".to_string(), rank: 2 },
-            RankedHit { id: "m3".to_string(), rank: 7 },
+            RankedHit {
+                id: "m1".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "m2".to_string(),
+                rank: 2,
+            },
+            RankedHit {
+                id: "m3".to_string(),
+                rank: 7,
+            },
         ];
         let b = vec![
-            RankedHit { id: "m2".to_string(), rank: 1 },
-            RankedHit { id: "m4".to_string(), rank: 4 },
+            RankedHit {
+                id: "m2".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "m4".to_string(),
+                rank: 4,
+            },
         ];
-        let unit = FusionWeights { overlap: 1.0, ..FusionWeights::SHIPPED };
+        let unit = FusionWeights {
+            overlap: 1.0,
+            ..FusionWeights::SHIPPED
+        };
         let fused = rrf_fuse(&[a, b], &unit);
-        let got: HashMap<&str, f64> =
-            fused.iter().map(|(id, s)| (id.as_str(), *s)).collect();
+        let got: HashMap<&str, f64> = fused.iter().map(|(id, s)| (id.as_str(), *s)).collect();
         let rrf = |ranks: &[f64]| ranks.iter().map(|r| 1.0 / (60.0 + r)).sum::<f64>();
         assert!((got["m1"] - rrf(&[1.0])).abs() < 1e-12);
         assert!((got["m2"] - rrf(&[2.0, 1.0])).abs() < 1e-12);
@@ -1414,14 +1444,30 @@ mod tests {
     #[test]
     fn a_zero_weight_should_remove_its_stream() {
         let bm25_only = vec![
-            RankedHit { id: "m1".to_string(), rank: 1 },
-            RankedHit { id: "m2".to_string(), rank: 2 },
+            RankedHit {
+                id: "m1".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "m2".to_string(),
+                rank: 2,
+            },
         ];
-        let overlap_only = vec![RankedHit { id: "m3".to_string(), rank: 1 }];
-        let w = FusionWeights { overlap: 0.0, ..FusionWeights::SHIPPED };
+        let overlap_only = vec![RankedHit {
+            id: "m3".to_string(),
+            rank: 1,
+        }];
+        let w = FusionWeights {
+            overlap: 0.0,
+            ..FusionWeights::SHIPPED
+        };
         let fused = rrf_fuse(&[bm25_only, overlap_only], &w);
         let ids: Vec<&str> = fused.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(ids, ["m1", "m2"], "the dropped stream must contribute nothing");
+        assert_eq!(
+            ids,
+            ["m1", "m2"],
+            "the dropped stream must contribute nothing"
+        );
     }
 
     /// The agreement bonus lifts a doubly-found hit above a hit one stream rates
@@ -1429,15 +1475,30 @@ mod tests {
     #[test]
     fn the_agreement_bonus_should_lift_only_doubly_found_hits() {
         let bm25 = vec![
-            RankedHit { id: "shared".to_string(), rank: 6 },
-            RankedHit { id: "solo".to_string(), rank: 1 },
+            RankedHit {
+                id: "shared".to_string(),
+                rank: 6,
+            },
+            RankedHit {
+                id: "solo".to_string(),
+                rank: 1,
+            },
         ];
-        let overlap = vec![RankedHit { id: "shared".to_string(), rank: 1 }];
+        let overlap = vec![RankedHit {
+            id: "shared".to_string(),
+            rank: 1,
+        }];
         let base = rrf_fuse(&[bm25.clone(), overlap.clone()], &FusionWeights::SHIPPED);
-        let w = FusionWeights { agreement: 0.05, ..FusionWeights::SHIPPED };
+        let w = FusionWeights {
+            agreement: 0.05,
+            ..FusionWeights::SHIPPED
+        };
         let boosted = rrf_fuse(&[bm25, overlap], &w);
         let score = |rows: &Vec<(String, f64)>, id: &str| {
-            rows.iter().find(|(i, _)| i == id).map(|(_, s)| *s).expect("id present")
+            rows.iter()
+                .find(|(i, _)| i == id)
+                .map(|(_, s)| *s)
+                .expect("id present")
         };
         assert!(score(&boosted, "shared") > score(&base, "shared"));
         assert!((score(&boosted, "shared") - score(&base, "shared") - 0.05 / 61.0).abs() < 1e-12);
@@ -1451,7 +1512,10 @@ mod tests {
 
     #[test]
     fn rank_should_match_keyword_overlap() {
-        let docs = ["auth uses jose".to_string(), "rate limiting notes".to_string()];
+        let docs = [
+            "auth uses jose".to_string(),
+            "rate limiting notes".to_string(),
+        ];
         let ranked = rank_candidates("jose auth", docs.iter().map(String::as_str));
         assert_eq!(ranked[0].0, 0);
     }
@@ -1476,9 +1540,21 @@ mod tests {
     fn overlap_score_should_be_zero_without_overlap() {
         let query = tokenize("auth jose");
         assert_eq!(overlap_score(&query, ""), 0);
-        assert_eq!(overlap_score(&query, "a"), 0, "one char is not the whole token");
-        assert_eq!(overlap_score(&query, "--- ;;; ..."), 0, "punctuation carries no tokens");
-        assert_eq!(overlap_score(&tokenize(""), "auth"), 0, "an empty query matches nothing");
+        assert_eq!(
+            overlap_score(&query, "a"),
+            0,
+            "one char is not the whole token"
+        );
+        assert_eq!(
+            overlap_score(&query, "--- ;;; ..."),
+            0,
+            "punctuation carries no tokens"
+        );
+        assert_eq!(
+            overlap_score(&tokenize(""), "auth"),
+            0,
+            "an empty query matches nothing"
+        );
         assert_eq!(
             overlap_score(&[String::new()], "auth"),
             0,
@@ -1644,15 +1720,29 @@ mod tests {
         for tokens in 1..=marker_len / CHARS_PER_TOKEN {
             let cap = tokens * CHARS_PER_TOKEN;
             let kept = trim_to_budget(&ids, &c, tokens);
-            assert_eq!(kept.len(), 1, "budget {tokens} must still return the top hit");
-            assert_eq!(kept[0].1.chars().count(), cap, "budget {tokens} must fill exactly the cap");
-            assert!(!kept[0].1.contains(TRUNCATION_MARKER), "the marker does not fit in {cap} chars");
+            assert_eq!(
+                kept.len(),
+                1,
+                "budget {tokens} must still return the top hit"
+            );
+            assert_eq!(
+                kept[0].1.chars().count(),
+                cap,
+                "budget {tokens} must fill exactly the cap"
+            );
+            assert!(
+                !kept[0].1.contains(TRUNCATION_MARKER),
+                "the marker does not fit in {cap} chars"
+            );
         }
 
         // One step past it, the marker fits and is appended, still inside the cap.
         let tokens = marker_len / CHARS_PER_TOKEN + 1;
         let kept = trim_to_budget(&ids, &c, tokens);
-        assert!(kept[0].1.ends_with(TRUNCATION_MARKER), "the marker must appear once it fits");
+        assert!(
+            kept[0].1.ends_with(TRUNCATION_MARKER),
+            "the marker must appear once it fits"
+        );
         assert_eq!(kept[0].1.chars().count(), tokens * CHARS_PER_TOKEN);
     }
 
@@ -1735,13 +1825,34 @@ mod tests {
     /// difference; that is the whole gap this mechanism closes.
     fn split_stream() -> Vec<RankedHit> {
         vec![
-            RankedHit { id: "weak".to_string(), rank: 1 },
-            RankedHit { id: "mid-a".to_string(), rank: 2 },
-            RankedHit { id: "mid-b".to_string(), rank: 3 },
-            RankedHit { id: "mid-c".to_string(), rank: 4 },
-            RankedHit { id: "mid-d".to_string(), rank: 5 },
-            RankedHit { id: "mid-e".to_string(), rank: 6 },
-            RankedHit { id: "strong".to_string(), rank: 7 },
+            RankedHit {
+                id: "weak".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "mid-a".to_string(),
+                rank: 2,
+            },
+            RankedHit {
+                id: "mid-b".to_string(),
+                rank: 3,
+            },
+            RankedHit {
+                id: "mid-c".to_string(),
+                rank: 4,
+            },
+            RankedHit {
+                id: "mid-d".to_string(),
+                rank: 5,
+            },
+            RankedHit {
+                id: "mid-e".to_string(),
+                rank: 6,
+            },
+            RankedHit {
+                id: "strong".to_string(),
+                rank: 7,
+            },
         ]
     }
 
@@ -1779,11 +1890,17 @@ mod tests {
         let explicit_zero = rrf_fuse_with_magnitudes(
             &streams,
             &magnitudes,
-            &FusionWeights { bm25_magnitude: 0.0, ..FusionWeights::SHIPPED },
+            &FusionWeights {
+                bm25_magnitude: 0.0,
+                ..FusionWeights::SHIPPED
+            },
         );
         assert_eq!(
             plain.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            explicit_zero.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>()
+            explicit_zero
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>()
         );
         for ((id, a), (_, b)) in plain.iter().zip(&explicit_zero) {
             assert_eq!(a, b, "score drift at {id}: {a:?} vs {b:?}");
@@ -1809,7 +1926,10 @@ mod tests {
             rrf_fuse_with_magnitudes(
                 &streams,
                 &magnitudes,
-                &FusionWeights { bm25_magnitude: w, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    bm25_magnitude: w,
+                    ..FusionWeights::SHIPPED
+                },
             )
         };
         let off = at(0.0);
@@ -1839,14 +1959,22 @@ mod tests {
         let fused = rrf_fuse_with_magnitudes(
             &streams,
             &magnitudes,
-            &FusionWeights { bm25_magnitude: w, ..FusionWeights::SHIPPED },
+            &FusionWeights {
+                bm25_magnitude: w,
+                ..FusionWeights::SHIPPED
+            },
         );
         let base = rrf_fuse(&streams, &FusionWeights::SHIPPED);
         for id in ["strong", "mid-c", "weak"] {
             let lift = score_of(&fused, id) - score_of(&base, id);
-            assert!(lift >= -1e-15 && lift <= w / (k + 1.0) + 1e-15, "{id} lifted {lift}");
+            assert!(
+                lift >= -1e-15 && lift <= w / (k + 1.0) + 1e-15,
+                "{id} lifted {lift}"
+            );
         }
-        assert!((score_of(&fused, "strong") - score_of(&base, "strong") - w / (k + 1.0)).abs() < 1e-12);
+        assert!(
+            (score_of(&fused, "strong") - score_of(&base, "strong") - w / (k + 1.0)).abs() < 1e-12
+        );
         assert!((score_of(&fused, "weak") - score_of(&base, "weak")).abs() < 1e-12);
     }
 
@@ -1858,7 +1986,10 @@ mod tests {
     #[test]
     fn degenerate_magnitudes_should_add_no_term_at_all() {
         let one: HashMap<String, f64> = [("weak".to_string(), -1.0)].into();
-        let flat: HashMap<String, f64> = ["a", "b"].iter().map(|i| ((*i).to_string(), -3.0)).collect();
+        let flat: HashMap<String, f64> = ["a", "b"]
+            .iter()
+            .map(|i| ((*i).to_string(), -3.0))
+            .collect();
         let poisoned: HashMap<String, f64> = [
             ("weak".to_string(), f64::NAN),
             ("mid-a".to_string(), -1.0),
@@ -1869,7 +2000,10 @@ mod tests {
             let fused = rrf_fuse_with_magnitudes(
                 &[split_stream()],
                 &magnitudes,
-                &FusionWeights { bm25_magnitude: 1.0, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    bm25_magnitude: 1.0,
+                    ..FusionWeights::SHIPPED
+                },
             );
             let base = rrf_fuse(&[split_stream()], &FusionWeights::SHIPPED);
             assert_eq!(
@@ -1893,7 +2027,10 @@ mod tests {
         let fused = rrf_fuse_with_magnitudes(
             &[split_stream()],
             &magnitudes,
-            &FusionWeights { bm25_magnitude: 1.0, ..FusionWeights::SHIPPED },
+            &FusionWeights {
+                bm25_magnitude: 1.0,
+                ..FusionWeights::SHIPPED
+            },
         );
         assert!(!fused.iter().any(|(id, _)| id == "not-a-candidate"));
         assert_eq!(fused.len(), 7);
@@ -1910,14 +2047,22 @@ mod tests {
         let scattered = "auth is a thing. jose is a thing. retry is a thing. \
                          deploy is a thing. token is a thing.";
         let dense = "auth jose retry deploy token";
-        assert_eq!(overlap_score(&qt, scattered), 5, "the whole document has all five");
+        assert_eq!(
+            overlap_score(&qt, scattered),
+            5,
+            "the whole document has all five"
+        );
         assert_eq!(
             best_sentence_overlap(&qt, scattered),
             1,
             "no single segment is about more than one of them"
         );
         assert_eq!(overlap_score(&qt, dense), 5);
-        assert_eq!(best_sentence_overlap(&qt, dense), 5, "one segment holds all five");
+        assert_eq!(
+            best_sentence_overlap(&qt, dense),
+            5,
+            "one segment holds all five"
+        );
     }
 
     /// The two scores are two granularities of one definition, so the finer can
@@ -1952,7 +2097,10 @@ mod tests {
     #[test]
     fn best_sentence_overlap_should_split_on_newlines_and_sentence_ends() {
         let qt = tokenize("auth jose");
-        assert_eq!(best_sentence_overlap(&qt, "user: hi\nuser: auth and jose"), 2);
+        assert_eq!(
+            best_sentence_overlap(&qt, "user: hi\nuser: auth and jose"),
+            2
+        );
         assert_eq!(best_sentence_overlap(&qt, "user: auth and jose."), 2);
         assert_eq!(best_sentence_overlap(&qt, "auth! jose?"), 1);
         assert_eq!(best_sentence_overlap(&qt, "..."), 0);
@@ -1965,7 +2113,11 @@ mod tests {
     /// whole-document ranker would have produced for equal scores.
     #[test]
     fn a_whole_document_recall_should_use_the_whole_document_scorer() {
-        let docs = ["auth jose retry deploy", "auth. jose. retry. deploy.", "unrelated filler"];
+        let docs = [
+            "auth jose retry deploy",
+            "auth. jose. retry. deploy.",
+            "unrelated filler",
+        ];
         let default = rank_candidates_scoped("auth jose", docs, OverlapScope::default());
         assert_eq!(default, rank_candidates("auth jose", docs));
         assert_eq!(OverlapScope::default(), OverlapScope::Document);
@@ -2004,7 +2156,9 @@ mod tests {
     /// the iterator yielded.
     #[test]
     fn recency_rank_should_order_by_half_life_decay() {
-        let now = DateTime::parse_from_rfc3339("2026-06-01T00:00:00Z").expect("stamp").with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-06-01T00:00:00Z")
+            .expect("stamp")
+            .with_timezone(&Utc);
         let day = |n: i64| (now - chrono::Duration::days(n)).to_rfc3339();
         let mems = vec![
             aged("two-halves", &day(2)),
@@ -2041,14 +2195,20 @@ mod tests {
     /// be mistaken for a recency signal.
     #[test]
     fn recency_rank_should_never_produce_a_nan_or_a_leading_nonsense_row() {
-        let now = DateTime::parse_from_rfc3339("2026-06-01T00:00:00Z").expect("stamp").with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-06-01T00:00:00Z")
+            .expect("stamp")
+            .with_timezone(&Utc);
         let mems = vec![
             aged("known", "2026-05-31T00:00:00Z"),
-            Memory { created_at: None, ..aged("absent", "2026-05-31T00:00:00Z") },
+            Memory {
+                created_at: None,
+                ..aged("absent", "2026-05-31T00:00:00Z")
+            },
             aged("junk", "not a timestamp at all"),
             aged("epoch", "1970-01-01T00:00:00Z"),
         ];
-        let ids = |rows: Vec<RankedHit>| -> Vec<String> { rows.into_iter().map(|h| h.id).collect() };
+        let ids =
+            |rows: Vec<RankedHit>| -> Vec<String> { rows.into_iter().map(|h| h.id).collect() };
 
         // A usable half-life: the one row with a parseable stamp leads, and the
         // three ways of saying "age unknown" tie below it in id order.
@@ -2057,7 +2217,11 @@ mod tests {
 
         for half_life in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             let ranked = recency_rank(&mems, now, half_life);
-            assert_eq!(ids(ranked), ["absent", "epoch", "junk", "known"], "half-life {half_life}");
+            assert_eq!(
+                ids(ranked),
+                ["absent", "epoch", "junk", "known"],
+                "half-life {half_life}"
+            );
         }
         // A stamp in the future is clock skew, not a negative age: it ranks as
         // brand new rather than above brand new.
@@ -2155,7 +2319,10 @@ mod tests {
     /// stream builder gates on.
     #[test]
     fn the_recency_policy_should_gate_the_weight_on_the_classifier() {
-        let always = FusionWeights { recency: 1.0, ..FusionWeights::SHIPPED };
+        let always = FusionWeights {
+            recency: 1.0,
+            ..FusionWeights::SHIPPED
+        };
         let gated = FusionWeights {
             recency: 1.0,
             recency_policy: RecencyPolicy::TemporalQueriesOnly,
@@ -2165,7 +2332,10 @@ mod tests {
         assert_eq!(gated.recency_weight_for("how does auth work"), 0.0);
         assert_eq!(gated.recency_weight_for("what did I do last time"), 1.0);
         // And the shipped default is off regardless of the query.
-        assert_eq!(FusionWeights::SHIPPED.recency_weight_for("what did I do last time"), 0.0);
+        assert_eq!(
+            FusionWeights::SHIPPED.recency_weight_for("what did I do last time"),
+            0.0
+        );
         assert_eq!(FusionWeights::default().recency_weight_for("today"), 0.0);
     }
 
@@ -2193,18 +2363,49 @@ mod tests {
         let streams = || {
             vec![
                 vec![
-                    RankedHit { id: "m1".to_string(), rank: 1 },
-                    RankedHit { id: "m2".to_string(), rank: 2 },
+                    RankedHit {
+                        id: "m1".to_string(),
+                        rank: 1,
+                    },
+                    RankedHit {
+                        id: "m2".to_string(),
+                        rank: 2,
+                    },
                 ],
-                vec![RankedHit { id: "m2".to_string(), rank: 1 }],
-                vec![RankedHit { id: "m3".to_string(), rank: 1 }],
+                vec![RankedHit {
+                    id: "m2".to_string(),
+                    rank: 1,
+                }],
+                vec![RankedHit {
+                    id: "m3".to_string(),
+                    rank: 1,
+                }],
             ]
         };
-        let dropped = rrf_fuse(&streams(), &FusionWeights { recency: 0.0, ..FusionWeights::SHIPPED });
+        let dropped = rrf_fuse(
+            &streams(),
+            &FusionWeights {
+                recency: 0.0,
+                ..FusionWeights::SHIPPED
+            },
+        );
         let ids: Vec<&str> = dropped.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(ids, ["m2", "m1"], "the dropped stream must contribute nothing");
-        let live = rrf_fuse(&streams(), &FusionWeights { recency: 1.0, ..FusionWeights::SHIPPED });
-        assert!(live.iter().any(|(id, _)| id == "m3"), "a live stream must vote");
+        assert_eq!(
+            ids,
+            ["m2", "m1"],
+            "the dropped stream must contribute nothing"
+        );
+        let live = rrf_fuse(
+            &streams(),
+            &FusionWeights {
+                recency: 1.0,
+                ..FusionWeights::SHIPPED
+            },
+        );
+        assert!(
+            live.iter().any(|(id, _)| id == "m3"),
+            "a live stream must vote"
+        );
     }
 
     // ---- (f) dense vector stream ---------------------------------------------
@@ -2215,17 +2416,35 @@ mod tests {
     /// in the row that gains from both streams.
     fn reverse_stream() -> Vec<RankedHit> {
         vec![
-            RankedHit { id: "a".to_string(), rank: 1 },
-            RankedHit { id: "b".to_string(), rank: 2 },
-            RankedHit { id: "c".to_string(), rank: 3 },
+            RankedHit {
+                id: "a".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "b".to_string(),
+                rank: 2,
+            },
+            RankedHit {
+                id: "c".to_string(),
+                rank: 3,
+            },
         ]
     }
 
     fn mirrored_stream() -> Vec<RankedHit> {
         vec![
-            RankedHit { id: "c".to_string(), rank: 1 },
-            RankedHit { id: "b".to_string(), rank: 2 },
-            RankedHit { id: "a".to_string(), rank: 3 },
+            RankedHit {
+                id: "c".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "b".to_string(),
+                rank: 2,
+            },
+            RankedHit {
+                id: "a".to_string(),
+                rank: 3,
+            },
         ]
     }
 
@@ -2249,11 +2468,17 @@ mod tests {
         let at = |w: f64| {
             rrf_fuse(
                 &[bm25.clone(), Vec::new(), Vec::new(), mirrored.clone()],
-                &FusionWeights { vector: w, ..FusionWeights::SHIPPED },
+                &FusionWeights {
+                    vector: w,
+                    ..FusionWeights::SHIPPED
+                },
             )
         };
         let score = |rows: &Vec<(String, f64)>, id: &str| {
-            rows.iter().find(|(i, _)| i == id).map(|(_, s)| *s).expect("id present")
+            rows.iter()
+                .find(|(i, _)| i == id)
+                .map(|(_, s)| *s)
+                .expect("id present")
         };
         let k = FusionWeights::SHIPPED.k;
         assert_eq!(
@@ -2330,14 +2555,26 @@ mod tests {
     /// the row. A semantic match with no shared vocabulary is exactly this shape.
     #[test]
     fn a_vector_stream_can_add_a_row_the_lexical_streams_never_produced() {
-        let lexical = vec![RankedHit { id: "a".to_string(), rank: 1 }];
+        let lexical = vec![RankedHit {
+            id: "a".to_string(),
+            rank: 1,
+        }];
         let semantic = vec![
-            RankedHit { id: "semantic-only".to_string(), rank: 1 },
-            RankedHit { id: "a".to_string(), rank: 2 },
+            RankedHit {
+                id: "semantic-only".to_string(),
+                rank: 1,
+            },
+            RankedHit {
+                id: "a".to_string(),
+                rank: 2,
+            },
         ];
         let fused = rrf_fuse(
             &[lexical.clone(), Vec::new(), Vec::new(), semantic.clone()],
-            &FusionWeights { vector: 1.0, ..FusionWeights::SHIPPED },
+            &FusionWeights {
+                vector: 1.0,
+                ..FusionWeights::SHIPPED
+            },
         );
         let ids: Vec<&str> = fused.iter().map(|(id, _)| id.as_str()).collect();
         assert!(
@@ -2363,22 +2600,44 @@ mod tests {
         let streams = || {
             vec![
                 vec![
-                    RankedHit { id: "m1".to_string(), rank: 1 },
-                    RankedHit { id: "m2".to_string(), rank: 2 },
+                    RankedHit {
+                        id: "m1".to_string(),
+                        rank: 1,
+                    },
+                    RankedHit {
+                        id: "m2".to_string(),
+                        rank: 2,
+                    },
                 ],
-                vec![RankedHit { id: "m2".to_string(), rank: 1 }],
+                vec![RankedHit {
+                    id: "m2".to_string(),
+                    rank: 1,
+                }],
                 Vec::new(),
-                vec![RankedHit { id: "m3".to_string(), rank: 1 }],
+                vec![RankedHit {
+                    id: "m3".to_string(),
+                    rank: 1,
+                }],
             ]
         };
         let dropped = rrf_fuse(&streams(), &FusionWeights::SHIPPED);
         let ids: Vec<&str> = dropped.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(ids, ["m2", "m1"], "the dropped stream must contribute nothing");
+        assert_eq!(
+            ids,
+            ["m2", "m1"],
+            "the dropped stream must contribute nothing"
+        );
         let live = rrf_fuse(
             &streams(),
-            &FusionWeights { vector: 1.0, ..FusionWeights::SHIPPED },
+            &FusionWeights {
+                vector: 1.0,
+                ..FusionWeights::SHIPPED
+            },
         );
-        assert!(live.iter().any(|(id, _)| id == "m3"), "a live stream must vote");
+        assert!(
+            live.iter().any(|(id, _)| id == "m3"),
+            "a live stream must vote"
+        );
     }
 
     /// The default-off claim as a bit-identity claim, the same shape as
@@ -2395,10 +2654,19 @@ mod tests {
         let two = || {
             vec![
                 vec![
-                    RankedHit { id: "m1".to_string(), rank: 1 },
-                    RankedHit { id: "m2".to_string(), rank: 2 },
+                    RankedHit {
+                        id: "m1".to_string(),
+                        rank: 1,
+                    },
+                    RankedHit {
+                        id: "m2".to_string(),
+                        rank: 2,
+                    },
                 ],
-                vec![RankedHit { id: "m2".to_string(), rank: 1 }],
+                vec![RankedHit {
+                    id: "m2".to_string(),
+                    rank: 1,
+                }],
             ]
         };
         // What a caller hands over with the arm built but the weight shipped.
@@ -2406,8 +2674,14 @@ mod tests {
             let mut s = two();
             s.push(Vec::new());
             s.push(vec![
-                RankedHit { id: "m3".to_string(), rank: 1 },
-                RankedHit { id: "m1".to_string(), rank: 2 },
+                RankedHit {
+                    id: "m3".to_string(),
+                    rank: 1,
+                },
+                RankedHit {
+                    id: "m1".to_string(),
+                    rank: 2,
+                },
             ]);
             s
         };
@@ -2419,7 +2693,11 @@ mod tests {
             "padding the stream list and zero-weighting the dense stream must not reorder"
         );
         for ((id, a), (_, b)) in plain.iter().zip(&inert) {
-            assert_eq!(a.to_bits(), b.to_bits(), "score at {id} is not the same f64");
+            assert_eq!(
+                a.to_bits(),
+                b.to_bits(),
+                "score at {id} is not the same f64"
+            );
         }
         // And the default really is zero, in this build, with no feature gate on
         // the field itself.

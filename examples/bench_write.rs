@@ -148,7 +148,9 @@ fn main() -> Result<()> {
     let mut results: Vec<Write> = Vec::new();
     for &n in &sizes {
         for path in Write3::ALL {
-            let runs: Vec<Write> = (0..repeats).map(|_| time_write(path, n)).collect::<Result<_>>()?;
+            let runs: Vec<Write> = (0..repeats)
+                .map(|_| time_write(path, n))
+                .collect::<Result<_>>()?;
             let mut walls: Vec<f64> = runs.iter().map(|r| r.wall_s).collect();
             walls.sort_by(f64::total_cmp);
             let mid = walls[walls.len() / 2];
@@ -209,9 +211,15 @@ fn main() -> Result<()> {
     }
     for &n in &sizes {
         if let (Some(single), Some(batch), Some(svc)) = (
-            results.iter().find(|r| r.memories == n && r.path == Write3::StorePut),
-            results.iter().find(|r| r.memories == n && r.path == Write3::Batched),
-            results.iter().find(|r| r.memories == n && r.path == Write3::ServiceRetain),
+            results
+                .iter()
+                .find(|r| r.memories == n && r.path == Write3::StorePut),
+            results
+                .iter()
+                .find(|r| r.memories == n && r.path == Write3::Batched),
+            results
+                .iter()
+                .find(|r| r.memories == n && r.path == Write3::ServiceRetain),
         ) {
             md.push_str(&format!(
                 "\nAt {n} memories: one-commit-per-row is **{single_x:.1}x** the wall time of one \
@@ -245,7 +253,11 @@ fn main() -> Result<()> {
 
     // ---- stdout -------------------------------------------------------------
     println!("=== write path ===");
-    println!("profile {} · sizes {} · repeats {repeats}", profile(), size_list.join(","));
+    println!(
+        "profile {} · sizes {} · repeats {repeats}",
+        profile(),
+        size_list.join(",")
+    );
     println!("store connection (audit handle): journal_mode={journal} synchronous={sync} (the store sets both: wal + NORMAL)");
     println!();
     for r in &results {
@@ -253,9 +265,15 @@ fn main() -> Result<()> {
     }
     for &n in &sizes {
         if let (Some(single), Some(batch), Some(svc)) = (
-            results.iter().find(|r| r.memories == n && r.path == Write3::StorePut),
-            results.iter().find(|r| r.memories == n && r.path == Write3::Batched),
-            results.iter().find(|r| r.memories == n && r.path == Write3::ServiceRetain),
+            results
+                .iter()
+                .find(|r| r.memories == n && r.path == Write3::StorePut),
+            results
+                .iter()
+                .find(|r| r.memories == n && r.path == Write3::Batched),
+            results
+                .iter()
+                .find(|r| r.memories == n && r.path == Write3::ServiceRetain),
         ) {
             println!(
                 "ratio     {n}: store put is {:.1}x the batch, service retain is {:.1}x the batch",
@@ -324,7 +342,9 @@ fn pragmas(db: &Path) -> (String, String) {
     let journal: String = conn
         .query_row("PRAGMA journal_mode", [], |r| r.get(0))
         .unwrap_or_else(|_| "unavailable".into());
-    let sync: i64 = conn.query_row("PRAGMA synchronous", [], |r| r.get(0)).unwrap_or(-1);
+    let sync: i64 = conn
+        .query_row("PRAGMA synchronous", [], |r| r.get(0))
+        .unwrap_or(-1);
     let name = match sync {
         0 => "0 (OFF)",
         1 => "1 (NORMAL)",

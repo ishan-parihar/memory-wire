@@ -46,7 +46,10 @@ fn main() -> anyhow::Result<()> {
         let _ = fs::remove_file(&dir);
         let t = Instant::now();
         let store = SqliteStore::open(&dir)?;
-        store.put_bank(&Bank { id: "s".into(), name: "s".into() })?;
+        store.put_bank(&Bank {
+            id: "s".into(),
+            name: "s".into(),
+        })?;
         let mut corpus_chars = 0usize;
         for i in 0..n {
             let c = match i % 4 {
