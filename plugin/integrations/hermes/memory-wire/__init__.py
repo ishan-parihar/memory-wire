@@ -542,7 +542,16 @@ class MemoryWireProvider(MemoryProvider):
         # Before the take, not after: a poisoned row at rank 0 must not consume
         # a slot a trusted row would have filled. Ranking untrusted text first
         # is exactly the adversarial case this exists for.
-        hits = [h for h in hits if h.get("trust") != UNTRUSTED_TIER]
+        # Two filters, not one. The trust gate drops a row from the block
+        # entirely, and a blank row is dropped for the same reason: it is not
+        # renderable, so counting it would make the footer claim rows were
+        # omitted when they were never candidates. `src/store.rs` proves a blank
+        # row is schema-legal, and the TypeScript doors have always skipped them.
+        hits = [
+            h
+            for h in hits
+            if h.get("trust") != UNTRUSTED_TIER and str(h.get("content") or "").strip()
+        ]
         if not hits:
             return ""
         # The shape every auto-injection surface emits (audit GAP-1): the bank

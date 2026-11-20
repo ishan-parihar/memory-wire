@@ -5709,6 +5709,64 @@ mod tests {
         aspects.sort();
         assert_ne!(aspects, ["episodic", "episodic", "episodic", "episodic"]);
     }
+
+    /// TODO 37: is a blank-content row actually reachable?
+    ///
+    /// The API rejects blank content on every retain path (`src/api.rs`, the
+    /// `content.trim().is_empty()` guard), so this build cannot write one. The
+    /// schema is `content TEXT NOT NULL` with **no `CHECK`**, which means an
+    /// older build or a direct insert can. This test asks the database rather
+    /// than assuming either way: it inserts a blank row through SQL, bypassing
+    /// the API entirely, and reports what the schema does.
+    ///
+    /// The answer decides whether TODO 37 is a live divergence or a latent one.
+    /// If the insert succeeds, the doors disagree about a row this store can
+    /// hold, and the auto-injection path in `hooks.rs` must skip it. If it
+    /// fails, the schema is the boundary and the gap closes itself.
+    #[test]
+    fn a_blank_content_row_through_sql_settles_whether_the_schema_permits_one() {
+        let s = SqliteStore::open_in_memory().expect("open");
+        s.put_bank(&bank("a")).expect("bank");
+        s.put(&content_mem("a", "real", "a real memory"))
+            .expect("put a real row");
+
+        // The bank must exist for the row to reference; `put` above created it.
+        let inserted = {
+            let g = s.conn.lock().expect("write connection");
+            g.execute(
+                "INSERT INTO memories (id, bank_id, content) VALUES (?1, ?2, ?3)",
+                rusqlite::params!["blank", "a", "   "],
+            )
+        };
+
+        match inserted {
+            Ok(_) => {
+                // The schema accepted it. Confirm what a reader sees, so the
+                // door-level consequence is a measurement rather than a guess.
+                let g = s.conn.lock().expect("write connection");
+                let seen: Option<String> = g
+                    .query_row("SELECT content FROM memories WHERE id = 'blank'", [], |r| {
+                        r.get(0)
+                    })
+                    .ok();
+                assert_eq!(
+                    seen.as_deref(),
+                    Some("   "),
+                    "the schema permitted a blank-content row; a door that does not \
+                     skip it will render an empty bullet against the section cap"
+                );
+            }
+            Err(e) => {
+                // The schema refused it. TODO 37 is answered: the store is the
+                // boundary, and no door needs to defend against a row that
+                // cannot exist.
+                assert!(
+                    e.to_string().contains("CHECK") || e.to_string().contains("constraint"),
+                    "the insert failed for a reason other than a content constraint: {e}"
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

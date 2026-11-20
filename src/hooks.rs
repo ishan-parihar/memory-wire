@@ -760,9 +760,14 @@ fn recall_at(endpoint: &str, bank: &str, query: &str) -> Option<Vec<ScoredHit>> 
 /// which is exactly the adversarial case the gate exists for, where fetched text
 /// is shaped to rank first.
 fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
+    // Two filters, not one. The trust gate drops a row from the block entirely,
+    // and a blank row is dropped for the same reason: it is not renderable, so
+    // counting it would make the footer claim rows were omitted when they were
+    // never candidates. `src/store.rs` proves a blank row is schema-legal; the
+    // TypeScript doors have always skipped them.
     let hits: Vec<&ScoredHit> = hits
         .iter()
-        .filter(|h| !is_untrusted(h.trust.as_deref()))
+        .filter(|h| !is_untrusted(h.trust.as_deref()) && !h.content.trim().is_empty())
         .collect();
     if hits.is_empty() {
         return String::new();
@@ -1632,6 +1637,36 @@ mod tests {
         assert!(
             out.contains(&format!("…and {} more", hits.len() - shown)),
             "footer must be hits.len() - shown, not hits.len() - MAX_LINES:\n{out}"
+        );
+    }
+
+    /// A blank-content row is schema-legal and must not cost a line.
+    ///
+    /// `src/store.rs` has a test that inserts one through SQL, so this is not a
+    /// hypothetical: the row exists, and rendered naively it is a "- " with
+    /// nothing after it, spending a line of the section cap to say nothing. The
+    /// TypeScript doors have always skipped these; this pins the same rule here.
+    #[test]
+    fn a_blank_row_is_skipped_rather_than_rendered_as_an_empty_bullet() {
+        let hits: Vec<ScoredHit> = vec![
+            hit("real content", None),
+            hit("   ", None),
+            hit("", None),
+            hit("more real content", None),
+        ];
+        let out = recall_section("b", &hits);
+        assert!(
+            !out.contains("- \n") && !out.contains("- \n"),
+            "a blank row rendered as an empty bullet:\n{out}"
+        );
+        assert_eq!(
+            out.matches("- ").count(),
+            2,
+            "only the two non-blank rows should render:\n{out}"
+        );
+        assert!(
+            !out.contains("…and"),
+            "the footer counted a skipped row as dropped:\n{out}"
         );
     }
 

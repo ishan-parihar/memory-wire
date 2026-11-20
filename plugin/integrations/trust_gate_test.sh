@@ -175,3 +175,35 @@ if command -v node > /dev/null 2>&1; then
   node plugin/integrations/opencode-plugin/cache_source_check.mjs || exit 1
   node plugin/integrations/opencode-plugin/cache_rule_test.mjs || exit 1
 fi
+
+# Every auto-injection door skips a blank-content row before the take, so the
+# four of them agree on one policy. This is TODO 37, which the round-5 review
+# found by reading all four doors side by side: the two TypeScript doors skipped
+# blank rows and Rust and Python counted them against the cap.
+#
+# The row is not hypothetical. `src/store.rs` has a test that inserts one
+# through SQL -- the schema is `content TEXT NOT NULL` with no `CHECK`, so a
+# blank row is schema-legal even though every retain path rejects one. Rendered
+# naively it is a "- " with nothing after it, and it still counts toward the
+# footer's "and N more", so the block claims rows were dropped that were never
+# renderable.
+#
+# The check reads each door's own source for the guard rather than executing it:
+# the four are in three languages and two of them need a host runtime to run.
+# A source check is weaker than an execution check, so the Rust side carries the
+# real test (hooks::tests::a_blank_row_is_skipped_rather_than_rendered_as_an_empty_bullet)
+# and this only pins that the policy did not quietly disappear from a door.
+printf '%s\n' \
+  'plugin/integrations/extension/memory-wire.ts:      !content.trim()' \
+  'plugin/integrations/opencode-plugin/memory-wire.ts: !content.trim()' \
+  'src/hooks.rs:                                     content.trim().is_empty()' \
+  'plugin/integrations/hermes/memory-wire/__init__.py: strip()' \
+| while IFS= read -r line; do
+    f=${line%%:*}
+    needle=$(printf '%s' "${line#*:}" | sed 's/^ *//')
+    if ! grep -qF "$needle" "$f"; then
+      echo "FAIL  $f does not skip blank content (expected: $needle)" >&2
+      exit 1
+    fi
+  done
+echo "ok  every auto-injection door skips a blank-content row"

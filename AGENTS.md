@@ -104,18 +104,18 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 ## 3. Where things live
 
-`src/`, 33 modules, 39,778 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 39,871 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
 | module | lines | role |
 |---|---|---|
-| `store.rs` | 5816 | SQLite: schema, migrations, put/recall/delete, FTS5, redaction, versions |
+| `store.rs` | 5874 | SQLite: schema, migrations, put/recall/delete, FTS5, redaction, versions |
 | `api.rs` | 4724 | HTTP routes, the frozen error contract, the historian prompt |
 | `main.rs` | 3379 | clap surface, routing, wiring |
 | `connect.rs` | 3410 | agent-host detection and config writing |
 | `recall.rs` | 2707 | RRF fusion, candidate pool, budget trim, scoring |
-| `hooks.rs` | 2175 | the five lifecycle events; the never-fail hook contract |
+| `hooks.rs` | 2210 | the five lifecycle events; the never-fail hook contract |
 | `mcp.rs` | 2299 | MCP server: 6 tools + resources + prompts + completion |
 | `daemon.rs` | 1208 | `daemon start/stop/status`, pidfile, start-time identity |
 | `doctor.rs` | 1272 | the health report (`doctor`, `doctor --all-hosts`) |
