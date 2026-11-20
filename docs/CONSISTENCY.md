@@ -5161,3 +5161,62 @@ tool count and all said five or four: `AGENTS.md` §3 table row and §4 prose,
 Gate: 667 tests, clippy 0, doc 0 warnings.
 
 Next free CONSISTENCY section: **§66**.
+
+## §66. 2026-11-20 — doctor names every bank side by side, and the resolved one even when it is empty
+
+C2's deliverable, and the smallest one in the plan: one command instead of three
+reads. The plan's own words were "the one thing worth adding is a single command
+that names both banks and their counts side by side, so the choice is one read
+instead of three."
+
+**What was already there.** `doctor::collect` called `bank_memory_counts` —
+a `GROUP BY bank_id` over `memories`, already sorted largest-first — and then
+reduced it to `elsewhere_at`, which keeps only the single largest bank when the
+resolved one is empty. The screen therefore said "bank X holds no memories; Y
+holds 4241" and stopped. That answers *where did they go*. The question a user
+actually faces is *which one should be authoritative*, and that is a choice
+between named banks, so naming one is not enough.
+
+**What was added.** `Report::banks_by_memories`, the full list, rendered as a
+block. Nothing else: no migration, no auto-move, no ranking suggestion. The
+module doc says so in place, because the tempting next step is exactly the thing
+`BANK_IDENTITY.md` forbids.
+
+**The resolved bank is listed even when it holds nothing.** This is the part that
+took a second look. A list built from `memories` rows cannot contain a bank with
+zero rows, so the one bank the user's hooks actually point at was the one bank
+missing from its own comparison — the screen would say "here are your banks" and
+omit the one that matters. It is appended by hand with `0` and
+`<- resolved here, holds nothing`, and the column width is shared with the real
+rows so it aligns.
+
+**Verified against the real store.** Output on this box, load not measured (this
+is a read-only render, not a benchmark):
+
+```
+banks by memories:
+       4241  omp
+       1339  memory-wire
+        540  dsh-self-improve
+         54  default
+          4  ops
+          2  tsgate-1385352
+          1  artificial-route
+          1  job-outreach-audit
+          1  talent
+          0  ishan-parihar-memory-wire  <- resolved here, holds nothing
+           Pick one with `--bank <id>`, or set MEMORY_WIRE_BANK. Nothing is moved:
+           which bank is authoritative is your call, not this tool's.
+```
+
+The block is suppressed below two banks: one bank is not a choice, and the
+resolved bank already appears in the header.
+
+**Mutation-checked.** Removing the hand-appended zero row fails
+`the_bank_breakdown_names_every_bank_and_marks_the_resolved_one`, including its
+ordering assertion.
+
+Gate: 668 tests, clippy 0, doc 0 warnings. `docs/BANK_IDENTITY.md` documents the
+new block next to the warning it complements.
+
+Next free CONSISTENCY section: **§67**.

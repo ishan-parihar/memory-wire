@@ -76,6 +76,22 @@ pub struct Report {
     /// them, so a store with 710 memories in it and a hook resolving to an empty
     /// bank looked exactly like a working install that had nothing to say.
     pub elsewhere: Option<(String, i64)>,
+    /// Every bank that holds at least one memory, as `(bank_id, memories)`,
+    /// largest first.
+    ///
+    /// C2's deliverable. `doctor` already knew this: `bank_memory_counts` had
+    /// been called and thrown away, reduced to the one "elsewhere" pointer.
+    /// The pointer answers "where did they go" for a *user*, but the decision
+    /// the empty-bank case actually demands is "which bank should be
+    /// authoritative" — and that is a choice between the named banks, so the
+    /// screen has to name them. This is a doctor output change and nothing
+    /// else: no migration, no rewrite, no automatic move.
+    ///
+    /// Banks with zero memories are absent by construction (a `GROUP BY` over
+    /// `memories` cannot produce a row for a bank with no rows), which is the
+    /// right call: `banks` already counts bank rows separately, and a bank that
+    /// exists but holds nothing is not one of the choices.
+    pub banks_by_memories: Vec<(String, i64)>,
     /// Bank ids baked into the installed harness surfaces, as `(surface, bank)`.
     ///
     /// Populated only by [`collect`]; [`collect_at`] is the store/server half
@@ -125,6 +141,37 @@ finding    bank `{}` holds no memories; `{}` holds {n}.\n  \
            `--bank {other}`, or set MEMORY_WIRE_BANK={other}.",
                 self.bank, other, self.bank
             ));
+        }
+        // The choice, stated once instead of assembled from three separate
+        // findings. Sorted largest-first by `bank_memory_counts`, so the bank a
+        // user most likely wants is the first line.
+        //
+        // The resolved bank is listed even when it holds nothing, because the
+        // whole point of this block is a comparison and a bank missing from its
+        // own comparison is the confusing case: `bank` is where the hooks point
+        // and it cannot appear in a list built from `memories` rows.
+        if self.banks_by_memories.len() > 1 {
+            out.push_str("\n  \nbanks by memories:");
+            let mut shown_resolved = false;
+            for (id, n) in &self.banks_by_memories {
+                if id == &self.bank {
+                    shown_resolved = true;
+                }
+                let here = if id == &self.bank { "  <- resolved here" } else { "" };
+                out.push_str(&format!("\n    {n:>7}  {id}{here}"));
+            }
+            if !shown_resolved {
+                // Same column as the rows above: 7 wide, two spaces, id.
+                out.push_str(&format!(
+                    "\n    {:>7}  {}  <- resolved here, holds nothing",
+                    0, self.bank
+                ));
+            }
+            out.push_str(
+                "\n           Pick one with `--bank <id>`, or set MEMORY_WIRE_BANK. \
+Nothing is moved:",
+            );
+            out.push_str("\n           which bank is authoritative is your call, not this tool's.");
         }
         if let Some(legacy) = &self.legacy_bank {
             out.push_str(&format!(
@@ -238,6 +285,7 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         server,
         legacy_bank: legacy_bank_at(&per_bank, bank),
         elsewhere: elsewhere_at(&per_bank, bank),
+        banks_by_memories: per_bank,
         harness_banks: Vec::new(),
         stale_serve: None,
     }
@@ -615,6 +663,7 @@ mod tests {
             server: ServerState::Up,
             legacy_bank: None,
             elsewhere: None,
+            banks_by_memories: Vec::new(),
             harness_banks: Vec::new(),
             stale_serve: None,
         }
@@ -940,6 +989,7 @@ mod tests {
             server: ServerState::Up,
             legacy_bank: None,
             elsewhere: None,
+            banks_by_memories: Vec::new(),
             harness_banks: Vec::new(),
             stale_serve: None,
         };
@@ -964,6 +1014,50 @@ server     up"
         let mut unreadable = only_store;
         unreadable.store_state = StoreState::Unreadable("no banks table".to_string());
         assert!(unreadable.strict_failure().unwrap().contains("unreadable"));
+    }
+
+    /// The C2 block. The case it exists for: the resolved bank holds nothing and
+    /// the data sits in another, so the screen has to name both rather than make
+    /// a user run three commands to find out which is which.
+    #[test]
+    fn the_bank_breakdown_names_every_bank_and_marks_the_resolved_one() {
+        let mut r = Report {
+            endpoint: "http://127.0.0.1:8888".to_string(),
+            bank: "empty-one".to_string(),
+            store: PathBuf::from("/tmp/memory.db"),
+            store_bytes: 2048,
+            store_state: StoreState::Ok,
+            banks: Some(3),
+            memories: Some(42),
+            server: ServerState::Up,
+            legacy_bank: None,
+            elsewhere: Some(("full-one".to_string(), 40)),
+            banks_by_memories: vec![
+                ("full-one".to_string(), 40),
+                ("other".to_string(), 2),
+            ],
+            harness_banks: Vec::new(),
+            stale_serve: None,
+        };
+        let text = r.render();
+        assert!(text.contains("banks by memories:"), "{text}");
+        assert!(text.contains("40  full-one"), "largest first: {text}");
+        assert!(text.contains("2  other"), "{text}");
+        // The resolved bank has no `memories` row, so it cannot come from the
+        // store list — the point of listing it by hand.
+        assert!(
+            text.contains("0  empty-one  <- resolved here, holds nothing"),
+            "the resolved bank is named even though it holds none: {text}"
+        );
+        // And the ordering: the zero row sorts after the real counts.
+        let zero_at = text.find("empty-one  <- resolved").expect("a zero row");
+        let full_at = text.find("full-one").expect("the full bank");
+        assert!(zero_at > full_at, "zero last: {text}");
+
+        // A single bank is not a choice, so the block stays off the screen.
+        r.banks_by_memories = vec![("only".to_string(), 42)];
+        r.elsewhere = None;
+        assert!(!r.render().contains("banks by memories"), "{}", r.render());
     }
 
     /// A directory whose bank is now derived from its git remote, where the

@@ -107,6 +107,15 @@ bank behind it is a fresh project, not an orphaned memory, and an old name that
 is still the resolved name is not a change at all. `doctor` remains read-only;
 it reports, it does not repair.
 
+**`doctor` also prints every bank that holds memories, with its count, largest
+first** — added 2026-11-20 because the warning above answers "where did my
+memories go" and the choice underneath it is a different question: *which bank
+should be authoritative?* That is a comparison, and a comparison needs both
+sides named. The resolved bank is listed even when it holds nothing, marked
+`<- resolved here`, because a list built from `memories` rows cannot contain a
+bank with none. It says nothing about which to pick; the decision is the user's,
+and the tool's job is to make it one read instead of three commands.
+
 ### Recovering
 
 Point the hook at the old bank, by flag or by environment:
