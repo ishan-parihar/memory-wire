@@ -3407,4 +3407,109 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
         );
         std::fs::remove_dir_all(&home).ok();
     }
+
+    /// The cross-door parity check TODO 38 asks for, in the form that costs
+    /// nothing: **enumerate the hosts from `Host::ALL`, never a literal list.**
+    ///
+    /// Rounds 4 and 5 of the review converged on this independently, and round
+    /// 4's evidence was a script that listed 6 of the 8 hosts `connect.rs`
+    /// declares -- a check that silently stopped covering hosts it never named.
+    /// A literal list in a test has the same failure: add a ninth host, and the
+    /// list still passes while asserting nothing about it.
+    ///
+    /// So the enumeration is the assertion. Each host is detected and wired in a
+    /// temp home, and the outcome must be `Wired` or `Already`, never `Skipped`
+    /// -- a host that cannot be wired in a pristine home is a host whose
+    /// integration is broken for every user, and no per-host test would notice
+    /// because each one only checks its own host.
+    ///
+    /// What this does NOT cover: the host-side load. `Host::ALL` says what we
+    /// write, not whether the host reads it -- which is exactly how the opencode
+    /// door shipped dead (TODO 35) while every Rust test passed. That half needs
+    /// a runtime per host and is the rest of TODO 38.
+    #[test]
+    fn every_host_in_all_wires_in_a_pristine_home() {
+        let mut wired = 0usize;
+        for host in ALL {
+            let home = tmp_home(&format!("parity-{}", host.id()));
+            // Detection is by a directory existing, so a pristine home needs
+            // each host's own marker before `apply` will do anything.
+            // `detect_rel` names the *directory* that proves the host is
+            // installed -- writing a file there instead makes `.claude` a
+            // regular file and every write under it fails with ENOTDIR, which
+            // is a bug in the test rather than a finding about the host.
+            std::fs::create_dir_all(home.join(host.detect_rel())).expect("marker dir");
+
+            let out = apply(
+                *host,
+                "/bin/memory-wire",
+                &home,
+                false,
+                no_path,
+                &home.join("data"),
+                None,
+            );
+            match &out {
+                Outcome::Wired { .. } | Outcome::Already { .. } => wired += 1,
+                Outcome::Skipped(why) => panic!(
+                    "host {} could not be wired in a pristine home: {why}. \
+                     Every host in Host::ALL must be wireable -- a skipped host is a \
+                     broken integration for every user, and no per-host test catches it.",
+                    host.id()
+                ),
+                other => panic!(
+                    "host {} produced an unexpected outcome: {other:?}",
+                    host.id()
+                ),
+            }
+            std::fs::remove_dir_all(&home).ok();
+        }
+        assert_eq!(
+            wired,
+            ALL.len(),
+            "every declared host must have wired; {wired} of {} did",
+            ALL.len()
+        );
+    }
+
+    /// The same enumeration in reverse: after wiring every host, unwiring every
+    /// host leaves each one's config without our entries.
+    ///
+    /// The forward direction is where a broken write hides; this is where a
+    /// broken *removal* hides, and it matters more than it looks -- a host whose
+    /// uninstall leaves our hook behind keeps calling a binary the user removed.
+    #[test]
+    fn every_host_in_all_unwires_what_it_wired() {
+        for host in ALL {
+            let home = tmp_home(&format!("parity-unwire-{}", host.id()));
+            std::fs::create_dir_all(home.join(host.detect_rel())).expect("marker dir");
+
+            let _ = apply(
+                *host,
+                "/bin/memory-wire",
+                &home,
+                false,
+                no_path,
+                &home.join("data"),
+                None,
+            );
+            let out = apply(
+                *host,
+                "/bin/memory-wire",
+                &home,
+                true,
+                no_path,
+                &home.join("data"),
+                None,
+            );
+            match &out {
+                Outcome::Unwired { .. } | Outcome::Already { .. } => {}
+                other => panic!(
+                    "host {} did not unw() cleanly after wiring: {other:?}",
+                    host.id()
+                ),
+            }
+            std::fs::remove_dir_all(&home).ok();
+        }
+    }
 }

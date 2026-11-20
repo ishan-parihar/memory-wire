@@ -1545,7 +1545,7 @@ export default function memoryWireExtension(pi) {
   });
 }
 
-# FILE: plugin/integrations/opencode-plugin/memory-wire.ts (lines 176,479)
+# FILE: plugin/integrations/opencode-plugin/memory-wire.ts (lines 182,484)
 
 var UNTRUSTED_TIER = "untrusted_external";
 
@@ -1582,9 +1582,8 @@ function formatRecall(items) {
     // filter first and take second, and this file has to agree with them.
     if (isUntrusted(item)) continue;
     // The default recall response is a bare array of content strings; a
-    // `format: "full"` server answers with `{id, score, content}` instead.
-    // Both are accepted so this file does not depend on which one it is
-    // talking to.
+    // `format: "full"` server answers with `{id, score, content}` instead. Both
+    // are accepted so this file does not depend on which one it is talking to.
     var content = typeof item === "string" ? item : item && item.content;
     if (typeof content !== "string" || !content.trim()) continue;
     if (lines.length >= RECALL_ENTRIES) break;

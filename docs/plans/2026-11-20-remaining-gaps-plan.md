@@ -270,6 +270,20 @@ the door its item needed.
 | 1.3 | rebuild the release binary | 1 | minutes | no |
 | 2.1 | TS door duplication: (c) fence now, (a) extract if wanted | 2 | ½ day (c) / 2 days (a) | **your call on (a) vs (c)** |
 | 2.2 | cross-door parity suite | 2 | 2–3 days | green light |
+
+> **Update 2026-11-20, after building part of it.** The `Host::ALL` half landed
+> as two tests in `src/connect.rs`
+> (`every_host_in_all_wires_in_a_pristine_home`,
+> `every_host_in_all_unwires_what_it_wired`). It enumerates `ALL` rather than
+> listing hosts, so a ninth host cannot silently escape the check — which is
+> round 4's exact finding about a script that listed 6 of 8. The four-door
+> fixture matrix (failed-then-recovered recall, cap overflow, `format=summary`)
+> is still open. The 2–3 day estimate was for the whole thing; this half cost
+> under an hour and the remaining half is the part that needs a runtime per
+> host. A review round is reviewing this plan's premises; see
+> `research/audits/context-pack-2026-11-20-rulings/`. The venue for that round
+> is **`gemini-4-hydrogen` at default effort**, per the operator's ruling of
+> 2026-11-20 -- not `xhigh`. |
 | 3.1 | release readiness (measure, then cut) | 3 | hours | **your call** |
 | 3.2 | install 0.10.0 over 0.9.0 | 3 | minutes | **your call** |
 | 3.3–3.6 | PersonaMem, agent-memory-bench, judged runs, door parity | 3 | — | you, or external |
