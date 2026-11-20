@@ -28,12 +28,20 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
   landed.** Two batches, both committed and both gated.
 
   - **Tiers A/B/C of `docs/plans/2026-11-19-execution-plan.md`**
-    (`131cffb`..`b8ef4c4`, then `5285ea3`). A: a nightly check that
-    `.skills_to_install/` still matches `src/skills.rs` (it had silently drifted
-    to ~4 months); a doctor block that names *which bank* holds the memories
-    when the resolved bank is empty (it printed `bank: <resolved>` next to
-    `memories: 0` and left the reader to join them); a `doctor banks` row per
-    bank. B: `connect_common.rs` (six byte-identical helpers, net -138 lines);
+    (`131cffb`..`b8ef4c4`, then `5285ea3`). A: the plugin-door tests wired to
+    a gate (they had run nowhere), the `genome` lint E003 cleared, and a
+    `#[cfg(test)]` test -- `the_embedded_source_is_the_one_on_disk`, in
+    `src/skills.rs` -- asserting the `include_str!`-embedded skill equals
+    `plugin/skills/memory-wire/SKILL.md` on disk. **Corrected 2026-11-20**: this
+    entry first said "a nightly check that `.skills_to_install/` still matches
+    `src/skills.rs`". No such directory exists anywhere in the repo or its
+    history and nothing references one; the test named here is what actually
+    gates it. The test is stronger than a nightly check would be, because a
+    change to `SKILL.md` cannot compile unless the file matches. A doctor block
+    that names *which bank* holds the memories when the resolved bank is empty
+    (it printed `bank: <resolved>` next to `memories: 0` and left the reader to
+    join them); a `doctor banks` row per bank. B: `connect_common.rs` (six
+    byte-identical helpers, net -138 lines);
     `scripts/module_table_check.sh` wired into the pre-commit hook, with the
     §3 table regenerated 18 -> 33 rows; a narrow per-door redact fix. C:
     `memory_redact` as the 6th MCP tool; the banks list.
