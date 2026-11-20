@@ -174,6 +174,17 @@ fi
 if command -v node > /dev/null 2>&1; then
   node plugin/integrations/opencode-plugin/cache_source_check.mjs || exit 1
   node plugin/integrations/opencode-plugin/cache_rule_test.mjs || exit 1
+
+  # The two TypeScript doors carry one policy core: 13 constants and 8 helper
+  # functions. This fails when the copies drift apart, which is the failure that
+  # produced the round-5 footer bug in Rust and hermes -- a shape ported by hand
+  # into a second place, with nothing to notice the copy diverging.
+  #
+  # It found a real divergence the first time it ran: `textOf` accepted a bare
+  # string in the extension door and returned "" for one in opencode. Neither
+  # opencode caller can pass a string today, so it was unreachable there, but it
+  # is the exact class of drift this exists to catch before it becomes reachable.
+  node plugin/integrations/door_core_check.mjs || exit 1
 fi
 
 # Every auto-injection door skips a blank-content row before the take, so the

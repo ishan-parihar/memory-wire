@@ -67,18 +67,18 @@ parents.
 
 ## 3. Where things live
 
-`src/`, 33 modules, 39,778 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 39,871 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
 | module | lines | role |
 |---|---|---|
-| `store.rs` | 5816 | SQLite: schema, migrations, put/recall/delete, FTS5, redaction, versions |
+| `store.rs` | 5874 | SQLite: schema, migrations, put/recall/delete, FTS5, redaction, versions |
 | `api.rs` | 4724 | HTTP routes, the frozen error contract, the historian prompt |
 | `main.rs` | 3379 | clap surface, routing, wiring |
 | `connect.rs` | 3410 | agent-host detection and config writing |
 | `recall.rs` | 2707 | RRF fusion, candidate pool, budget trim, scoring |
-| `hooks.rs` | 2175 | the five lifecycle events; the never-fail hook contract |
+| `hooks.rs` | 2210 | the five lifecycle events; the never-fail hook contract |
 | `mcp.rs` | 2299 | MCP server: 6 tools + resources + prompts + completion |
 | `daemon.rs` | 1208 | `daemon start/stop/status`, pidfile, start-time identity |
 | `doctor.rs` | 1272 | the health report (`doctor`, `doctor --all-hosts`) |
@@ -818,7 +818,7 @@ Do not cite these as memory-wire properties:
 
 # SECTION G-DOORS
 
-# FILE: src/hooks.rs (lines 752,811)
+# FILE: src/hooks.rs (lines 752,816)
 
 /// **The trust gate lives here.** Rows whose tier is `untrusted_external` are
 /// dropped before rendering, because this function's output is the only path by
@@ -831,9 +831,14 @@ Do not cite these as memory-wire properties:
 /// which is exactly the adversarial case the gate exists for, where fetched text
 /// is shaped to rank first.
 fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
+    // Two filters, not one. The trust gate drops a row from the block entirely,
+    // and a blank row is dropped for the same reason: it is not renderable, so
+    // counting it would make the footer claim rows were omitted when they were
+    // never candidates. `src/store.rs` proves a blank row is schema-legal; the
+    // TypeScript doors have always skipped them.
     let hits: Vec<&ScoredHit> = hits
         .iter()
-        .filter(|h| !is_untrusted(h.trust.as_deref()))
+        .filter(|h| !is_untrusted(h.trust.as_deref()) && !h.content.trim().is_empty())
         .collect();
     if hits.is_empty() {
         return String::new();
@@ -881,7 +886,7 @@ fn recall_section(bank: &str, hits: &[ScoredHit]) -> String {
 /// recognise — including one a *newer* server invents. Both are the same
 /// judgement: a row is withheld on evidence, never on the absence of evidence.
 
-# FILE: plugin/integrations/hermes/memory-wire/__init__.py (lines 440,931)
+# FILE: plugin/integrations/hermes/memory-wire/__init__.py (lines 440,940)
 
 class MemoryWireProvider(MemoryProvider):
     """memory-wire as a Hermes memory provider."""
@@ -988,7 +993,16 @@ class MemoryWireProvider(MemoryProvider):
         # Before the take, not after: a poisoned row at rank 0 must not consume
         # a slot a trusted row would have filled. Ranking untrusted text first
         # is exactly the adversarial case this exists for.
-        hits = [h for h in hits if h.get("trust") != UNTRUSTED_TIER]
+        # Two filters, not one. The trust gate drops a row from the block
+        # entirely, and a blank row is dropped for the same reason: it is not
+        # renderable, so counting it would make the footer claim rows were
+        # omitted when they were never candidates. `src/store.rs` proves a blank
+        # row is schema-legal, and the TypeScript doors have always skipped them.
+        hits = [
+            h
+            for h in hits
+            if h.get("trust") != UNTRUSTED_TIER and str(h.get("content") or "").strip()
+        ]
         if not hits:
             return ""
         # The shape every auto-injection surface emits (audit GAP-1): the bank

@@ -154,9 +154,15 @@ function stripReminders(text) {
 }
 
 /** The text of a part array: only text parts carry any. */
-function textOf(parts) {
-  if (!Array.isArray(parts)) return "";
-  return parts
+// The string case matters here even though neither caller can reach it: both
+// pass an array today (checked 2026-11-20), while the extension door's caller
+// passes content that may already be a string. Identical text is the point --
+// this core is meant to be one policy, and `door_core_check.mjs` fails when the
+// two copies drift apart.
+function textOf(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
     .map(function (block) {
       return block && block.type === "text" && typeof block.text === "string" ? block.text : "";
     })
@@ -208,9 +214,8 @@ function formatRecall(items) {
     // filter first and take second, and this file has to agree with them.
     if (isUntrusted(item)) continue;
     // The default recall response is a bare array of content strings; a
-    // `format: "full"` server answers with `{id, score, content}` instead.
-    // Both are accepted so this file does not depend on which one it is
-    // talking to.
+    // `format: "full"` server answers with `{id, score, content}` instead. Both
+    // are accepted so this file does not depend on which one it is talking to.
     var content = typeof item === "string" ? item : item && item.content;
     if (typeof content !== "string" || !content.trim()) continue;
     if (lines.length >= RECALL_ENTRIES) break;
