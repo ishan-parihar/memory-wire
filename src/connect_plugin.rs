@@ -25,6 +25,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::connect_common::preserve_comment;
 use crate::connect::{backup, timestamp, Host, Outcome, MARKER};
 use crate::paths;
 
@@ -504,18 +505,6 @@ fn set_provider(text: &str, op: &Provider) -> Result<String, String> {
     }
     Ok(joined)
 }
-
-/// Rewrite a `key: value` line, keeping any trailing `# comment`.
-///
-/// A comment on a line the user annotated is theirs; dropping it because we
-/// changed the value beside it would be an edit they did not ask for.
-fn preserve_comment(line: &str, replacement: &str) -> String {
-    match line.find(" #") {
-        Some(at) => format!("{} {}", replacement, &line[at..]),
-        None => replacement.to_string(),
-    }
-}
-
 /// Whether `memory.provider` currently holds our own marker.
 fn block_value_is_ours(block: &Block) -> bool {
     block

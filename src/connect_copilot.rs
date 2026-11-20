@@ -23,6 +23,7 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
+use crate::connect_common::mcp_url;
 use crate::connect::{backup, timestamp, Host, Outcome};
 use crate::paths;
 
@@ -174,20 +175,6 @@ pub(crate) fn installed(home: &Path) -> bool {
 fn entry_url(entry: &Value) -> Option<String> {
     entry.get("url")?.as_str().map(String::from)
 }
-
-/// The URL Copilot CLI should dial. Same resolution and same bank-in-path rule
-/// as [`crate::connect_codex::mcp_url`] and [`crate::connect_claude::mcp_url`]
-/// — one mount, one bank spelling, three hosts whose only difference is which
-/// file the URL lives in.
-fn mcp_url(bank: Option<&str>) -> String {
-    let endpoint = paths::endpoint();
-    let base = endpoint.trim_end_matches('/');
-    match bank.filter(|b| !b.is_empty()) {
-        Some(b) => format!("{base}/mcp/{b}"),
-        None => format!("{base}/mcp"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

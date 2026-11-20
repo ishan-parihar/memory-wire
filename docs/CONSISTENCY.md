@@ -5063,3 +5063,52 @@ in prose and disagreed with the artifact (the tree). The generator is the fix,
 and the gate is what keeps the next edit honest.
 
 Next free CONSISTENCY section: **§64**.
+
+## §64. 2026-11-20 — connect_* helpers: six byte-identical functions extracted, and the first thing the new table gate caught
+
+**What was duplicated, measured rather than inferred.** Grepping every
+`fn` signature in `src/connect*.rs` and grouping by name found eleven names
+appearing more than once. Six of those were byte-identical bodies, confirmed by
+`diff` on each pair and not just by a matching name: `mcp_url` (claude,
+copilot **and** codex — three copies, not two), `baked` (ext, opencode),
+`carries_marker` (both), `is_ours` (both), `preserve_comment` (codex, hermes).
+Four of the six differed only in the constant the caller supplied.
+
+Two were *not* duplicated and are worth naming, because a name collision
+looks like one from a grep:
+
+- `connect::is_ours` tests a `serde_json::Value` entry for the marker;
+  `connect_ext::is_ours` reads a file from disk. Collapsing them would mean
+  serializing a value to a string it already holds. Left alone deliberately.
+- `version` and `prune_empty_dirs` differ between `connect_ext` and
+  `connect_opencode` by the directory they stop at (`extensions` vs `plugins`)
+  and by how they treat a non-empty directory. Parameterizing a two-line
+  difference to save one copy is not a win.
+
+**The rule, not the lines, is what was worth extracting.** `mcp_url` encodes a
+load-bearing convention in three hosts: the bank travels as a `/mcp/<bank>` path
+segment because the stateless mount pins the whole subtree and refuses a call
+naming a different one. A fourth host that put the bank somewhere else would
+produce an entry that looks right and refuses every call — the same failure
+shape as §62's dead opencode door, one layer out.
+
+**Shape.** Callers import the shared function directly; there are no same-named
+wrappers, because a wrapper whose body is one call adds a hop and a second doc
+comment for nothing. Net −138 lines across the six files, +177 for
+`connect_common.rs` including its five tests.
+
+**Mutation-checked twice.** Removing the quote/backslash escaping from `baked`
+fails `baked_escapes_a_hostile_bank_value_rather_than_breaking_the_literal`;
+reducing `carries_marker` to a single-marker test fails
+`carries_marker_needs_both_markers`. Both restored and re-run green.
+
+**The §63 gate caught its first real drift on the next commit.** Adding
+`connect_common.rs` made the table 32 rows against 33 files, and the seven
+connect modules had shifted by the extraction. The generator from §63 plus the
+new row is what keeps §3 honest; this is the gate paying for itself on the very
+next change rather than the one it was written for.
+
+Gate: 665 tests (272 + 370 + the integration binaries), clippy 0, doc 0
+warnings, trust gate green on all three doors.
+
+Next free CONSISTENCY section: **§65**.

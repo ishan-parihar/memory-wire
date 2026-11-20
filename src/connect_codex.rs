@@ -30,6 +30,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::connect_common::{mcp_url, preserve_comment};
 use crate::connect::{backup, timestamp, Host, Outcome, MARKER};
 use crate::paths;
 
@@ -133,31 +134,6 @@ pub fn apply(home: &Path, uninstall: bool, data_root: &Path, bank: Option<&str>)
     }
     Outcome::Wired { backup: saved, events, notes }
 }
-
-/// The URL Codex should dial: the endpoint the rest of the tree already resolves,
-/// plus the MCP mount.
-///
-/// `paths::endpoint()` is `MEMORY_WIRE_URL` when set, else a running daemon's
-/// recorded address, else `http://127.0.0.1:8888`
-/// otherwise, so this is the one port literal in the tree again, and a user who
-/// already points their hooks at a non-default server gets the MCP entry for that
-/// same server. A trailing slash is trimmed so the join cannot produce `//mcp`.
-fn mcp_url(bank: Option<&str>) -> String {
-    // `paths::endpoint()` hands back an owned String; borrowing a slice straight out
-    // of it would dangle, so it is bound before the trim.
-    let endpoint = paths::endpoint();
-    let base = endpoint.trim_end_matches('/');
-    match bank.filter(|b| !b.is_empty()) {
-        // `POST /mcp/<bank>` pins the bank for the whole mount, and refuses a
-        // call that names a different one. Without the segment the mount falls
-        // back to the server default, so `connect --bank omp` would reach every
-        // other host and silently miss codex — the one host whose MCP entry is a
-        // URL rather than an argv, and therefore has nowhere else to put it.
-        Some(b) => format!("{base}/mcp/{b}"),
-        None => format!("{base}/mcp"),
-    }
-}
-
 /// Whether the entry in the file is still the one we installed.
 ///
 /// Deliberately the *URL* and not the table name. The table is named after us, so
@@ -377,18 +353,6 @@ fn set_url(text: &str, op: &Url, bank: Option<&str>) -> Result<String, String> {
 fn body_is_ours(line: &str, bank: Option<&str>) -> bool {
     line.split('#').next().unwrap_or("").trim() == format!("url = \"{}\"", mcp_url(bank))
 }
-
-/// Rewrite a `key = value` line, keeping any trailing `# comment`.
-///
-/// A comment on a line the user annotated is theirs; dropping it because we
-/// changed the value beside it would be an edit they did not ask for.
-fn preserve_comment(line: &str, replacement: &str) -> String {
-    match line.find(" #") {
-        Some(at) => format!("{} {}", replacement, &line[at..]),
-        None => replacement.to_string(),
-    }
-}
-
 /// The `previous_url` this install recorded, if it ever recorded one.
 fn state_previous_url(config: &Path) -> Result<Option<String>, String> {
     let Ok(text) = std::fs::read_to_string(config.with_file_name(STATE_FILE)) else {

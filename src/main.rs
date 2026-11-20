@@ -1,6 +1,7 @@
 mod cli_home;
 mod connect;
 mod connect_claude;
+mod connect_common;
 mod connect_codex;
 mod connect_copilot;
 mod connect_ext;

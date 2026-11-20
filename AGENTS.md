@@ -102,7 +102,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 ## 3. Where things live
 
-`src/`, 32 modules, 35,373 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 35,412 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
@@ -110,34 +110,35 @@ stale count is a red gate rather than a claim nobody checks.
 |---|---|---|
 | `store.rs` | 5127 | SQLite: schema, migrations, put/recall/delete, FTS5, redaction, versions |
 | `api.rs` | 4127 | HTTP routes, the frozen error contract, the historian prompt |
-| `main.rs` | 2972 | clap surface, routing, wiring |
+| `main.rs` | 2973 | clap surface, routing, wiring |
 | `connect.rs` | 2844 | agent-host detection and config writing |
 | `recall.rs` | 2429 | RRF fusion, candidate pool, budget trim, scoring |
 | `hooks.rs` | 1890 | the five lifecycle events; the never-fail hook contract |
 | `mcp.rs` | 1882 | MCP server: 5 tools + resources + prompts + completion |
 | `daemon.rs` | 1132 | `daemon start/stop/status`, pidfile, start-time identity |
 | `doctor.rs` | 1123 | the health report (`doctor`, `doctor --all-hosts`) |
-| `connect_plugin.rs` | 1103 | the hermes `MemoryProvider` plugin |
+| `connect_plugin.rs` | 1092 | the hermes `MemoryProvider` plugin |
 | `vector.rs` | 965 | dense arm (`embed` feature, OFF by default) |
 | `cli_home.rs` | 948 | the content-first bare-invocation view |
-| `connect_codex.rs` | 857 | codex TOML config writing |
-| `connect_ext.rs` | 830 | omp and pi: the two hosts installed as a **TypeScript file**, not a config entry |
+| `connect_codex.rs` | 821 | codex TOML config writing |
+| `connect_ext.rs` | 795 | omp and pi: the two hosts installed as a **TypeScript file**, not a config entry |
 | `paths.rs` | 810 | bank identity, endpoint, data paths |
 | `render.rs` | 655 | human-readable report rendering |
 | `update.rs` | 654 | `update`: the five-step self-update swap |
 | `seed.rs` | 649 | transcript reading for hook capture |
 | `hygiene.rs` | 646 | W4: deterministic hygiene scan (merge/contradiction/date/bloat) |
 | `mcp_http.rs` | 484 | stateless streamable-HTTP MCP mount |
-| `connect_opencode.rs` | 416 | opencode's plugin dir (v2 layout) |
+| `connect_opencode.rs` | 384 | opencode's plugin dir (v2 layout) |
 | `capture.rs` | 355 | hook-based auto-capture: dedup, privacy filter, raw observation |
 | `grounding.rs` | 350 | W5: bounded startup grounding capsule |
-| `connect_claude.rs` | 324 | Claude Code's MCP entry |
-| `connect_copilot.rs` | 306 | Copilot CLI's MCP entry |
+| `connect_claude.rs` | 312 | Claude Code's MCP entry |
+| `connect_copilot.rs` | 293 | Copilot CLI's MCP entry |
 | `http.rs` | 280 | dependency-free HTTP/1.1 client for loopback |
 | `skills.rs` | 279 | `connect --with-skills`: deploy the agent skill per host |
 | `sweep.rs` | 276 | `sweep`: forget what a bank said it would stop remembering |
 | `guidelines.rs` | 251 | native agent-rules writer (marker-delimited block) |
 | `memory.rs` | 181 | canonical memory types shared by all layers |
+| `connect_common.rs` | 177 | helpers the per-host connect modules share |
 | `embed.rs` | 177 | ONNX session, vendored MiniLM |
 | `lib.rs` | 51 | crate root: re-exports and the module map |
 

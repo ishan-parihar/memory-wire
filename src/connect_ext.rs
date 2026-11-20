@@ -69,25 +69,6 @@ const VERSION_MARKER: &str = "MEMORY_WIRE_EXTENSION_VERSION";
 
 /// The template line the install-time bank is baked into.
 const DEFAULT_BANK_LINE: &str = "var DEFAULT_BANK = \"memory-wire\";";
-
-/// The template as it lands on disk: the `connect --bank` value baked into
-/// `DEFAULT_BANK`, or the embedded bytes when no bank was given.
-///
-/// The same rendering feeds the idempotence compare in `apply`, so a reconnect
-/// with the same bank stays `already-wired` and one with a different bank is a
-/// real replace — and the extension and the MCP entry of the same install can
-/// no longer disagree on the namespace. The escaping is a backstop for a
-/// hostile value; bank ids are slug-like.
-fn baked(bank: Option<&str>) -> String {
-    match bank.map(str::trim).filter(|b| !b.is_empty()) {
-        None => SOURCE.to_string(),
-        Some(b) => SOURCE.replace(
-            DEFAULT_BANK_LINE,
-            &format!("var DEFAULT_BANK = \"{}\";", b.replace('\\', "\\\\").replace('"', "\\\"")),
-        ),
-    }
-}
-
 /// Install or uninstall this host's extension file. See the module docs.
 ///
 /// A `None` from [`extension_rel`] means the host has no extension surface, and
@@ -103,7 +84,7 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
         if !path.is_file() {
             return Outcome::Skipped("no memory-wire extension to remove".to_string());
         }
-        if !is_ours(&path) {
+        if !crate::connect_common::is_ours(&path, VERSION_MARKER) {
             return Outcome::Failed(format!(
                 "{}: does not carry the {MARKER} marker; left untouched",
                 path.display()
@@ -136,9 +117,9 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     // that did keep their pin. Only a file carrying our marker contributes.
     let baked_pin = existing.as_deref().and_then(crate::connect::bank_from_extension);
     let bank = bank.or(baked_pin.as_deref());
-    let source = baked(bank);
+    let source = crate::connect_common::baked(SOURCE, DEFAULT_BANK_LINE, bank);
     if let Some(have) = existing.as_deref() {
-        if !carries_marker(have) {
+        if !crate::connect_common::carries_marker(have, VERSION_MARKER) {
             return Outcome::Failed(format!(
                 "{}: not a memory-wire extension ({VERSION_MARKER} absent); left untouched",
                 path.display()
@@ -208,24 +189,8 @@ pub fn extension_rel(host: Host) -> Option<PathBuf> {
 /// is genuinely connected, and reporting `wired=no` there would be a false
 /// negative the user has no way to act on.
 pub fn installed(host: Host, home: &Path) -> bool {
-    extension_rel(host).is_some_and(|rel| is_ours(&home.join(rel)))
+    extension_rel(host).is_some_and(|rel| crate::connect_common::is_ours(&home.join(rel), VERSION_MARKER))
 }
-
-/// Does the file at our path carry our marker? See [`carries_marker`] for why
-/// both markers are required rather than one.
-fn is_ours(path: &Path) -> bool {
-    std::fs::read_to_string(path).is_ok_and(|s| carries_marker(&s))
-}
-
-/// The test for "this file is ours to replace".
-///
-/// Both markers, not just the name: a file that merely mentions `memory-wire` is
-/// a user file that happens to be talking about us, and overwriting it is the
-/// one thing this module exists to avoid.
-fn carries_marker(source: &str) -> bool {
-    source.contains(MARKER) && source.contains(VERSION_MARKER)
-}
-
 /// The version a source declares, read out of the marker line.
 ///
 /// Parsed rather than duplicated as a constant: a second copy is a second thing

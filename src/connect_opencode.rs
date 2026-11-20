@@ -59,22 +59,6 @@ const VERSION_MARKER: &str = "MEMORY_WIRE_OPENCODE_PLUGIN_VERSION";
 
 /// The template line the install-time bank is baked into.
 const DEFAULT_BANK_LINE: &str = "var DEFAULT_BANK = \"memory-wire\";";
-
-/// The template as it lands on disk: the `connect --bank` value baked into
-/// `DEFAULT_BANK`, or the embedded bytes when no bank was given.
-///
-/// Bank ids are slug-like; the escaping is a backstop for a hostile value
-/// rather than an expectation.
-fn baked(bank: Option<&str>) -> String {
-    match bank.map(str::trim).filter(|b| !b.is_empty()) {
-        None => SOURCE.to_string(),
-        Some(b) => SOURCE.replace(
-            DEFAULT_BANK_LINE,
-            &format!("var DEFAULT_BANK = \"{}\";", b.replace('\\', "\\\\").replace('"', "\\\"")),
-        ),
-    }
-}
-
 /// Install or uninstall opencode's plugin file. See the module docs.
 ///
 /// A `None` from [`plugin_rel`] means the host has no plugin surface, and that
@@ -84,7 +68,7 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
         return Outcome::Skipped("no opencode plugin surface for this host".to_string());
     };
     let path = home.join(&rel);
-    let probe = baked(bank);
+    let probe = crate::connect_common::baked(SOURCE, DEFAULT_BANK_LINE, bank);
     let current = version(&probe).unwrap_or("?");
 
     // The 1.x layout. Removed on the way in as well as out: a flat
@@ -109,7 +93,7 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
                 Outcome::Skipped("no memory-wire plugin to remove".to_string())
             };
         }
-        if !is_ours(&path) {
+        if !crate::connect_common::is_ours(&path, VERSION_MARKER) {
             return Outcome::Failed(format!(
                 "{}: does not carry the {MARKER} marker; left untouched",
                 path.display()
@@ -141,9 +125,9 @@ pub fn apply(host: Host, home: &Path, uninstall: bool, data_root: &Path, bank: O
     // the hooks' bank.
     let baked_pin = existing.as_deref().and_then(crate::connect::bank_from_extension);
     let bank = bank.or(baked_pin.as_deref());
-    let source = baked(bank);
+    let source = crate::connect_common::baked(SOURCE, DEFAULT_BANK_LINE, bank);
     if let Some(have) = existing.as_deref() {
-        if !carries_marker(have) {
+        if !crate::connect_common::carries_marker(have, VERSION_MARKER) {
             return Outcome::Failed(format!(
                 "{}: not a memory-wire plugin ({VERSION_MARKER} absent); left untouched",
                 path.display()
@@ -227,24 +211,8 @@ const LEGACY_PLUGIN_REL: &str = ".config/opencode/plugins/MEMORY_WIRE_OPENCODE_P
 /// an opencode wired by an earlier build has only the MCP key, and reporting
 /// `wired=no` there would be a false negative.
 pub fn installed(host: Host, home: &Path) -> bool {
-    plugin_rel(host).is_some_and(|rel| is_ours(&home.join(rel)))
+    plugin_rel(host).is_some_and(|rel| crate::connect_common::is_ours(&home.join(rel), VERSION_MARKER))
 }
-
-/// Does the file at our path carry our marker? See [`carries_marker`] for why
-/// both markers are required rather than one.
-fn is_ours(path: &Path) -> bool {
-    std::fs::read_to_string(path).is_ok_and(|s| carries_marker(&s))
-}
-
-/// The test for "this file is ours to replace".
-///
-/// Both markers, not just the name: a file that merely mentions `memory-wire`
-/// is a user's own plugin talking about a memory backend, and overwriting it
-/// is the one thing this module exists to avoid.
-fn carries_marker(source: &str) -> bool {
-    source.contains(MARKER) && source.contains(VERSION_MARKER)
-}
-
 /// The version the marker carries, or `None` for a file that has none.
 ///
 /// Same parsing discipline as `connect_ext`'s: a marker line whose value is
