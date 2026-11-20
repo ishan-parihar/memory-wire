@@ -336,3 +336,40 @@ Per AGENTS §12, stated rather than guessed:
 - **Whether the empty-resolved-bank state is one user's misconfiguration or a
   pattern.** I observed it on this box. I have no evidence about other installs,
   and `doctor`'s warning suggests the code anticipates it.
+
+---
+
+## 6. Outcome, 2026-11-20
+
+All three tiers executed. This section is the record; the commits and
+`docs/CONSISTENCY.md` §61–§68 carry the detail.
+
+| item | outcome |
+|---|---|
+| **A1** plugin gate wired | done (`131cffb`) — pre-commit + CI, behind a `command -v node` guard, mutation-checked |
+| **A2** genome lint E003 | done (`131cffb`) |
+| **A3** RND_PLAN §6 stale | done (`131cffb`) — reframed as "closed; kept as the record" |
+| **A4** BENCHMARK.md | no change — it is a dated historical record, not a claim |
+| **B0** opencode v2 port | done (`3376b5c`) — **found by the B2 probe, not planned**: the shipped plugin did not load on 2.x at all |
+| **B1** connect_* consolidation | done (`2bfe837`) — six byte-identical helpers extracted, net −138 lines |
+| **B2** TS door extraction | deferred to TODO #36, with the probe's findings recorded: both hosts resolve relative imports from a subdirectory, so it is feasible but needs a restructure |
+| **B3** AGENTS §3 table | done (`9e95d9b`) — regenerated from the tree and gated by `scripts/module_table_check.sh` |
+| **C1** `memory_redact` on MCP | done (`b3ecc3b`) — the 6th tool; nine count claims corrected |
+| **C2** doctor banks | done (`6a2a125` + `3228f4f`) — the block names every bank; (b) turned out to be G6.9 working correctly and the fix is to run `connect` from the installed binary |
+| **C3** PersonaMem v2 | **not done — the user's ruling.** The aggregate is 37.8% (1,872/4,954); the output is gitignored because it holds a pasted token |
+| **C4** release | **measured, not cut** (§68): 10.64 MiB, `DT_NEEDED=3`, 54 commits past `v0.10.0`. Tagging is the user's call per AGENTS §11 |
+
+**§5's first open question is answered.** Both TS hosts *do* resolve relative
+imports, and only from a directory: omp loads every flat `.ts` as an extension
+and errors on a helper (`does not export a valid factory function`), while
+`index.ts` in a subdirectory loads cleanly. That probe is what exposed B0.
+
+**The two §5 questions that stay open** are unchanged and both are privacy
+judgements I will not make unasked: whether the PersonaMem rows hold anything
+else sensitive beyond the one recorded token, and whether the empty-resolved-bank
+state is one user's misconfiguration or a pattern.
+
+**What I did not do, deliberately:** tag, publish, build the three-Linux asset
+set, install the new binary over `~/.local/bin`, re-run `connect` against five
+live agent configs, or clear the stale `serve.json`. Each is reversible only by
+the person who owns the machine.
