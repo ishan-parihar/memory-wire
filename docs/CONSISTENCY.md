@@ -5723,3 +5723,59 @@ answering model and Docker -- the user's budget), AMB/PrecisionMemBench
 (`../_audit/amb` is gone).
 
 Gate: 677 tests, clippy 0, doc 0, both count lines, module table 33/40,561.
+
+## §76. 2026-11-21 — a doctor that went quiet in the state that mattered most, and a rulings round
+
+**The R4 fix, and why the old behaviour was wrong rather than merely thin.**
+`memory-wire doctor` printed `Server: up` on a host where `memory-wire daemon
+status` printed `not running: serve.json points at pid 1371296`. Both measured
+truthfully; the doctor was still the one that lied, because it answers the
+question an agent actually asks. Two mechanisms, not one:
+
+1. `stale_serve_at` read `/proc/<pid>/exe` and used `?` on the result. A dead
+   pid makes that read fail, so the function returned `None` — and its own doc
+   comment listed "a dead pid" among the cases where it is *deliberately*
+   quiet. The choice was documented; it was still the wrong outcome.
+2. Its only caller was gated on `report.server == ServerState::Up`, so in the
+   `Down` state the function was never reached at all. The dead-pid branch was
+   unreachable from `collect`.
+
+Fixed both: the dead pid is reported in its own words, distinct from a stale
+build because the remedies differ (remove the state file vs restart the
+server), and the call is no longer state-gated.
+
+**Measurement.** This host, 2026-11-21: pid 1295
+(`~/.local/bin/memory-wire`, 0.9.0) has held 127.0.0.1:8888 since Nov 17;
+`serve.json` named pid 1371296, dead. The doctor's stale-serve check had one
+job and it produced nothing.
+
+**Mutation check.** `a_dead_serve_pid_is_reported_as_a_stale_state_file`
+passes against the fix and fails when the swallowing `return None` is
+restored. Recorded because the first attempt at this check ran the test
+against `cargo test --lib`, where `doctor` is not compiled (it is a
+`src/main.rs` module, tests under `--bin memory-wire`) — so the "passing"
+mutation run was vacuous and would have looked like a green mutation check
+that proved nothing.
+
+**Rulings round.** Sent an inline pack to `gemini-4-hydrogen` on aistudio
+(48,046 chars in, 20,793 out). Spec sha256 `1e3a04d2303de735…` (46,672 B),
+drift gate clean, mutation battery 5/5. Five rulings: release now (gated on
+R4(b)); `connect --bank omp`; defer agent-memory-bench until release + connect
+land; fix the doctor silence; run LongMemEval-S once at the release boundary,
+not as an inner-loop instrument.
+
+**A correction to my own pack, which is the reason this section exists.**
+`ASK.md` told the reviewer the host banks resolve to `omp` (4,246 memories).
+Diagnosing R4 properly found three pools: the default DB
+`~/.local/share/memory-wire/memory.db` holds **6,262** and is the one the
+running server serves; `banks/omp` holds 4,246 and is unserved; `banks/
+ishan-parihar-memory-wire` holds 5 and is what the hooks resolve to. The
+recommendation stands, the premise did not. `connect --bank omp` and the
+restart are not independent choices — the restart changes which pool is live
+and the 6,262-row DB stops being served by that process. That is the
+operator's call and the pack should have said so.
+
+**Not a test-set consultation.** No LongMemEval number was produced or read.
+The 2 consultations counted in §34 stand.
+
+**Load at measurement:** not load-sensitive (no timing claims).
