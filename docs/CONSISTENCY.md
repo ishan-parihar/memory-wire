@@ -5573,3 +5573,36 @@ executed on its own evidence with every claim re-checked by hand.
 Gate: 674 tests, clippy 0, trust gate 11 checks, count gate green.
 
 Next free CONSISTENCY section: **§73**.
+
+## §73. 2026-11-21 — two corrections to §67 and §68, and the stale number in both
+
+Appended, not edited: `docs/CONSISTENCY.md` is append-only (§7 of AGENTS), so a
+wrong claim in an earlier section is corrected by a later one rather than
+rewritten.
+
+**§67's claim was half wrong.** It says the installed build "predates
+`memory_redact` (§65) and the new doctor block (§66)". Verified against the tag:
+
+| claim | verdict | evidence |
+|---|---|---|
+| predates `memory_redact` | **correct** | `git show v0.9.0:src/mcp.rs \| grep -c memory_redact` -> 0; `src/mcp.rs` at HEAD -> 3. The tool was added in `b3ecc3b`, after v0.9.0. |
+| predates the new doctor block | **wrong** | the bank-finding block was added in `bde4b6a`, which is `v0.6.0~4` -- five versions *before* 0.9.0. `memory-wire doctor` on this host prints it correctly right now: `finding  bank 'ishan-parihar-memory-wire' holds no memories; 'omp' holds 4241.` |
+
+The second row is the one that matters: a doc claiming a capability is missing
+when it shipped five versions earlier is worse than no claim, because the reader
+stops looking.
+
+**§68's closing line is the same defect one file over.** §68 ends "Next free
+CONSISTENCY section: **§68**" while the file was at §72 when I read it and is at
+§73 now. `AGENTS.md` §13 carried the identical hand-written number and I removed
+it earlier today after finding it stale for the third time (§36, then §50, then
+§72). This section does the same here: **the file's own last section is the
+answer, and a hand-maintained cross-reference to a file that grows by appending
+is the defect, not the number.** There is deliberately no "next free section"
+line at the end of this section.
+
+**Why this is in CONSISTENCY rather than a quiet edit:** the file's purpose is to
+be the record of what was measured and what was rejected. A claim that misdescribes
+the binary is a measurement error, and it belongs where the measurements are.
+
+Gate: docs-check, count gate, module table. No code changed.

@@ -110,6 +110,14 @@ pub struct Report {
     /// is down, when there is no state file (a manually started `serve` cannot
     /// be identified), or when the running and installed bytes are identical.
     pub stale_serve: Option<String>,
+    /// Where `bank` came from, which is what a following hook will resolve.
+    ///
+    /// The empty-bank finding names a fix; without this it names a *cause*
+    /// only, and the reader has to know the resolution order to act. A bank
+    /// derived from the directory is moved by changing the pin; a bank set in
+    /// the environment is moved by unsetting it. Those are different commands
+    /// and guessing wrong sends the reader to edit a file that is not involved.
+    pub bank_source: paths::BankSource,
 }
 
 impl Report {
@@ -140,6 +148,20 @@ finding    bank `{}` holds no memories; `{}` holds {n}.\n  \
            A hook here resolves to `{}` and will recall nothing. Reach them with\n  \
            `--bank {other}`, or set MEMORY_WIRE_BANK={other}.",
                 self.bank, other, self.bank
+            ));
+            // The finding above names a flag; this names the *input* that
+            // produced the bank, because the flag only helps a reader who
+            // already knows which rung resolved it. A bank set in the
+            // environment is not moved by reconnecting a host, and a bank
+            // derived from the directory is not moved by unsetting a variable
+            // that was never set. Without this line the finding is a cause; with
+            // it the finding is a fix.
+            out.push_str(&format!(
+                "\n  \
+           `{}` is {}. To move the hooks onto `{other}`: {}.",
+                self.bank,
+                self.bank_source.label(),
+                self.bank_source.fix()
             ));
         }
         // The choice, stated once instead of assembled from three separate
@@ -237,6 +259,9 @@ pub fn collect() -> Report {
         &paths::resolve_bank(),
         &memory_wire::store::default_db_path(),
     );
+    report.bank_source = paths::bank_source_in(&std::env::current_dir().unwrap_or_else(|_| {
+        PathBuf::from(".")
+    }));
     if let Ok(home) = paths::home() {
         report.harness_banks = harness_banks_at(&home);
     }
@@ -292,6 +317,9 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         banks_by_memories: per_bank,
         harness_banks: Vec::new(),
         stale_serve: None,
+        bank_source: paths::bank_source_in(&std::env::current_dir().unwrap_or_else(|_| {
+            PathBuf::from(".")
+        })),
     }
 }
 
@@ -686,6 +714,7 @@ mod tests {
             elsewhere: None,
             banks_by_memories: Vec::new(),
             harness_banks: Vec::new(),
+            bank_source: paths::BankSource::Default,
             stale_serve: None,
         }
     }
@@ -1046,6 +1075,7 @@ mod tests {
             banks_by_memories: Vec::new(),
             harness_banks: Vec::new(),
             stale_serve: None,
+            bank_source: paths::BankSource::Directory,
         };
         assert_eq!(
             r.render(),
@@ -1089,6 +1119,7 @@ server     up"
             banks_by_memories: vec![("full-one".to_string(), 40), ("other".to_string(), 2)],
             harness_banks: Vec::new(),
             stale_serve: None,
+            bank_source: paths::BankSource::Directory,
         };
         let text = r.render();
         assert!(text.contains("banks by memories:"), "{text}");
@@ -1231,6 +1262,58 @@ server     up"
         );
         assert_eq!(after.bank_stats("omp").expect("omp").memories, 3);
         std::fs::remove_dir_all(&dir).ok();
+
+    }
+
+    /// The finding names a flag; this pins that it also names the *input* that
+    /// produced the bank, because the flag only helps a reader who already knows
+    /// which rung of `resolve_bank_with` resolved it. A reader told to reconnect
+    /// a host when the bank came from `MEMORY_WIRE_BANK` goes and edits a file
+    /// that was never involved.
+    #[test]
+    fn the_empty_bank_finding_names_the_input_that_produced_it() {
+        // The ambient source is read from the process environment and the cwd,
+        // so this asserts the two halves that are deterministic in a test: the
+        // label and the fix are derived from the same enum, and an env-sourced
+        // bank gets the env answer rather than the reconnect answer.
+        let r = Report {
+            bank: "some-bank".to_string(),
+            elsewhere: Some(("omp".to_string(), 7)),
+            bank_source: paths::BankSource::Env,
+            ..Report {
+                endpoint: "http://127.0.0.1:1".to_string(),
+                bank: String::new(),
+                store: std::path::PathBuf::from("/dev/null"),
+                store_bytes: 0,
+                store_state: StoreState::Missing,
+                banks: None,
+                memories: None,
+                server: ServerState::Down("test".to_string()),
+                legacy_bank: None,
+                elsewhere: None,
+                banks_by_memories: Vec::new(),
+                harness_banks: Vec::new(),
+                stale_serve: None,
+                bank_source: paths::BankSource::Default,
+            }
+        };
+        let text = r.render();
+        assert!(text.contains("from MEMORY_WIRE_BANK"), "{text}");
+        assert!(
+            text.contains("unset MEMORY_WIRE_BANK"),
+            "an env-sourced bank must not be told to reconnect: {text}"
+        );
+
+        let derived = Report {
+            bank_source: paths::BankSource::Remote,
+            ..r
+        };
+        let text = derived.render();
+        assert!(text.contains("derived from the origin remote"), "{text}");
+        assert!(
+            text.contains("connect --bank"),
+            "a derived bank must name the pin: {text}"
+        );
     }
 
     /// The finding is only for a bank that is actually empty. A resolved bank with

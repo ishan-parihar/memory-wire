@@ -212,6 +212,72 @@ pub fn resolve_bank_in(dir: &Path) -> String {
     resolve_bank_with(None, dir)
 }
 
+/// Which rung of [`resolve_bank_with`]'s order produced a bank, for a caller
+/// that needs to name the *input* to change rather than the output.
+///
+/// `doctor`'s empty-bank finding is only actionable when the reader knows
+/// whether to unset an environment variable or reconnect a host; those are
+/// different edits, and a finding that names the wrong one sends someone into
+/// a config file that was never involved. The order here must stay identical to
+/// [`resolve_bank_with`]'s, which is why this lives beside it rather than in the
+/// caller: the two functions have the same five rungs and a test pins that they
+/// agree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BankSource {
+    /// `MEMORY_WIRE_BANK` is set.
+    Env,
+    /// Derived from the repository's `origin` remote.
+    Remote,
+    /// Derived from the work tree's top-level directory basename.
+    Directory,
+    /// No derivation applied; [`DEFAULT_BANK`].
+    Default,
+}
+
+/// Which rung resolved the bank for `dir`, with no explicit `--bank`.
+///
+/// The `explicit` rungs are not represented because a caller that passed
+/// `--bank` already knows it did; this reports the *ambient* source a following
+/// hook would resolve to, which is the one the doctor can be wrong about.
+pub fn bank_source_in(dir: &Path) -> BankSource {
+    if env_bank().is_some() {
+        BankSource::Env
+    } else if remote_bank_in(dir).is_some() {
+        BankSource::Remote
+    } else if basename_bank_in(dir).is_some() {
+        BankSource::Directory
+    } else {
+        BankSource::Default
+    }
+}
+
+impl BankSource {
+    /// The one edit that changes it, for a finding that renders it.
+    ///
+    /// `Remote` and `Directory` share an answer because they resolve through the
+    /// same pin: both are derived names, and both are moved by reconnecting a
+    /// host with an explicit `--bank`. Inventing a second command for each
+    /// would be two answers that are both half-right.
+    pub fn fix(&self) -> &'static str {
+        match self {
+            BankSource::Env => "unset MEMORY_WIRE_BANK, or set it to the bank that holds them",
+            BankSource::Remote | BankSource::Directory | BankSource::Default => {
+                "reconnect with `memory-wire connect --bank <id>`"
+            }
+        }
+    }
+
+    /// The short label the screen prints next to the bank.
+    pub fn label(&self) -> &'static str {
+        match self {
+            BankSource::Env => "from MEMORY_WIRE_BANK",
+            BankSource::Remote => "derived from the origin remote",
+            BankSource::Directory => "derived from the directory name",
+            BankSource::Default => "the built-in default",
+        }
+    }
+}
+
 /// `MEMORY_WIRE_BANK`, when it is set to something that survives [`sanitize_bank`].
 fn env_bank() -> Option<String> {
     std::env::var("MEMORY_WIRE_BANK")
