@@ -140,6 +140,14 @@ pub fn http_error(e: &ApiError) -> (StatusCode, &'static str) {
             "document already exists; use update_mode=replace",
         ),
         ApiError::InvalidContent => (StatusCode::BAD_REQUEST, "invalid content"),
+        // A client-supplied value the server cannot act on: a redact `pattern`
+        // that is not a regex is the reachable case. This used to fall through
+        // to the opaque 500 below, which told the caller nothing except that
+        // something broke -- and a caller who mistypes a pattern deserves the
+        // same 400 every other bad input gets. The message is the fixed string
+        // rather than the regex engine's text for the same reason
+        // `QueryReturnedNoRows` is opaque: driver prose is not a contract.
+        ApiError::Store(StoreError::BadInput(_)) => (StatusCode::BAD_REQUEST, "invalid content"),
         // W2: a read-only bank refuses writes at all three surfaces. The
         // frozen HTTP error contract maps it to the same 400 shape
         // `InvalidContent` already uses, so a client that already handles a
@@ -1466,6 +1474,69 @@ async fn bank_supersede<S: Store + 'static>(
     })))
 }
 
+/// `POST /banks/:id/memories/:mid/redact` — rewrite a regex match out of one
+/// memory.
+///
+/// The write pair of the lifecycle routes, and the last door `redact` was
+/// missing. The capability has had an MCP tool (`memory_redact`, the 6th) and a
+/// CLI subcommand since W3; only the HTTP door had no route, so a caller who
+/// retained a secret over HTTP could not retract it over HTTP.
+///
+/// Both `pattern` and `name` are required in the body, matching the MCP schema.
+/// `pattern` is a regex and an invalid one is refused rather than treated as
+/// "matches nothing" — the same rule the store applies to every door. `name`
+/// is the label written into the `[REDACTED:<name>]` marker, so the caller
+/// names what was removed.
+///
+/// The response is `200` with `rows` — the number of rows rewritten, current
+/// plus every version. `0` is a legitimate and *successful* answer here, and it
+/// means one of two things the caller must be able to tell apart: the pattern
+/// did not match, or the id is not in this bank. Redaction is idempotent, so
+/// "already redacted" is also 0, and that is fine — a second call is a no-op,
+/// not an error. This differs from `supersede`'s 404 because there the two
+/// cases are bad input, while here one is a normal outcome.
+pub fn redact_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
+    Router::new().route("/banks/:id/memories/:mid/redact", post(bank_redact))
+}
+
+/// Body of a redact request.
+#[derive(Debug, serde::Deserialize)]
+pub struct RedactRequest {
+    /// Regex whose matches are removed. Required.
+    pub pattern: String,
+    /// Label in the replacement marker. Required, like the MCP schema.
+    pub name: String,
+}
+
+/// `POST /banks/:id/memories/:mid/redact`.
+///
+/// `blocking` because the redact walks the version table and must not run on a
+/// tokio worker (the crate rule).
+async fn bank_redact<S: Store + 'static>(
+    State(svc): State<Arc<MemoryService<S>>>,
+    Path((bank, mid)): Path<(String, String)>,
+    Json(body): Json<RedactRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let rows = blocking({
+        let (m_svc, m_bank, m_mid, m_pat, m_name) = (
+            Arc::clone(&svc),
+            bank.clone(),
+            mid.clone(),
+            body.pattern.clone(),
+            body.name.clone(),
+        );
+        move || m_svc.redact_memory(&m_bank, &m_mid, &m_pat, &m_name)
+    })
+    .await
+    .map_err(to_http)?;
+    Ok(Json(serde_json::json!({
+        "id": mid,
+        "rows": rows,
+        "pattern": body.pattern,
+        "name": body.name,
+    })))
+}
+
 /// Ceiling on one page of memories, so one request cannot ask for the whole bank.
 ///
 /// Unchanged from the value the binary shipped with, because the default response
@@ -2160,6 +2231,21 @@ mod tests {
         assert!(
             !msg.contains("FOREIGN KEY"),
             "raw driver text must not leak"
+        );
+
+        // A client value the store cannot act on. `BadInput` is what a redact
+        // `pattern` that is not a regex returns, and it used to fall through to
+        // the opaque 500 above -- a caller who mistyped a pattern was told the
+        // server had failed. It now reuses the 400 shape `InvalidContent`
+        // already uses, so a client handling bad input handles this too.
+        let (status, msg) = http_error(&ApiError::Store(StoreError::BadInput(
+            "redact pattern is not a regex: unclosed character class".to_string(),
+        )));
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(msg, "invalid content");
+        assert!(
+            !msg.contains("regex") && !msg.contains("unclosed"),
+            "engine prose is not a contract: {msg}"
         );
     }
 

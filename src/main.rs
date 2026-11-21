@@ -36,7 +36,8 @@ use tracing_subscriber::EnvFilter;
 
 use memory_wire::api::{
     bank_config_routes, blocking, full_hit_json, http_error, hygiene_routes, memories_routes,
-    parse_created_at, parse_update_mode, supersede_routes, summary_hit_json, ApiError,
+    parse_created_at, parse_update_mode, redact_routes, supersede_routes, summary_hit_json,
+    ApiError,
     MemoryService,
 };
 use memory_wire::grounding;
@@ -1011,6 +1012,10 @@ fn router(svc: Svc) -> Router {
         // lifecycle pair, next to the DELETE above it. Supersede had an MCP tool
         // and no HTTP route; a caller on this door could delete but not retire.
         .merge(supersede_routes::<SqliteStore>())
+        // POST /banks/:id/memories/:mid/redact — the last door the capability was
+        // missing. A caller that retained a secret over HTTP could not retract it
+        // over HTTP, and had to fall back to MCP or the CLI.
+        .merge(redact_routes::<SqliteStore>())
         // MCP over the same port. `/mcp` resolves the bank from the call, and
         // `/mcp/<bank>` pins it to the path.
         .merge(mcp)
@@ -1416,6 +1421,87 @@ mod tests {
         )
         .expect("request");
         assert_eq!(other.status, 404, "{}", other.body);
+    }
+
+    // Redact had an MCP tool and a CLI subcommand but no HTTP route, so a caller
+    // who retained a secret over HTTP could not retract it over HTTP. This
+    // drives the route the way such a caller would and checks the three
+    // properties that make redact different from a delete: the value is gone,
+    // the row survives, and a mistake is a 400 rather than an opaque 500.
+    #[test]
+    fn redact_routes_should_remove_the_value_and_keep_the_row() {
+        let (base, _db) = serve_scratch("redact");
+        let retained = post(
+            &base,
+            "/banks/demo/retain",
+            r#"{"content":"the API token is p4ntaloon123 and it works"}"#,
+        );
+        let id = serde_json::from_str::<serde_json::Value>(&retained.body).expect("json")["id"]
+            .as_str()
+            .expect("an id")
+            .to_string();
+
+        let res = post(
+            &base,
+            &format!("/banks/demo/memories/{id}/redact"),
+            r#"{"pattern":"p4ntaloon123","name":"TOKEN"}"#,
+        );
+        assert_eq!(res.status, 200, "{}", res.body);
+        let body: serde_json::Value = serde_json::from_str(&res.body).expect("json");
+        assert_eq!(
+            body["rows"],
+            serde_json::json!(2),
+            "current row plus one version: {body}"
+        );
+
+        // The value is gone and the marker is there, so a reader can see that
+        // something was removed and what it was called.
+        let got = http::get(
+            &format!("{base}/banks/demo/memories/{id}"),
+            Duration::from_secs(10),
+        )
+        .expect("request");
+        assert!(
+            !got.body.contains("p4ntaloon123"),
+            "the secret must be gone: {}",
+            got.body
+        );
+        assert!(got.body.contains("[REDACTED:TOKEN]"), "{}", got.body);
+
+        // Idempotent: a second redact is 0 rows and 200, not an error. A caller
+        // retrying after a timeout must not get a failure for a no-op.
+        let again = post(
+            &base,
+            &format!("/banks/demo/memories/{id}/redact"),
+            r#"{"pattern":"p4ntaloon123","name":"TOKEN"}"#,
+        );
+        assert_eq!(again.status, 200, "{}", again.body);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&again.body).expect("json")["rows"],
+            serde_json::json!(0)
+        );
+
+        // A pattern that is not a regex is the caller's mistake, and it must be
+        // the 400 every other bad input gets -- not the opaque 500 it used to
+        // fall through to. The message must be the fixed string: regex engine
+        // prose is not a contract.
+        let bad = http::post_json(
+            &format!("{base}/banks/demo/memories/{id}/redact"),
+            r#"{"pattern":"[unclosed","name":"X"}"#,
+            Duration::from_secs(10),
+        )
+        .expect("request");
+        assert_eq!(bad.status, 400, "{}", bad.body);
+        assert_eq!(bad.body, "invalid content", "{}", bad.body);
+
+        // A missing field is the deserializer's 422, unchanged by this route.
+        let missing = http::post_json(
+            &format!("{base}/banks/demo/memories/{id}/redact"),
+            r#"{"name":"X"}"#,
+            Duration::from_secs(10),
+        )
+        .expect("request");
+        assert_eq!(missing.status, 422, "{}", missing.body);
     }
 
     #[test]
