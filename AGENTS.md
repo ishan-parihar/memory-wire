@@ -144,7 +144,9 @@ stale count is a red gate rather than a claim nobody checks.
 | `embed.rs` | 185 | ONNX session, vendored MiniLM |
 | `lib.rs` | 51 | crate root: re-exports and the module map |
 
-`tests/` — `backup.rs`, `daemon.rs`, `e2e.rs`, `recall_budget.rs`, `scale.rs`.
+`tests/` — `backup.rs`, `daemon.rs`, `e2e.rs`, `installer.rs`, `recall_budget.rs`,
+`scale.rs` — 6 files, 22 tests. **`installer.rs` was missing from this list until
+2026-11-21**; a plan review counted the tree and found it.
 `examples/` — 15 benchmark and evaluation harnesses.
 `eval/amb/` — our provider for vectorize-io's AMB harness, and its committed runs.
 
@@ -412,7 +414,11 @@ State as of 2026-10-14; the authoritative, kept-current record is
 
 - **v0.8.2 released 2026-10-16** (user-ratified chain; v0.8.1 the same day — §45 records the
   `update` hop bug found between them, fixed in v0.8.2 with the earlier live-verify claim
-  corrected). The R&D cycle's records and
+  corrected). **Superseded 2026-10-18 by 0.9.0, and 0.10.0 in `Cargo.toml` today: 68 commits
+  past the `v0.8.2` tag.** This bullet said "v0.8.2 released" as if it were current for five
+  weeks; the version line is `Cargo.toml`, and a stale claim here is what the count gate
+  exists to prevent. §50's "next free section" line was also stale (§50 vs the actual
+  last section §72) and is corrected there. The R&D cycle's records and
   the product batch — baseline artifacts, occurrence-time capability, date-aware
   `answer_quality`, `recall_all@10`, `update`, doctor work, the new host entries, all harnesses —
   are **committed and shipped** (feature `04123f7`, bump `a272196`, tag `v0.8.0`, three-Linux
@@ -426,9 +432,15 @@ State as of 2026-10-14; the authoritative, kept-current record is
   edit the aroute repo or its service, never read its credentials, never put a real API
   key in a harness (`env -u GOOGLE_API_KEY`).
 - **Every LongMemEval run is counted** in `docs/CONSISTENCY.md` (§34: 2 consultations for
-  the v0.7.0 baseline; §35: 0). The dated `answer_quality` re-measure (H5) will be the
-  next, and is measurement only.
-- **Append to `docs/CONSISTENCY.md`, never rewrite.** The next free section is the one its last paragraph names (§50 as of 2026-10-18; this line used to say §36 and was stale).
+  the v0.7.0 baseline; §35: 0). **H5 landed 2026-10-14** (TODO 16), so the sentence here
+  that called it "the next" was wrong in the forward direction -- it had already happened.
+  Counted at the time; measurement only, per §6.
+- **Append to `docs/CONSISTENCY.md`, never rewrite.** The next free section is the one
+  its last paragraph names. **This line has been stale every time anyone has checked it**
+  (§36 -> §50 on 2026-10-18 -> §72 actual on 2026-11-21). Stop writing a number here:
+  the file's last section is the answer, and a hand-maintained cross-reference is
+  exactly the class of defect this repository keeps paying for. The number is
+  omitted on purpose, not forgotten.
 - When you finish a unit of work, update `docs/handoff/STATE.md` and the status line of
   the hypothesis in `RND_PLAN.md`; a handoff that is not kept current is the next
   agent's phantom.
