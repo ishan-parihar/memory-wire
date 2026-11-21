@@ -5507,3 +5507,69 @@ taken under load for honesty rather than because it perturbs the result.
 installed binary is 66 commits behind the tree.
 
 Next free CONSISTENCY section: **§72**.
+
+## §72. 2026-11-21 — executing the plan: the unmeasured gap, and four bugs in my own check
+
+The 2026-11-21 plan's top item was that nothing in the repository verified a
+memory written in session 1 reaches a model's prompt in session 2, on any real
+host. Verified before building: `grep` across `tests/` for `before_agent_start`,
+`ev.system`, `inject` returns nothing, and none of the 22 integration tests
+drives a host and reads back what it injected.
+
+**Shipped: `plugin/integrations/door_roundtrip_test.py`**, wired into
+`trust_gate_test.sh`. It starts a real memory-wire on a free port, seeds a marker
+through the real retain API, then drives each door's own entry point and asserts
+the injected block carries the marker. All three doors pass. Mutation-checked:
+making the opencode context hook return immediately -- a door that loads and
+injects nothing, which is TODO 35 exactly -- fails it.
+
+**Four driver bugs, each of which looked like a door defect and was not:**
+
+1. `node -e` does not pass argv after `--` the way a script file does. Guessing
+   at the indexing produced `undefined` twice.
+2. `setup()` takes **one** argument; `session` and `event` live on the context.
+   Passing a second argument with `session` in it made `ctx.session` undefined
+   and `setup` registered nothing -- the same silent no-op the export-shape
+   check exists to catch, reproduced in the check itself.
+3. The opencode context hook mutates `ev.system` **in place** and returns
+   nothing. Asserting on a returned object failed for a reason that had nothing
+   to do with the door.
+4. The opencode door needs the `prompt` hook fired before `context` has a query.
+   Firing only `context` correctly injects nothing, which is the door working.
+
+Each is the same lesson: **run the check against the real code, not against a
+copy of the logic or an assumption about its signature.**
+
+**Layer 2 is present and skipped loudly.** `claude` and `opencode` both have a
+headless CLI on PATH, and a real drive would rewrite the operator's live host
+config, which a check must not do. The skip names both hosts and says why. A
+silent skip is how TODO 35 stayed invisible.
+
+**Also shipped from Tier 1:**
+
+- `scripts/count_claim_check.sh` (wired into pre-commit). Eleven prose counts
+  have drifted; this sources each from the code and compares. Its first version
+  flagged hindsight's 8 and agentmemory's 54 as errors, because
+  `INTEGRATION_GAPS` compares surfaces in a table where each cell is a different
+  project. Excluding table rows and competitor-naming lines is now the comment
+  above the loop. Mutation-checked: restoring "Six" fails it.
+- The door-parity ruling in `INTEGRATION_GAPS.md`: the asymmetry stays, with a
+  rule applied to all four gaps, the cost stated, and the one thing that would
+  reopen it (a concrete caller, not an empty table cell). Two review rounds
+  raised this and neither answered it.
+- The row-inclusion invariant (`the_included_row_ids_are_the_invariant_across_the_door_policy`),
+  which pins *which row ids* reach the block rather than how they render. Four
+  of the record's auto-injection defects were inclusion bugs; none could be
+  caught by a rendered-output comparison, because the doors legitimately render
+  differently.
+
+**The plan-review round did not return a reply.** The pack was posted inline to
+`gemini-4-hydrogen/high` (91,464 chars, page 372) after two correct refusals
+(a file attachment on a venue with no file input; a short composer fill), but
+the page was recycled before the reply was read -- another session was driving
+the same browser. Recorded in `notes/SEND-NOT-COMPLETED.md`. The plan was
+executed on its own evidence with every claim re-checked by hand.
+
+Gate: 674 tests, clippy 0, trust gate 11 checks, count gate green.
+
+Next free CONSISTENCY section: **§73**.
