@@ -267,6 +267,27 @@ if command -v node > /dev/null 2>&1; then
   # it cannot see a comment, and it catches the divergence that matters.
 fi
 
+# The round trip: does a memory written through the door reach the injected
+# block, on the door's own code path?
+#
+# Every other check in this file is a policy check on a door that was at least
+# running. TODO 35 is what happens when that assumption is wrong: the opencode
+# door shipped exporting the v1 shape against a 2.x loader, `connect` reported
+# success, every Rust test passed, and the host silently had no memory. It was
+# found by accident, while probing for something else.
+#
+# This starts a real memory-wire on a free port, seeds a marker through the real
+# API, then drives each door's own entry point -- extension under node, opencode
+# under node, hermes under Python -- and asserts the injected block carries the
+# marker. A door that does not call the server fails here rather than in a
+# user's editor. Needs the release binary, so it skips loudly rather than
+# silently when it is absent.
+if [ -x target/release/memory-wire ]; then
+  python3 plugin/integrations/door_roundtrip_test.py || exit 1
+else
+  echo "skip  door round-trip: no target/release/memory-wire (cargo build --release)"
+fi
+
 # Every auto-injection door skips a blank-content row before the take, so the
 # four of them agree on one policy. This is TODO 37, which the round-5 review
 # found by reading all four doors side by side: the two TypeScript doors skipped
