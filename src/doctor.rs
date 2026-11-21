@@ -272,13 +272,22 @@ pub fn collect() -> Report {
     {
         report.harness_banks.push(("MEMORY_WIRE_BANK", b));
     }
-    // Only a live server can be a stale one, and only a daemon-recorded pid
-    // can be named at all. Everything else is quiet — a down server has
-    // already said what is wrong with it.
-    if report.server == ServerState::Up {
-        if let Ok(mine) = std::env::current_exe() {
-            report.stale_serve = stale_serve_at(&paths::daemon_state_path(), &mine);
-        }
+    // A stale build only matters when a server is actually serving, but a dead
+    // pid in the state file is its own finding in either state — see the block
+    // below for why the state gate was wrong.
+    //
+    // **Both states, not just Up** (corrected 2026-11-21). This was gated on
+    // `ServerState::Up` on the reasoning that a down server has already
+    // explained itself, which holds for a refused connection and fails for the
+    // one case that matters: `Down("Connection refused (os error 111)")` is
+    // *also* what a dead serve pid looks like, and the state file naming that
+    // pid is the contradiction the operator needs named. Gating here meant the
+    // dead-pid branch inside `stale_serve_at` was unreachable from `collect`, so
+    // the doctor said `Server: up` (port healthy) while `daemon status` said
+    // `not running` (its pidfile dead) — measured on this host 2026-11-21, pid
+    // 1295 holding 8888 against a `serve.json` naming dead pid 1371296.
+    if let Ok(mine) = std::env::current_exe() {
+        report.stale_serve = stale_serve_at(&paths::daemon_state_path(), &mine);
     }
     report
 }
@@ -387,14 +396,39 @@ pub fn probe_server(endpoint: &str) -> ServerState {
 /// honest comparison.
 ///
 /// Quiet, with no error, whenever the question cannot be asked: no state file
-/// (a manually started `serve` cannot be identified), an unreadable one, a
-/// dead pid, or a platform without `/proc/<pid>/exe`.
+/// (a manually started `serve` cannot be identified), an unreadable one, or a
+/// platform without `/proc/<pid>/exe`.
+///
+/// **A dead pid is NOT quiet** (corrected 2026-11-21). It used to be: the read
+/// of `/proc/<pid>/exe` failed, the `?` returned `None`, and the doctor reported
+/// nothing — which meant it went silent in exactly the state where `serve.json`
+/// is most wrong. Measured on this host: `daemon status` said `not running:
+/// serve.json points at pid 1371296`, `memory-wire doctor` said `Server: up`, and
+/// `ServerState`'s dead-pid detail existed but `Report::collect` never called the
+/// function that produces it. So the one surface an agent asks "is my memory
+/// server healthy" contradicted the other one, and the doctor was the one that
+/// lied.
+///
+/// The dead pid is now reported in its own words. That is deliberately a
+/// different finding from "stale build": a dead pid is a *contradiction between
+/// two surfaces*, and telling the operator to restart a server that is not
+/// running would be wrong advice for the right symptom.
 fn stale_serve_at(state: &Path, mine: &Path) -> Option<String> {
     let text = std::fs::read_to_string(state).ok()?;
     let pid = serde_json::from_str::<crate::daemon::ServeState>(&text)
         .ok()?
         .pid;
-    let running = exe_of(pid)?;
+    let Some(running) = exe_of(pid) else {
+        // No `/proc/<pid>/exe` for a pid that was read from disk moments ago
+        // means the process is gone. Reported, not swallowed.
+        return Some(format!(
+            "daemon state names serve pid {pid}, but that process is not running \
+             (no /proc/{pid}/exe). `memory-wire doctor` and `daemon status` \
+             disagree: the state file is stale. Remove it with `{}` daemon stop, \
+             then start the server again",
+            mine.display()
+        ));
+    };
     if running == mine.to_string_lossy() {
         return None;
     }
@@ -762,6 +796,38 @@ mod tests {
         .expect("write state");
         let mine = std::env::current_exe().expect("exe");
         assert_eq!(stale_serve_at(&state, &mine), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A state file naming a pid that is **gone** is reported, not swallowed
+    /// (2026-11-21). This is the defect the field found: `doctor` said `Server:
+    /// up` while `daemon status` said `not running: serve.json points at pid
+    /// 1371296`. The old code returned `None` here, so the most-wrong state was
+    /// the quietest one. The assertion names the symptom, not just "some
+    /// finding", because the operator needs to know the two surfaces disagree.
+    #[test]
+    fn a_dead_serve_pid_is_reported_as_a_stale_state_file() {
+        let dir = tmp_home("dead-serve");
+        // A pid that cannot exist: the kernel will not have it mapped.
+        let dead = i32::MAX;
+        let state = dir.join("serve.json");
+        std::fs::write(
+            &state,
+            serde_json::json!({"pid": dead, "addr": "127.0.0.1:18898", "db": "", "started_at": 0})
+                .to_string(),
+        )
+        .expect("write state");
+        let mine = std::env::current_exe().expect("exe");
+        let found = stale_serve_at(&state, &mine)
+            .unwrap_or_else(|| panic!("pid {dead} is not running and must be reported"));
+        assert!(
+            found.contains(&dead.to_string()),
+            "the finding must name the dead pid, got: {found}"
+        );
+        assert!(
+            found.contains("stale"),
+            "the finding must say the state file is stale, got: {found}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
