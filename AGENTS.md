@@ -104,7 +104,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 ## 3. Where things live
 
-`src/`, 33 modules, 40,388 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 40,389 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
@@ -129,7 +129,7 @@ stale count is a red gate rather than a claim nobody checks.
 | `update.rs` | 686 | `update`: the five-step self-update swap |
 | `seed.rs` | 693 | transcript reading for hook capture |
 | `hygiene.rs` | 658 | W4: deterministic hygiene scan (merge/contradiction/date/bloat) |
-| `mcp_http.rs` | 542 | stateless streamable-HTTP MCP mount |
+| `mcp_http.rs` | 543 | stateless streamable-HTTP MCP mount |
 | `connect_opencode.rs` | 443 | opencode's plugin dir (v2 layout) |
 | `capture.rs` | 363 | hook-based auto-capture: dedup, privacy filter, raw observation |
 | `grounding.rs` | 350 | W5: bounded startup grounding capsule |

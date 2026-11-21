@@ -45,12 +45,12 @@ a `file:line` citation from those trees or a command run on this machine.
 | | agentmemory | hindsight | memory-wire |
 |---|---|---|---|
 | Harness integrations | 21 adapters, 1 registry (`src/cli/connect/index.ts:28-50`) | 18 in one unified package (`coding-agents/src/harness/registry.ts:41-73`) + ~50 legacy dirs | **5** (`src/connect.rs:49-55`) |
-| MCP tools | **54** (`src/mcp/tools-registry.ts:957-968`) | 39 multi-bank / 36 single-bank (`hindsight_api/mcp_tools.py:36-78`) / 9 claude-plugin (`claude-code/scripts/mcp_server.py:87-196`) / 8 plugin (`coding-agents/src/core/knowledge-tools.ts:153-350`) | **4** (`src/mcp.rs:105-176`) |
+| MCP tools | **54** (`src/mcp/tools-registry.ts:957-968`) | 39 multi-bank / 36 single-bank (`hindsight_api/mcp_tools.py:36-78`) / 9 claude-plugin (`claude-code/scripts/mcp_server.py:87-196`) / 8 plugin (`coding-agents/src/core/knowledge-tools.ts:153-350`) | **6** (`src/mcp.rs`, `Server::tools()`) |
 | Hook event vocabularies | **5** distinct sets | 3 shapes across 18 hosts | **1** (3 events) |
 | Long-lived process | detached engine + pidfiles | 4 daemonization paths | **none** |
 | `stop` / `status` | `stop` `status` `remove` (`src/cli.ts:4001-4013`) | `embed daemon {start,stop,status,logs}` (`hindsight_embed/cli.py:1549-1557`), `fs {start,stop,restart,status}` (`hindsight-cli/src/commands/fs/mod.rs:67-87`) | `doctor` only, no stop |
 | Harness uninstall | **none** — `remove-plan.ts` reads a `connect-manifest.json` nothing writes | full, all 18 (`installer.ts:2008-2021`) | marker-filter `--uninstall` |
-| MCP annotations | **zero** on 54 tools | all 75 registrations (`mcp_tools.py:562-569`) | all 4 (`src/mcp.rs:80-87`) |
+| MCP annotations | **zero** on 54 tools | all 75 registrations (`mcp_tools.py:562-569`) | **all 6 (ours)** (`src/mcp.rs`, `annotations()`) |
 
 Two facts reframe everything below:
 

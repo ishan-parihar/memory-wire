@@ -1,5 +1,11 @@
 # Outline plan: the remaining implementation gaps, consolidation, and operational upgrades
 
+> **EXECUTED and SUPERSEDED 2026-11-21 by
+> [`2026-11-21-remaining-gaps-plan-v3.md`](2026-11-21-remaining-gaps-plan-v3.md).**
+> Its Tier 1 and Tier 2 were carried out in `6df26dd`, `34237bf`, `59a2919` and
+> `b7bee48`; its Tier 3 (agent-memory-bench) is still blocked on the user's model
+> budget and is carried in v3 §2. Read it for the reasoning behind what shipped.
+
 **Status:** proposal, 2026-11-21. Written from `2865938`, which is the state
 the last session's plan review asked for and got. Every claim below was checked
 against the tree or a live command; where I could not check, it says so.

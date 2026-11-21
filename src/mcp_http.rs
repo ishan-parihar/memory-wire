@@ -1,7 +1,8 @@
 //! MCP over the server that is already running: `/mcp` and `/mcp/<bank>`.
 //!
-//! One [`Server`](crate::mcp::Server), one set of four tools, a second
-//! transport. The tools are defined once, in `crate::mcp`, and the store is
+//! One [`Server`](crate::mcp::Server), one set of
+//! [`Server::tools()`](crate::mcp::Server::tools) tools, a second transport.
+//! The tools are defined once, in `crate::mcp`, and the store is
 //! shared with the REST routes; this module only decides which transport a
 //! request arrives on. `memory-wire mcp` on stdio and this mount are the same
 //! server, so a fix to a tool reaches both.
@@ -83,7 +84,7 @@ pub fn routes(svc: Arc<MemoryService<SqliteStore>>) -> Router<Arc<MemoryService<
 /// The cost is that `Mcp-Session-Id` is never issued, so a client that treated it
 /// as mandatory rather than optional has nothing to send. The 2025-06-18 spec
 /// makes it a MAY, and `tests/` pins that a client which handshakes anyway still
-/// gets its four tools answered.
+/// gets its tool set answered.
 fn transport(
     svc: Arc<MemoryService<SqliteStore>>,
     bank: String,
@@ -246,13 +247,13 @@ mod tests {
         reply["result"]["isError"] == json!(true)
     }
 
-    // The whole claim, end to end, on a real socket: the four tools, a retain
-    // and a recall into the bank the URL names, and the same four tool
+    // The whole claim, end to end, on a real socket: the full tool set, a
+    // retain and a recall into the bank the URL names, and the same tool
     // definitions stdio serves. The `initialize` at the top is deliberate even
     // though the mount no longer requires it: it is the compat half, proving a
     // client that still handshakes is answered and issued nothing to carry.
     #[tokio::test]
-    async fn a_client_can_reach_the_four_tools_over_http_with_the_bank_in_the_path() {
+    async fn a_client_can_reach_the_tool_set_over_http_with_the_bank_in_the_path() {
         let (addr, _svc) = serving().await;
 
         // initialize -> answered, and with no session id to carry forward.

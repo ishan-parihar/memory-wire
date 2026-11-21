@@ -1,5 +1,14 @@
 # Outline plan — remaining gaps, redundancy, and upgrades (2026-11-21)
 
+> **SUPERSEDED 2026-11-21 by
+> [`2026-11-21-remaining-gaps-plan-v3.md`](2026-11-21-remaining-gaps-plan-v3.md).**
+> This file is kept because the work it describes is the work that was done:
+> its Tier 1 landed in `dc97c40`, `3050ab2`, `3a4b1a6` and `303a096`, and the
+> review that read it corrected its "nothing verifies the round trip" headline
+> and its stub-server claim. Read it for what was attempted; read v3 for what is
+> actually left. Two plans with the same date and no marker is the same defect as
+> a stale section number, which this repository has now paid for three times.
+
 Written at `1485add`; committed as `9a61762`. The previous plan
 (`2026-11-20-remaining-gaps-plan.md`) was written the same way this one starts —
 from the tree — and a rulings review then found four errors in it, including one
