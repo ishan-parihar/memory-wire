@@ -68,11 +68,29 @@ Three facts, each verified in the tree:
    a query with no good match, the best-of-a-bad-set is still returned — that is
    what a relative ranker does, and it is not a defect in the ranker.
 
-2. **The evidence needed to judge is available and thrown away one line later.**
-   The recall response is a scored structure; `src/api.rs:1903`
-   (`recall_should_score_with_the_fused_rrf_value`) pins that the fused RRF score
-   is on the wire. `recall_at` deserialises to `Vec<String>` — content only. The
-   score is dropped **inside memory-wire's own code**, not by an external caller.
+2. **The score is fetched, carried, and then not used.** *(Repaired 2026-11-21.
+   This item said the score was "thrown away one line later" and that `recall_at`
+   deserialises to `Vec<String>`. Both were true on 2026-09-30 and neither is true
+   now — the CORRECTION block above already said so, and this paragraph went on
+   contradicting it eight lines below. A correction block that sits above text it
+   corrects is not a correction; it is a second wrong thing.)*
+   The recall response is a scored structure and the score is on the wire:
+   `recall_at` (`src/hooks.rs:727`) returns `Option<Vec<ScoredHit>>`, and
+   `ScoredHit` (`:516`) carries `content`, `created_at` and
+   `score: Option<f64>`. `recall_section` (`:680-706`) reads `content` and
+   `created_at` and **never reads `score`**; the only consumer of `score` is a
+   `tracing::debug!` at `:702` whose own comment says "Nothing branches on this
+   and nothing is gated by it". So the evidence-gathering half of this document
+   has landed and the policy half has not.
+
+   **On the citations, which is the other half of this repair.** This item cited
+   `src/api.rs:1903` for the test `recall_should_score_with_the_fused_rrf_value`.
+   That test is at **`src/api.rs:3132`**; line 1903 is a bare `}`. The citation
+   was not stale — it was never right: at `36bb947`, the commit this document
+   pins itself to, the same test was at **2168**. The `src/hooks.rs:660` /
+   `:583` / `:1497` citations in the correction block are correct at their stated
+   commit and have drifted since, which is the ordinary kind and is left alone
+   because the block names its commit.
 
 3. **The only gate is non-emptiness.** `recall_section` takes the first
    `MAX_LINES` hits unconditionally. Nothing between the server's ranking and the
@@ -111,15 +129,23 @@ place will otherwise leave the other.
 
 ## Where the fix belongs
 
-The evidence-gathering half is unambiguous and cheap:
+The evidence-gathering half is unambiguous and cheap, and **has landed**
+(2026-11-21; it was already true when this was re-read, and this section went on
+recommending it):
 
-- Stop discarding the score in `recall_at`; deserialise the scored shape that
-  `api.rs` already returns, and pass it through to `recall_section`.
+- ~~Stop discarding the score in `recall_at`; deserialise the scored shape that
+  `api.rs` already returns, and pass it through to `recall_section`.~~ **Done:**
+  `recall_at` (`src/hooks.rs:727`) returns `Option<Vec<ScoredHit>>` and the score
+  is on the wire. What remains is the *last* step — `recall_section` reads
+  `content` and `created_at` and never reads `score`.
 - Same change in operant's `format_hits`, which already receives `ScoredMemory`.
+  **Not done, and not this repository's to do.**
 
-That change alone is a strict improvement — it makes the decision *possible*
-without making it. It is also testable without a dev set: assert the score
-survives the client boundary.
+The remaining step — reading `score` in `recall_section` — is the same kind of
+change: it makes the decision *possible* without making it, and it is testable
+without a dev set (assert the score survives the client boundary, which
+`the_score_should_survive_the_client_boundary` already does for the half that
+landed).
 
 The policy half is **not** decidable without one, and should not be guessed:
 
