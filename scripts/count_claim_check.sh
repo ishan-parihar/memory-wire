@@ -119,7 +119,50 @@ if [ -n "${claim_mod:-}" ] && [ "$claim_mod" != "$mods" ]; then
   fail=1
 fi
 
+# --- Counts claimed inside src/ ------------------------------------------------
+#
+# Added 2026-11-21 after `src/mcp_http.rs` said "four tools" in three places
+# while serving `Server::tools()` -- six. The module doc, a handler doc and a
+# test name were all wrong, and nothing failed, because the test's *assertion*
+# compared against `Server::tools()` rather than a literal. A doc-comment that
+# states a count is a claim, and it is the class that recurs.
+#
+# Scoped deliberately narrow. This checks ONLY the numeric form of two claims
+# (`N tools`, `N hosts`) inside `src/`, against the same authorities the rest
+# of this script uses. It does not try to read prose, and it does not try to
+# catch spelled-out numbers: the three spelled-out "six tools" in the tree are
+# all correct today, and a check that had to understand English to know that
+# would be a check nobody trusts.
+src_counts=0
+while IFS= read -r hit; do
+  [ -n "${hit:-}" ] || continue
+  file=${hit%%:*}
+  rest=${hit#*:}
+  line=${rest%%:*}
+  text=${rest#*:}
+  # Skip a line that also names a competitor: the claim is then about them.
+  case "$text" in
+    *hindsight*|*agentmemory*|*Hindsight*|*agent-memory*|*OpenViking*|*MemOS*|*Honcho*)
+      continue ;;
+  esac
+  n=$(printf '%s' "$text" | grep -oE '[0-9]+ (tools|hosts)' | head -1 | grep -oE '^[0-9]+')
+  [ -n "${n:-}" ] || continue
+  noun=$(printf '%s' "$text" | grep -oE '(tools|hosts)' | head -1)
+  case "$noun" in
+    tools) want=$mcp_tools ;;
+    hosts) want=$hosts ;;
+  esac
+  if [ "$n" != "$want" ]; then
+    echo "SRC COUNT: $file:$line says "$n $noun", the code has $want" >&2
+    fail=1
+  fi
+  src_counts=$((src_counts + 1))
+done <<EOF
+$(grep -rnE '[0-9]+ (tools|hosts)' src/*.rs 2>/dev/null || true)
+EOF
+
 if [ "$fail" -eq 0 ]; then
   echo "ok  AGENTS.md counts match the code ($mcp_tools tools, $hosts hosts, $implicit implicit, $mods modules)"
+  echo "ok  $src_counts count claim(s) inside src/ match the code"
 fi
 exit "$fail"
