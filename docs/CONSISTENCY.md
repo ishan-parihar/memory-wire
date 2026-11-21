@@ -5606,3 +5606,61 @@ be the record of what was measured and what was rejected. A claim that misdescri
 the binary is a measurement error, and it belongs where the measurements are.
 
 Gate: docs-check, count gate, module table. No code changed.
+
+## §74. 2026-11-21 — full-scale execution: what shipped, what was measured, what is blocked
+
+Executing `docs/plans/2026-11-21-remaining-gaps-plan-v2.md` at the user's request.
+Four commits, all gated.
+
+**Shipped.**
+
+| commit | what |
+|---|---|
+| `6df26dd` | `doctor` names the *input* that produced an empty bank, not just the flags. `paths::BankSource` + `bank_source_in` report which rung of `resolve_bank_with` resolved it, and the fix line differs correctly between env-sourced and derived banks. |
+| `34237bf` | `POST /banks/:id/memories/:mid/supersede` (supersede had an MCP tool and no HTTP route) and `memory-wire hygiene` (hygiene had an HTTP route and no CLI). Both verified live. |
+| `59a2919` | TODO 36 closed as *deliberately not extracted* with the measured reason; TODO 38's real-drive block recorded with its evidence. |
+| `d86d200` | the plan itself. |
+
+**Two of TODO 31's three claims were already false**, and I corrected the row
+rather than the code: `memory_supersede` is a real MCP tool (the set is pinned
+at 6 by `tools_list_should_show_six_annotated_tools`; `memory_historian` is a
+prompt, not a tool), and `memory-wire grounding` is a real subcommand. What was
+actually missing is narrower and is what I built.
+
+**Measured, free, after the changes:**
+
+- **LoCoMo dev (row 2)**, `cargo run --release --example locomo`: R@10 94.2%
+  (vs 93.3%), R@20 98.0%, NDCG@10 73.6% (vs 70.7%), MRR 71.8% (vs 68.0%),
+  R@pool 100.0%. Per-query R@5: 57 improved, 35 regressed, 1,439 unchanged.
+  **Load average 32.37 on 24 cores** at the time, so this is a ranking
+  measurement and not a latency one.
+- **Relevance battery (row 3)**, `run_battery.py --bank omp`: **H8 gate held**
+  — ranking IDENTICAL, auto-injected chars 16,173 vs 27,606 (**41% less**),
+  fidelity held on 17 gold cases.
+
+**Not run, with the reason:**
+
+- **LongMemEval-S (row 5) — deliberately not run.** The dataset is present, so
+  it was runnable, and I chose not to. Today's changes are doors, a doctor
+  line, and docs: none touches ranking, fusion, the candidate pool, or the
+  budget trim. Running the test set to confirm that would spend one of the
+  five counted consultations for zero new information about the change.
+  §6's rule is that a consultation is for measurement or release acceptance,
+  and this is neither.
+- **agent-memory-bench (row 7, TODO 10) — blocked twice over.** The repo is not
+  cloned, and the run needs an answering model plus Docker, which is the user's
+  budget to agree (§7). Recorded, not attempted.
+- **AMB / PrecisionMemBench (rows 4, 8) — blocked on external state.** The
+  AMB clone at `../_audit/amb` is gone, so the free 10-second retrieval run
+  cannot execute without re-cloning and re-patching the provider.
+- **Rows 9-11 (OAMB, MemBase, memorybench, OmniMemEval) — need a paid model.**
+  OAMB and MemBase also re-run LongMemEval, so each is a test consultation on
+  top of the cost.
+
+**The operational gap is still open and is the user's call:** the installed
+binary is 0.9.0, 68 commits behind, and verifiably lacks `memory_redact`. This
+host's hooks resolve to bank `ishan-parihar-memory-wire`, which holds no
+memories, while `omp` holds 4,241. `doctor` now names the fix and the command;
+running it rewrites five live host configs, so it was not run.
+
+Gate: 676 tests, clippy 0, doc 0, module table 33/40,388, count gate.
