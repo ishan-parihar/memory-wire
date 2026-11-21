@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::{header::CONTENT_TYPE, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -1396,6 +1396,74 @@ pub fn memories_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
 /// the candidates rather than reading prose.
 pub fn hygiene_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
     Router::new().route("/banks/:id/hygiene", get(bank_hygiene))
+}
+
+/// `POST /banks/:id/memories/:mid/supersede` — mark one memory as superseded.
+///
+/// The write half of the lifecycle pair. `supersede` had an MCP tool
+/// (`memory_supersede`) and a CLI surface but no HTTP route, while `hygiene` had
+/// the HTTP route and no CLI -- two halves of the same asymmetry, and the reason
+/// TODO 31 stayed open. A caller on the HTTP door could delete a memory but not
+/// retire it, so the only way to express "this is wrong, that one is right" was
+/// a delete that loses the lineage.
+///
+/// `superseded_by` is optional and names the row that supersedes this one. It is
+/// deliberately **not** a foreign key: the superseding row may not exist yet, may
+/// live in another bank, or may be a row the caller is about to write. An empty
+/// or whitespace-only value is treated as `None`, which is a plain retract.
+///
+/// The response is `200` with `{"superseded": true}` when a row was marked and
+/// `404` naming the id when it was not in this bank. `404` rather than `200
+/// false`: a caller that asked about a specific row and was told nothing happened
+/// needs to distinguish "already superseded" from "no such row", and the store
+/// reports both as `false`.
+pub fn supersede_routes<S: Store + 'static>() -> Router<Arc<MemoryService<S>>> {
+    Router::new().route("/banks/:id/memories/:mid/supersede", post(bank_supersede))
+}
+
+/// Body of a supersede request. An empty body is valid and means a plain retract.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct SupersedeRequest {
+    /// The id of the row that supersedes this one, when there is one.
+    #[serde(default)]
+    pub superseded_by: Option<String>,
+}
+
+/// `POST /banks/:id/memories/:mid/supersede`.
+///
+/// `blocking` because the store call is SQLite, and the crate rule is that
+/// blocking work does not run on a tokio worker.
+async fn bank_supersede<S: Store + 'static>(
+    State(svc): State<Arc<MemoryService<S>>>,
+    Path((bank, mid)): Path<(String, String)>,
+    // A missing body is the common case (plain retract), so this is optional
+    // rather than required: `Option<Json<..>>` rejects a malformed body with the
+    // deserializer's 422, which is the frozen contract, and accepts no body at all.
+    body: Option<Json<SupersedeRequest>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let superseded_by = body
+        .and_then(|Json(r)| r.superseded_by)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let changed = blocking({
+        let (m_svc, m_bank, m_mid, m_by) = (Arc::clone(&svc), bank.clone(), mid.clone(), superseded_by.clone());
+        move || m_svc.supersede_memory(&m_bank, &m_mid, m_by.as_deref())
+    })
+    .await
+    .map_err(to_http)?;
+    if !changed {
+        // The row was not in this bank. Either the id is wrong or it was already
+        // superseded; both are answered the same way, and neither is a success.
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("no active memory `{mid}` in bank `{bank}` to supersede"),
+        ));
+    }
+    Ok(Json(serde_json::json!({
+        "id": mid,
+        "superseded": true,
+        "superseded_by": superseded_by,
+    })))
 }
 
 /// Ceiling on one page of memories, so one request cannot ask for the whole bank.

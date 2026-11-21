@@ -36,9 +36,11 @@ use tracing_subscriber::EnvFilter;
 
 use memory_wire::api::{
     bank_config_routes, blocking, full_hit_json, http_error, hygiene_routes, memories_routes,
-    parse_created_at, parse_update_mode, summary_hit_json, ApiError, MemoryService,
+    parse_created_at, parse_update_mode, supersede_routes, summary_hit_json, ApiError,
+    MemoryService,
 };
 use memory_wire::grounding;
+use memory_wire::hygiene;
 use memory_wire::memory::Bank;
 use memory_wire::store::{default_db_path, BankStats, SqliteStore, Store};
 
@@ -275,6 +277,24 @@ enum Cmd {
         /// A row with no globs always applies.
         #[arg(long, value_name = "PATH")]
         path: Vec<String>,
+        /// SQLite database path (default: $XDG_DATA_HOME/memory-wire/memory.db).
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+    /// Run the W4 deterministic hygiene scan for a bank (read-only).
+    ///
+    /// The same scan `GET /banks/:id/hygiene` serves, on the CLI. It had the
+    /// HTTP route and no CLI while `supersede` had the MCP tool and no HTTP
+    /// route -- the two halves of the asymmetry TODO 31 stayed open on. The
+    /// scan is deterministic, so this prints exactly what the route returns
+    /// rather than a summary of it.
+    Hygiene {
+        /// Bank to scan.
+        #[arg(long, value_name = "ID")]
+        bank: String,
+        /// Only rows created after this RFC 3339 / YYYY-MM-DD watermark.
+        #[arg(long, value_name = "WATERMARK")]
+        cursor: Option<String>,
         /// SQLite database path (default: $XDG_DATA_HOME/memory-wire/memory.db).
         #[arg(long)]
         db: Option<PathBuf>,
@@ -528,6 +548,25 @@ async fn main() -> anyhow::Result<()> {
                 }
                 let bytes: usize = capsule.iter().map(|l| l.to_string().len()).sum();
                 eprintln!("{} line(s), {bytes} byte(s) — bank `{bank}`", capsule.len());
+            }
+        }
+        Cmd::Hygiene { bank, cursor, db } => {
+            let store = open_store(&db.unwrap_or_else(default_db_path))?;
+            // The same options the HTTP route uses, so the two cannot disagree
+            // about what counts as a candidate.
+            let opts = hygiene::HygieneOptions::default();
+            let report =
+                hygiene::hygiene_scan(&store, &bank, cursor.as_deref(), &opts)?;
+            if report.candidates.is_empty() {
+                println!("no hygiene candidates in bank `{bank}`");
+            } else {
+                for c in &report.candidates {
+                    println!("{c}");
+                }
+                eprintln!(
+                    "{} candidate(s) — bank `{bank}`",
+                    report.candidates.len()
+                );
             }
         }
         // Phase D's visible surface. Present only in a build that carries the
@@ -968,6 +1007,10 @@ fn router(svc: Svc) -> Router {
         // GET /banks/:id/hygiene — the W4 deterministic scan. Read-only, so it
         // belongs with the other collection routes.
         .merge(hygiene_routes::<SqliteStore>())
+        // POST /banks/:id/memories/:mid/supersede — the write half of the
+        // lifecycle pair, next to the DELETE above it. Supersede had an MCP tool
+        // and no HTTP route; a caller on this door could delete but not retire.
+        .merge(supersede_routes::<SqliteStore>())
         // MCP over the same port. `/mcp` resolves the bank from the call, and
         // `/mcp/<bank>` pins it to the path.
         .merge(mcp)
@@ -1288,6 +1331,91 @@ mod tests {
         )
         .expect("request");
         assert_eq!(ghost.status, 404, "{}", ghost.body);
+    }
+
+    // The write half of the lifecycle pair. Supersede had an MCP tool and no
+    // HTTP route, so a caller on this door could delete a memory but not retire
+    // it -- TODO 31. This test drives the route the way a client would, and
+    // checks the two properties that make a supersede different from a delete:
+    // the row leaves recall, and it survives in the store with its lineage.
+    #[test]
+    fn supersede_routes_should_retire_a_row_without_deleting_it() {
+        let (base, _db) = serve_scratch("supersede");
+        let retained = post(
+            &base,
+            "/banks/demo/retain",
+            r#"{"content":"the old decision used v1"}"#,
+        );
+        let id = serde_json::from_str::<serde_json::Value>(&retained.body)
+            .expect("json")["id"]
+            .as_str()
+            .expect("an id")
+            .to_string();
+
+        // A plain retract: no body at all. That is the common case and it must
+        // not require a `{}` from the caller.
+        let res = post(
+            &base,
+            &format!("/banks/demo/memories/{id}/supersede"),
+            "",
+        );
+        assert_eq!(res.status, 200, "{}", res.body);
+        let body: serde_json::Value = serde_json::from_str(&res.body).expect("json");
+        assert_eq!(body["superseded"], serde_json::json!(true));
+        assert_eq!(
+            body["superseded_by"],
+            serde_json::Value::Null,
+            "a plain retract has no superseding row"
+        );
+
+        // It leaves default recall...
+        let recalled = post(
+            &base,
+            "/banks/demo/recall",
+            r#"{"query":"old decision v1"}"#,
+        );
+        let hits: serde_json::Value = serde_json::from_str(&recalled.body).expect("json");
+        assert!(
+            hits.as_array().expect("array").is_empty(),
+            "a superseded row must not be recalled: {}",
+            recalled.body
+        );
+
+        // ...and it is still in the store, marked, so the lineage survives.
+        let all = http::get(
+            &format!("{base}/banks/demo/memories?lifecycle=all"),
+            Duration::from_secs(10),
+        )
+        .expect("request");
+        let rows: serde_json::Value = serde_json::from_str(&all.body).expect("json");
+        let row = rows
+            .as_array()
+            .expect("array")
+            .iter()
+            .find(|r| r["id"] == serde_json::json!(id))
+            .expect("the row must still exist");
+        assert_eq!(row["meta"]["lifecycle"], serde_json::json!("superseded"));
+
+        // A second supersede is a 404, not a silent success: the caller asked
+        // about a specific row and was told nothing happened. The raw client,
+        // because the `post` helper asserts success and would swallow the 404
+        // this is here to check.
+        let again = http::post_json(
+            &format!("{base}/banks/demo/memories/{id}/supersede"),
+            "",
+            Duration::from_secs(10),
+        )
+        .expect("request");
+        assert_eq!(again.status, 404, "{}", again.body);
+
+        // A row in another bank is not reachable through this bank's path.
+        let other = http::post_json(
+            &format!("{base}/banks/other/memories/nosuchid/supersede"),
+            "",
+            Duration::from_secs(10),
+        )
+        .expect("request");
+        assert_eq!(other.status, 404, "{}", other.body);
     }
 
     #[test]
