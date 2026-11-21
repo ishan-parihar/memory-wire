@@ -256,13 +256,35 @@ process.env.MEMORY_WIRE_BANK = 'roundtrip';
   }
   const hooks = {};
   const session = { hook: (ev, fn) => { hooks[ev] = fn; } };
+  // The capture path is NOT a session.hook -- it is an async iterator on
+  // ctx.event.subscribe(). A driver that stubs `event` as a no-op function gets
+  // past setup() and then silently never retains: the door loads, injects, and
+  // forgets, which is the same shape as a dead door with one extra step.
+  const events = [];
+  const event = {
+    subscribe: () => {
+      let resolveNext;
+      const iterator = {
+        next: () => new Promise((r) => { resolveNext = r; }),
+        return: () => Promise.resolve({ done: true }),
+        push: (ev) => {
+          const r = resolveNext;
+          resolveNext = undefined;
+          if (r) r({ value: ev, done: false });
+        },
+        [Symbol.asyncIterator]() { return this; },
+      };
+      events.push(iterator);
+      return iterator;
+    },
+  };
   // v2 takes ONE argument: session and event live ON the context. The first
   // version of this driver passed a second argument with `session` in it, so
   // setup() saw `ctx.session` undefined and registered nothing -- which is the
   // same silent no-op the trust gate's export-shape check exists to catch.
   await plugin.setup({
     session,
-    event: async () => {},
+    event,
     client: {},
     $: {},
     directory: process.cwd(),
@@ -274,6 +296,25 @@ process.env.MEMORY_WIRE_BANK = 'roundtrip';
     console.log('FAIL the opencode door registered no context hook');
     process.exit(1);
   }
+  if (typeof hooks.prompt !== 'function') {
+    console.log('FAIL the opencode door registered no prompt hook');
+    process.exit(1);
+  }
+  // The RETAIN half, before the READ half. Push a turn-end event through the
+  // real subscription and let the door write the pair itself -- do NOT seed the
+  // marker through the API. A version of this driver that seeded via the API
+  // could pass with the door's capture path deleted, which is the same shape as
+  // TODO 35 with one extra step: it loads, it injects, and it forgets.
+  if (!events.length) {
+    console.log('FAIL the opencode door never subscribed to the event stream');
+    process.exit(1);
+  }
+  hooks.prompt({ parts: [{ type: 'text', text: 'Remember that ' + marker + ' is the marker.' }] });
+  events[0].push({ type: 'session.execution.succeeded', sessionID: 's1' });
+  // The door awaits the answer text, which needs the session client. Give the
+  // subscription a turn to run, then fall through -- the read below is what
+  // proves the write landed.
+  await new Promise((r) => setTimeout(r, 1500));
   // Two hooks, in the order the host fires them. `prompt` records the turn's
   // text (reading `ev.parts`); `context` then injects against that query. A
   // driver that fires only `context` sees no query and correctly injects

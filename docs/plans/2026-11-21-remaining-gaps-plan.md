@@ -1,6 +1,6 @@
 # Outline plan — remaining gaps, redundancy, and upgrades (2026-11-21)
 
-Written at `1485add`. The previous plan
+Written at `1485add`; committed as `9a61762`. The previous plan
 (`2026-11-20-remaining-gaps-plan.md`) was written the same way this one starts —
 from the tree — and a rulings review then found four errors in it, including one
 structural misframing. **This plan is built to be reviewed the same way, and it
@@ -37,9 +37,9 @@ register**, and two structural questions nobody has asked.
 | installed vs repo | **0.9.0** vs **0.10.0**, 68 commits behind |
 | release | measured, **not cut** (CONSISTENCY §71) |
 | `v0.10.0` exists | yes; `v0.9.0..HEAD` = 96, `v0.10.0..HEAD` = 68 |
-| integration test files | 6 files, 22 tests, **none per-host round-trip** |
+| integration test files | **6** files, **22** tests, none per-host round-trip. **AGENTS.md §3 lists five** (it omits `installer.rs`) -- a stale count the plan review caught, and the exact class `count_claim_check.sh` exists for. |
 | server-side injection format | none — `format=summary`/`toon` exist for recall bodies, not for an injection block |
-| policy duplication | 4,037 lines across the four auto-injection doors |
+| policy duplication | 4,104 lines across the four auto-injection doors (`src/hooks.rs` 2,277 + hermes `__init__.py` 987 + extension 356 + opencode 484). **Corrected 2026-11-21 by the plan review**: this said 4,037 and, more importantly, "duplication" was the wrong word -- TODO 36 measures the *duplicated core* at 101 lines. The 4,104 is the doors' total size, not the duplication. |
 
 ---
 
@@ -86,10 +86,21 @@ New `plugin/integrations/door_roundtrip_test.sh`, wired into the trust gate.
 Sourced from `Host::ALL` for the same reason as `5aea83a`: a literal list is how
 round 4 found a script covering 6 of 8 hosts.
 
-Cost: the bulk is a stub server (memory-wire already has one pattern for this in
-`trust_gate_test.py`) plus a driver per host shape — `Style::Mcp`,
-`Style::Plugin`, `Style::Extension`, `Style::Copilot`. Four drivers, not eight
-hosts.
+Cost: the bulk is a driver per door plus **a real memory-wire on a free port** --
+not a stub. **Corrected 2026-11-21 by the plan review, which was right:** this
+section said "stub server", and the built check
+(`plugin/integrations/door_roundtrip_test.py`) starts the real binary. The
+review read the plan's word rather than the code, because the pack did not carry
+the test -- which is the lesson: a plan describing a check must carry the check.
+
+The review's deeper objection also holds and narrows what this can prove: the
+built test drives **doors** (extension, opencode, hermes) against a real server,
+which catches a door that renders wrongly or never calls the server. It does
+**not** drive a real host binary, and layer 2 is present but skipped loudly for
+claude and opencode because a real drive would rewrite the operator's live host
+config. So the residual gap the review names -- a host that loads the door and
+never fires the hook -- is still open, and is what TODO 38's remaining half is
+for.
 
 ### 3.2 TODO 38's remaining half, rescoped per R2
 
@@ -128,9 +139,10 @@ recurring review finding.
 
 ### 3.4 The count-claim hygiene the review exposed
 
-The review found **ten** sites needing a tool-count correction, nine of which
-TODO 34 listed. The tenth was hermes. That is not a one-off — it is a class:
-**a number in prose that has no test behind it.**
+The review found **twelve** sites needing a tool-count correction (TODO 34
+lists: AGENTS §4 + §3, README x3, main.rs, mcp.rs x3, mcp_http.rs,
+INTEGRATION_GAPS x2) and missed a thirteenth, hermes. That is not a one-off --
+it is a class: **a number in prose that has no test behind it.**
 
 Cheap fix: extend the module-table gate's shape to cover the counts that have
 actually drifted — tool count, host count, module count — each sourced from the
@@ -138,8 +150,8 @@ enum or the code, never a literal. `Host::ALL.len()` is 8; `src/mcp.rs`'s tool
 list is 6. A test asserting "the number in `AGENTS.md` §4 equals the number in
 the code" is ten lines and would have caught all ten sites.
 
-**And the very act of writing this plan found an eleventh, today.** `AGENTS.md`
-line 200 opens **"**Agent hosts.** Six: `claude-code`, `codex`, `copilot-cli`,
+**And the very act of writing this plan found a thirteenth, today.** `AGENTS.md`
+line 200 opened **"**Agent hosts.** Six: `claude-code`, `codex`, `copilot-cli`,
 `cursor`, `opencode`, `hermes`"** while `Host::ALL` holds **eight** (adding
 `omp` and `pi`) and `IMPLICIT` holds seven. The section then spends three
 sentences on hermes's asymmetry without ever naming the two hosts the list
@@ -157,8 +169,10 @@ conclusions. Both are recorded here so they are not lost.
 
 Every defect on record is the same shape: rendering policy (trust gate, blank
 rows, footer, cap) re-implemented client-side in Rust, Python and TypeScript.
-4,037 lines across four doors, and a check in N−1 of them — which is TODO 33's
-finding, restated.
+4,104 lines across four doors -- and TODO 36 measures the *duplicated core* at
+101 lines, which is the number that matters for this argument, not the total.
+The "check in N-1 of them" framing is also stale: TODO 33 closed that pattern
+across all four doors on 2026-11-19.
 
 The server already serves `format=summary` and an opt-in `toon`. **A
 server-rendered injection format is the untested alternative**: one
