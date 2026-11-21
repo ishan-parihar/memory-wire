@@ -1640,6 +1640,73 @@ mod tests {
         );
     }
 
+    /// The row-inclusion invariant, which is what actually broke.
+    ///
+    /// Four times the auto-injection doors have disagreed, and every time it was
+    /// about **which rows are in the block**, never about how they render:
+    ///
+    ///   - the trust gate shipped in Rust and hermes and not in the two
+    ///     TypeScript doors (CONSISTENCY section 58),
+    ///   - blank rows were skipped in TypeScript and counted in Rust and Python
+    ///     (TODO 37),
+    ///   - the footer counted `hits.len() - MAX_LINES` when the character cap
+    ///     had already stopped the loop (round-5 review),
+    ///   - the take counted scanned input rather than emitted output, so five
+    ///     untrusted rows starved a trusted one (round-4 review).
+    ///
+    /// Rendered-output comparisons cannot catch any of them, because the doors
+    /// legitimately render differently (`###` vs `##`, bullets vs numbers, a
+    /// footer vs none). What they must agree on is the **set of row ids that
+    /// made it into the block**. This test pins that set for the cases above.
+    ///
+    /// It is one door's half of the invariant; the hermes and TypeScript halves
+    /// are checked against the same fixture shape in `trust_gate_test.sh`, and
+    /// the two halves are deliberately asserted on inclusion rather than bytes.
+    #[test]
+    fn the_included_row_ids_are_the_invariant_across_the_door_policy() {
+        // The three rules, each with a case that would break it.
+        let cases: Vec<(&str, Vec<ScoredHit>, Vec<&str>)> = vec![
+            (
+                "trust gate withholds the untrusted row and keeps the rest",
+                vec![
+                    hit("a trusted row", Some("human_stated")),
+                    hit("a fetched row", Some("untrusted_external")),
+                    hit("an inferred row", Some("agent_inferred")),
+                ],
+                vec!["a trusted row", "an inferred row"],
+            ),
+            (
+                "a blank row is not a candidate, so it cannot be dropped from the footer",
+                vec![
+                    hit("real one", None),
+                    hit("   ", None),
+                    hit("real two", None),
+                ],
+                vec!["real one", "real two"],
+            ),
+            (
+                "five untrusted rows above a trusted one do not starve it",
+                {
+                    let mut v: Vec<ScoredHit> = (0..5)
+                        .map(|i| hit(&format!("untrusted {i}"), Some("untrusted_external")))
+                        .collect();
+                    v.push(hit("trusted at rank five", Some("human_stated")));
+                    v
+                },
+                vec!["trusted at rank five"],
+            ),
+        ];
+
+        for (name, hits, want) in cases {
+            let out = recall_section("b", &hits);
+            let got: Vec<&str> = want.iter().copied().filter(|c| out.contains(c)).collect();
+            assert_eq!(
+                got, want,
+                "{name}: the block must include exactly {want:?}, got {got:?}\n{out}"
+            );
+        }
+    }
+
     /// A blank-content row is schema-legal and must not cost a line.
     ///
     /// `src/store.rs` has a test that inserts one through SQL, so this is not a
