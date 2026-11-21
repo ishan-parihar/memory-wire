@@ -24,7 +24,32 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
-  **2026-11-21 — the plan review came back and I acted on its three strongest
+  **2026-11-21 -- full-scale execution of the remaining-gaps plan, four commits.**
+  `docs/plans/2026-11-21-remaining-gaps-plan-v2.md`, executed at the user's
+  request. All gated, all committed:
+  - `d86d200` the plan. `6df26dd` doctor names the *input* behind an empty
+    bank (`paths::BankSource` + `bank_source_in`), with the fix line differing
+    correctly between an env-sourced and a derived bank. `34237bf` supersede
+    got its HTTP route and hygiene its CLI -- two of TODO 31's three claims
+    turned out to be already false, and the row now says so. `59a2919` closes
+    TODO 36 as *deliberately not extracted* (extension 356 lines exporting a
+    function, opencode 484 exporting a v2 object; 0 vs 12 event hooks) and
+    records TODO 38's real-drive block with its evidence. `b7bee48` is
+    CONSISTENCY §74.
+  - **Measured free after the changes:** LoCoMo dev R@10 94.2%, NDCG@10 73.6%,
+    MRR 71.8%, R@pool 100% (load 32.37 on 24 cores, so ranking only);
+    relevance battery H8 gate held, ranking identical, 41% fewer auto-injected
+    characters.
+  - **Deliberately not run:** LongMemEval-S. The dataset was present and the
+    command would have worked, but nothing in this batch touches ranking, so
+    spending one of the five counted consultations would have bought a green
+    number that says nothing. That reasoning is in §74, not just the omission.
+  - **Blocked:** agent-memory-bench (not cloned; needs an answering model and
+    Docker -- the user's budget). AMB/PrecisionMemBench (`../_audit/amb` is
+    gone). TODO 38's real-host drive (needs a HOME override the guard refuses,
+    or a container).
+
+  **2026-11-21 -- the plan review came back and I acted on its three strongest
   findings.** `research/audits/context-pack-2026-11-21-rulings/` (the reply
   arrived pasted by the operator; the tool never collected it --
   `notes/RESPONSE-NOT-COLLECTED.md` records why, and that the page was
