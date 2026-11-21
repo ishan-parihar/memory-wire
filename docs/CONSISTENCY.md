@@ -5664,3 +5664,62 @@ memories, while `omp` holds 4,241. `doctor` now names the fix and the command;
 running it rewrites five live host configs, so it was not run.
 
 Gate: 676 tests, clippy 0, doc 0, module table 33/40,388, count gate.
+
+## §75. 2026-11-21 — v3 execution: three defects found by looking, one by testing
+
+Executing `docs/plans/2026-11-21-remaining-gaps-plan-v3.md` at the user's request.
+Three commits, all gated.
+
+**Shipped.**
+
+| commit | what |
+|---|---|
+| `1fcde7d` | Tier 1. `src/mcp_http.rs` said "four tools" in three places and serves six; `INTEGRATION_GAPS.md`'s comparison table said 4 and "all 4"; both plans of the same date now carry supersession markers. |
+| `c425f1e` | The count gate now scans `src/`, which is where the first defect hid. It checks the numeric form of `N tools` and `N hosts` against the same two authorities the rest of the gate uses. |
+| `ed96bbd` | `POST /banks/:id/memories/:mid/redact` -- the last door `redact` was missing. |
+
+**The defect found by testing the new route, not by reading.** An invalid regex
+returned `500 storage error`. `StoreError::BadInput` fell through
+`http_error`'s catch-all, so a caller who mistyped a pattern was told the server
+had failed. It now maps to `400 invalid content` with the fixed string, not the
+regex engine's prose. This was reachable before through the CLI and MCP, so it is
+a correction to the frozen-contract table rather than a new-route detail.
+
+**The defect found by reading, and why the gate missed it.** `mcp_http.rs` said
+"four tools" while serving `Server::tools()`, and the test named
+`a_client_can_reach_the_four_tools_...` passed the whole time -- its *assertion*
+compared against `Server::tools()` rather than a literal, so nothing failed. Only
+the name and the docs were wrong. That is a documentation defect and not a
+coverage one, and the distinction is why it survived review.
+
+The count gate did not catch it because it scanned `AGENTS.md`, `README.md` and
+`docs/INTEGRATION_GAPS.md` and never looked at `src/`. Invisible by
+construction. It now does, mutation-checked both ways: a bad count in
+`mcp_http.rs` and a bad count in `connect.rs` each fail with the file, the line,
+the claim and the code's number.
+
+**Measured, free, after the changes:**
+
+- **LoCoMo dev:** R@5 86.0% (vs 84.5%), R@10 94.2% (vs 93.3%), R@20 98.0%,
+  NDCG@10 73.6% (vs 70.7%), MRR 71.8% (vs 68.0%), R@pool 100.0%. **Load 23.71 on
+  24 cores**, so this is a ranking measurement and not a latency one.
+- **Relevance battery:** **H8 gate held** -- ranking IDENTICAL, auto-injected
+  chars 16,034 vs 27,766 (**42% less**), fidelity held on 17 gold cases.
+
+Both are identical to §74 within rounding, which is the expected result for a
+batch that touches doors and docs and no ranking code.
+
+**Footprint:** release build **10.73 MiB** (was 10.65), `DT_NEEDED` still **3**.
+No dependency added. The competitive position in AGENTS §1 holds.
+
+**Deliberate deferral:** hygiene gets no MCP tool. A hygiene scan is a
+maintenance job a human runs, not something an agent reaches for mid-session, and
+a 7th tool moves a count asserted in AGENTS, README, `mcp_http.rs` and a pinning
+test. Recorded in TODO 31 as a decision so it is not re-opened as an oversight.
+
+**Still not run, unchanged from §74:** LongMemEval-S (a consultation spent to
+confirm what two free harnesses already show), agent-memory-bench (needs an
+answering model and Docker -- the user's budget), AMB/PrecisionMemBench
+(`../_audit/amb` is gone).
+
+Gate: 677 tests, clippy 0, doc 0, both count lines, module table 33/40,561.

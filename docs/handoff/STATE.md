@@ -24,7 +24,31 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
-  **2026-11-21 -- full-scale execution of the remaining-gaps plan, four commits.**
+  **2026-11-21 -- v3 execution: three commits, two defects found by reading, one by
+  testing.** `docs/plans/2026-11-21-remaining-gaps-plan-v3.md`, at the user's
+  request.
+  - `1fcde7d` `src/mcp_http.rs` said "four tools" in three places and served
+    six; `INTEGRATION_GAPS.md`'s table said 4 and "all 4"; both same-day plans
+    now carry supersession markers.
+  - `c425f1e` the count gate now scans `src/` -- the place the first defect hid
+    -- checking `N tools` and `N hosts` against `Server::tools()` and
+    `Host::ALL`. Mutation-checked both directions.
+  - `ed96bbd` `POST /banks/:id/memories/:mid/redact`, the last door redact was
+    missing. **Testing it found a frozen-contract gap**: `StoreError::BadInput`
+    (a regex typo) fell through to an opaque 500 and now maps to 400 `invalid
+    content`.
+  - **The mcp_http defect survived review because its test asserted against
+    `Server::tools()` rather than a literal.** The name and the docs were wrong,
+    the assertion was right, so nothing failed. Recorded because the distinction
+    between a documentation defect and a coverage defect is the whole lesson.
+  - Measured free: LoCoMo R@10 94.2%, NDCG@10 73.6%, MRR 71.8%, R@pool 100%
+    (load 23.71); relevance battery H8 gate held, 42% less auto-injected. Both
+    identical to the prior batch, as expected for doors-and-docs work.
+  - Footprint: 10.73 MiB (was 10.65), `DT_NEEDED` still 3.
+  - Hygiene gets no MCP tool -- a deliberate deferral recorded in TODO 31, not an
+    oversight. Revisit only if a caller needs it.
+
+  **2026-11-21 — full-scale execution of the remaining-gaps plan, four commits.**
   `docs/plans/2026-11-21-remaining-gaps-plan-v2.md`, executed at the user's
   request. All gated, all committed:
   - `d86d200` the plan. `6df26dd` doctor names the *input* behind an empty
