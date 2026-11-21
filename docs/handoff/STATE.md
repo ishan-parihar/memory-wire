@@ -24,6 +24,28 @@ shape-check landed its verdict: not mechanical, labelling stays the unblock.
 
 ## 1. What is in the working tree (post-release residue)
 
+  **2026-11-21 — the plan review came back and I acted on its three strongest
+  findings.** `research/audits/context-pack-2026-11-21-rulings/` (the reply
+  arrived pasted by the operator; the tool never collected it --
+  `notes/RESPONSE-NOT-COLLECTED.md` records why, and that the page was
+  recycled by a concurrent session). It scored the plan 4/10 on evidence
+  density and falsified six of nine claims. Verified before acting, in three
+  commits:
+  - **My round-trip test had the same blind spot I was accusing TODO 35 of
+    having.** It seeded the marker through the API and only tested the read,
+    so mutating the opencode capture subscription to `false` left it green.
+    **Fixed** (`b25a56b`): the door now retains the pair itself through the
+    real `ctx.event.subscribe()` iterator, and the mutation fails by name.
+  - **AGENTS.md's own counts were stale in three places** -- five tests files
+    instead of six (`installer.rs` missing), v0.8.2 instead of 0.10.0, H5
+    "will be the next" when it landed 2026-10-14. **Fixed** (`fca968c`), which
+    also removed the hand-maintained section-number cross-reference after it
+    was found stale for the third time (§36, then §50, actual §72).
+  - **The plan said "stub server" when the built test uses a real one.** The
+    reviewer read my word, not my code, because the pack did not carry the
+    test. Corrected in the plan; the lesson recorded there is that a plan
+    describing a check must carry the check.
+
   **2026-11-20 — execution plan closed and round 5 of the context-pack review
   landed.** Two batches, both committed and both gated.
 
