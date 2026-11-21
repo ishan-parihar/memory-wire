@@ -79,7 +79,10 @@ recall from returning something the caller did not ask for.
   The doors are **not** at parity, and that is deliberate rather than accidental:
   each capability is exposed on the door that needed it, so `redact` is CLI-only,
   `hygiene` is HTTP-only, and `memory_supersede` is MCP-only. The verified
-  per-capability table is in `docs/INTEGRATION_GAPS.md` (2026-11-19 addendum);
+  per-capability table is in `docs/INTEGRATION_GAPS.md`; its provenance and the
+  date it was measured live in the evidence register rather than in this
+  sentence, because a date written into prose is a claim about that date until
+  someone re-measures it.
   `TODO.md` row 31 tracks closing the widest gap.
 - **Banks never mix.** A recall names its bank. There is no cross-bank fallback,
   because a memory from one project appearing in another is the failure this
