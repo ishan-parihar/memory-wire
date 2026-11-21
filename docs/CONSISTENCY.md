@@ -5473,3 +5473,37 @@ parity nearly trivial. Both adopted as new work.
 Gate: 673 tests, clippy 0, doc 0, trust gate 9 checks.
 
 Next free CONSISTENCY section: **§71**.
+
+## §71. 2026-11-20 — release readiness measured (R3a), load 27, and the count corrected
+
+The rulings review ranked R3 first: measure now, keep the cut as a separate and
+later word. **Measured, not cut** — AGENTS §11 puts tagging and publishing with
+the operator, who has said release comes after development is final.
+
+- **Footprint: 11,168,928 B = 10.6515 MiB**, `DT_NEEDED` = 3, from a
+  `--release --locked` build at `333185b`.
+- **Growth over `v0.7.0`: +421,024 B = +0.4015 MiB = +3.92%.** AGENTS §1 warns
+  that the default build must not "grow materially" and defines no number, which
+  the reviewer correctly flagged as unpriced. +3.9% across 113 commits and a
+  whole release cycle is the figure; whether it is material is the operator's
+  line to draw, not mine.
+- **`build-release.sh --check` exists** (`DO_UPLOAD=0`, "build and verify,
+  never upload"), so the three-Linux set can be measured without publishing.
+  The pack said this was "not in evidence" — it was wrong, and the reviewer was
+  right to say so.
+- **The commit count is 66 past `v0.10.0`**, not the 59 and 60 the plan and the
+  rulings sheet stated at different moments. `v0.10.0` is a real tag;
+  `v0.9.0..HEAD` is 96. A pack that states a moving number as a fact is
+  defective, and that is the reviewer's audit item 5.
+
+**This is not a quiet-box measurement.** `loadavg` was 27.19 / 25.37 / 25.83 on
+24 cores at the time. Per AGENTS §7, a footprint figure at that load is a range
+at best. The *byte size* of a linked binary does not vary with load — unlike a
+latency or RSS figure — so the number stands as a size, and is labelled here as
+taken under load for honesty rather than because it perturbs the result.
+
+**Not done, deliberately:** no tag, no publish, no asset set, no install over
+`~/.local/bin/memory-wire` (still 0.9.0). Each is the operator's call, and the
+installed binary is 66 commits behind the tree.
+
+Next free CONSISTENCY section: **§72**.
