@@ -316,8 +316,10 @@ Consequences a user can observe:
   internal shape, so ours is compatible with that mode when it lands.
 - **No lifecycle tools over MCP.** `SKILL.md:49-50` admits list/get/delete/stats
   are HTTP-only.
-- **4 tools is a thin surface.** hindsight's plugin ships 8 for the same job;
-  agentmemory ships 54.
+- **Six tools is a thin surface.** hindsight's plugin ships 8 for the same job;
+  agentmemory ships 54. (This line read "4" until 2026-11-21: it was written
+  before `memory_redact` landed and never updated, and the number was believed
+  because nothing checked it.)
 
 ---
 
@@ -528,3 +530,48 @@ of injection-path code stayed unexamined. `measure_surface.sh` now reports
 `plugin/` and `install/` **separately** rather than folding them into a total,
 because a TypeScript plugin is not a Rust module and one misleading sum would
 hide exactly that.
+
+---
+
+## Ruling, 2026-11-21 — the asymmetry stays, and here is the reason
+
+The addendum above recorded the asymmetry and said closing it is "a surface
+decision, not a bug fix". This is the decision.
+
+**The doors stay asymmetric. No capability is added to a door to make a row of
+that table symmetric.** What ships is the rule below, not another door.
+
+### The rule
+
+A capability is exposed through the door its own use case needs, and through no
+others. When a capability is added, the question is "who calls this, and from
+where", not "which cells of the table are empty".
+
+Applying it to the four gaps:
+
+| gap | ruling | why |
+|---|---|---|
+| **redact on HTTP** | **stays absent** | Redacting a memory is a custody operation on a local store. An HTTP route would put it on the network surface, where the caller has no stronger claim to the row than any other client. The MCP tool (`memory_redact`) and the CLI both run where the store is; that is the point. |
+| **hygiene on MCP/CLI** | **stays absent** | Hygiene is an operator maintenance pass over a whole bank (`GET /banks/:id/hygiene` reports; it does not mutate). An agent mid-conversation has no business running it, and a CLI flag would invite it. |
+| **supersede on HTTP** | **stays absent** | `memory_supersede` is an MCP tool for an agent retracting a row it wrote. A non-MCP, non-local caller who wants a row gone has the CLI, which is the same custody argument as redact. |
+| **grounding on MCP/HTTP** | **stays absent** | Grounding is a `SessionStart` hook with an explicit opt-in, because it costs a model call. A tool an agent can invoke per-turn is a cost decision the agent would make badly. |
+
+### What this costs, stated plainly
+
+- A reader who sees the service as "one implementation" may still assume a
+  capability is reachable everywhere. That is the residual risk, and it is
+  mitigated by the table above being in the document a reader lands on.
+- An agent on a remote-only host cannot redact. That is deliberate: the
+  alternative is a network route to a custody operation.
+
+### What would reopen this
+
+A concrete caller who cannot do their job without one of these, where the
+alternative is not merely inconvenient but impossible. **Not** a table cell that
+looks empty — every cell looks empty by design. The test is a caller, not a
+matrix.
+
+Recorded because the same question has now been raised by two review rounds
+(round 2 as a finding, the 2026-11-21 rulings round as a question) and answered
+neither time. A question raised twice and answered zero times is how a
+recurring review finding becomes permanent noise.

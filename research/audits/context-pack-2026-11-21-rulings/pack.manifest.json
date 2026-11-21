@@ -1,0 +1,49 @@
+{
+  "docs": [
+    {
+      "path": "AGENTS.md",
+      "role": "state",
+      "name": "A-STATE",
+      "purpose": "the subject's own current self-description, so the reviewer sees what it believes about itself before it asks what is true",
+      "slices": [
+        {
+          "path": "AGENTS.md"
+        }
+      ]
+    },
+    {
+      "path": "docs/plans/2026-11-21-remaining-gaps-plan.md",
+      "role": "ask",
+      "name": "B-ASK",
+      "purpose": "the decision that is open, what it is, and who owns it",
+      "slices": [
+        {
+          "path": "docs/plans/2026-11-21-remaining-gaps-plan.md"
+        }
+      ]
+    },
+    {
+      "path": "docs/handoff/CLOSED.md",
+      "role": "law",
+      "name": "C-LAW",
+      "purpose": "the rules a proposal must survive, verbatim, so the reviewer attacks the real thing",
+      "slices": [
+        {
+          "path": "docs/handoff/CLOSED.md"
+        }
+      ]
+    },
+    {
+      "path": "TODO.md",
+      "role": "evidence",
+      "name": "D-EVIDENCE",
+      "purpose": "what has already been measured, and what it bounds",
+      "slices": [
+        {
+          "path": "TODO.md"
+        }
+      ]
+    }
+  ]
+}
+

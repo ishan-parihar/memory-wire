@@ -28,6 +28,13 @@ fi
 # grade a role line's prose; that is still a human's job.
 "$root/scripts/module_table_check.sh"
 
+# And the other counts -- the ones written in prose rather than in a table.
+# module_table_check grades one table; this grades every "N tools" and "N hosts"
+# sentence, which is where they actually drift. Eleven instances are recorded in
+# the script header; the eleventh was found while writing the plan that added
+# this line, which is the argument for it.
+"$root/scripts/count_claim_check.sh"
+
 # core.hooksPath replaces .git/hooks, which install-docs-gate writes to. Keep
 # running that gate so enabling this hook does not silently disable it.
 managed="$(git rev-parse --git-common-dir)/hooks/pre-commit"
