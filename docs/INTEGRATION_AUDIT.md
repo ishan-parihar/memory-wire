@@ -8,6 +8,39 @@ therefore gains, and where that is quietly broken.
 Every claim carries a `file:line` from this tree or a command run on this machine. Where
 I could not verify something, it says so rather than inferring it.
 
+> **STATUS, added 2026-11-21. Read this before reading F1–F7.**
+>
+> This audit was written 2026-09-30 and has **no status column**. Each finding
+> heading carries `[V]` or `[C]`, and those are **evidence strength** — `[V]`
+> verified by a command, `[C]` verified by reading — not resolution state. Read
+> as status they make fixed findings look live, which is exactly what happened:
+> F1 and F4 were re-read as open defects in a later pass and both had been closed
+> for weeks.
+>
+> The findings below are the **dated record** and stay as written (AGENTS §7: a
+> historical record that describes a specific dated build keeps its date). What
+> changed since, verified 2026-11-21 against this tree:
+>
+> | finding | as written 2026-09-30 | state 2026-11-21 | evidence |
+> |---|---|---|---|
+> | **F1** silent-misroute hazard | 8888 is not memory-wire | **resolved** — `ss -ltnp` shows `memory-wire` pid 1295 holding 8888 | `[V]` command |
+> | **F2** daemon and hooks disagree on endpoint | no single resolver | **resolved** — `paths::endpoint()` (`src/paths.rs:69`) resolves env → state file → default | `[V]` command |
+> | **F3** Codex gets context, no capability | hooks only, no tools | **resolved** — `connect_codex.rs` writes `[mcp_servers.memory-wire] url = .../mcp` | `[V]` command |
+> | **F4** the port is a flag, not a constant | no single place to fix it | **resolved** — `paths::DEFAULT_ADDR` (`src/paths.rs:19`), every clap default reads it | `[V]` command |
+> | **F5** artifact not reproducible | — | **still open** — no reproducible-build claim is made; `scripts/build-release.sh` builds but does not assert bit-identity | `[C]` |
+> | **F6** hermes slot named differently | — | **resolved 2026-10-15, and not as a naming fix** — `memory.provider` binds to a directory name, so `provider: agentgateway` with plugin dir `agentmemory` was a **dead slot**: `find_provider_dir("agentgateway")` found nothing and hermes ran with no memory, silently. Explained read-only from hermes' own loader in `INTEGRATION_PLAN.md` | `[C]` |
+> | **F7** hermes plugin re-implements the tools in Python | — | **still open, by design** — `plugin/integrations/hermes/memory-wire/__init__.py` exists and is a Tier-C extraction, not a port target | `[C]` |
+>
+> The two that still stand are not regressions. **F5** is a property nobody has
+> claimed: `build-release.sh` refuses a dirty tree so an asset is *traceable* to its
+> tag (lines 90–95), and never asserts the build is **bit-identical** across runs.
+> Those are different properties, and only the first is claimed anywhere. **F7** is the recorded cost of
+> hermes being a directory install rather than a hook entry — the Tier-C
+> extraction ported the retrieval core and deliberately left the ~40k LOC surround,
+> and a Python provider behind a documented door is that decision showing through.
+> The door-parity work in `TODO.md` treats it as a deliberate deferral, not an
+> oversight.
+
 ## Contents
 
 - [0. Method, and what "verified" means here](#0-method-and-what-verified-means-here)
