@@ -197,12 +197,13 @@ handshakes at `2025-06-18` is answered and negotiates that version, so cursor,
 opencode and the hermes plugin are unaffected. Note that `GET /mcp` answers
 `405` — the SSE stream it used to open never carried a notification.
 
-**Agent hosts.** Six: `claude-code`, `codex`, `copilot-cli`, `cursor`,
-`opencode`, `hermes`. Five are additive (a hook entry or an MCP key in a JSON
-file). **hermes is not** — it activates exactly one global memory provider, so a
-bare `connect` would displace `agentmemory` on a machine that has both. It is
-reachable by name only. That asymmetry is deliberate; do not "fix" it by adding
-hermes to the implicit set.
+**Agent hosts.** Eight, and `Host::ALL` is the authority: `claude-code`,
+`codex`, `copilot-cli`, `cursor`, `opencode`, `omp`, `pi`, `hermes`. **Seven are
+additive** (a hook entry, an MCP key or an extension file) — the implicit set a
+bare `connect` wires. **hermes is not** — it activates exactly one global memory
+provider, so a bare `connect` would displace `agentmemory` on a machine that
+has both. It is reachable by name only. That asymmetry is deliberate; do not
+"fix" it by adding hermes to the implicit set.
 
 ---
 
