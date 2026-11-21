@@ -1,0 +1,19 @@
+{
+ "round": "context-pack-2026-11-21-blockers",
+ "page": 94,
+ "url": "https://aistudio.google.com/prompts/new_chat?model=gemini-4-hydrogen",
+ "model": "gemini-4-hydrogen/high",
+ "venue": "aistudio",
+ "max_tokens": "",
+ "pack": "PACK-AS-SENT.md",
+ "pack_bytes": 46672,
+ "inline": true,
+ "prompt_bytes": 4464,
+ "response_chars": 20793,
+ "response_bytes": 20986,
+ "response_provenance": "DOM scrape",
+ "account_slot": 0,
+ "account": "Google Account: Ishan Parihar (ishanbestdabang@gmail.com)",
+ "sent_at": "2026-11-22T05:16:20",
+ "timeout": true
+}
