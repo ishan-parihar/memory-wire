@@ -28,6 +28,12 @@ UPLOAD_TAG=""
 ONLY=""
 DO_UPLOAD=0
 
+# The version a built binary must report, read from Cargo.toml rather than from
+# the tag: `--check` runs with no tag at all, and a smoke test that only ran on
+# upload would never guard the path most builds take.
+expected_version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$ROOT/Cargo.toml" | head -1)"
+[ -n "$expected_version" ] || { printf 'build-release: no version in Cargo.toml\n' >&2; exit 1; }
+
 die() { printf 'build-release: %s\n' "$*" >&2; exit 1; }
 log() { printf '\033[1mbuild-release\033[0m %s\n' "$*"; }
 
@@ -188,6 +194,36 @@ for t in $ALL_TARGETS; do
   cp "$src" "$DIST/$BIN"
   tar -czf "$DIST/$BIN-$t.tar.gz" -C "$DIST" "$BIN"
   rm -f "$DIST/$BIN"
+
+  # RUN what we just built, out of the archive, exactly as the installer will.
+  #
+  # Until 2026-11-22 this script verified the git state, the tag and the sha256
+  # of each tarball, and never executed a binary. On that day's release I checked
+  # `dist/` by hand to confirm it printed the right version -- a step that lived
+  # only in my head. A binary that compiles and fails at startup would have
+  # shipped with a valid checksum and a green build.
+  #
+  # Extracted to a temp dir rather than run from target/: the archive is the
+  # artifact, and a tar that dropped the binary or wrapped it in a directory
+  # would pass every check above and fail here.
+  smoke="$(mktemp -d)"
+  if ! tar -xzf "$DIST/$BIN-$t.tar.gz" -C "$smoke"; then
+    rm -rf "$smoke"
+    log "  FAIL $t — the archive does not extract"
+    failed="$failed $t"
+    continue
+  fi
+  got="$("$smoke/$BIN" --version 2>&1 || true)"
+  case "$got" in
+    *"$expected_version"*) ;;
+    *)
+      rm -rf "$smoke"
+      log "  FAIL $t — --version printed '$got', expected $expected_version"
+      failed="$failed $t"
+      continue
+      ;;
+  esac
+  rm -rf "$smoke"
 
   # Checksum ships beside the asset; the installer verifies it when present.
   if command -v sha256sum >/dev/null; then
