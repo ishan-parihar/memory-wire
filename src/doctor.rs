@@ -232,11 +232,20 @@ warning    memory-wire surfaces disagree on the bank: {surfaces}.\n  \
             ));
         }
         if let Some(stale) = &self.stale_serve {
-            out.push_str(&format!(
-                "\n  \nfinding    {stale}. The old process keeps serving \
-                 the old bytes until it is restarted, so behaviours the new build \
-                 fixed will keep reproducing until then."
-            ));
+            // Two findings share this slot and need different advice. A stale
+            // build wants a restart: the old process really is serving old
+            // bytes. A dead pid has no old process to restart -- the state file
+            // is the thing that is wrong. Telling an operator to restart a
+            // server that is not running is wrong advice for the right symptom.
+            // Detected on the wording `stale_serve_at` already emits rather than
+            // a second field, so there is one string to keep true.
+            let advice = if stale.contains("not running") {
+                ""
+            } else {
+                " The old process keeps serving the old bytes until it is restarted, so \
+                 behaviours the new build fixed will keep reproducing until then."
+            };
+            out.push_str(&format!("\n  \nfinding    {stale}.{advice}"));
         }
         out
     }
@@ -272,28 +281,38 @@ pub fn collect() -> Report {
     {
         report.harness_banks.push(("MEMORY_WIRE_BANK", b));
     }
-    // A stale build only matters when a server is actually serving, but a dead
-    // pid in the state file is its own finding in either state — see the block
-    // below for why the state gate was wrong.
-    //
-    // **Both states, not just Up** (corrected 2026-11-21). This was gated on
-    // `ServerState::Up` on the reasoning that a down server has already
-    // explained itself, which holds for a refused connection and fails for the
-    // one case that matters: `Down("Connection refused (os error 111)")` is
-    // *also* what a dead serve pid looks like, and the state file naming that
-    // pid is the contradiction the operator needs named. Gating here meant the
-    // dead-pid branch inside `stale_serve_at` was unreachable from `collect`, so
-    // the doctor said `Server: up` (port healthy) while `daemon status` said
-    // `not running` (its pidfile dead) — measured on this host 2026-11-21, pid
-    // 1295 holding 8888 against a `serve.json` naming dead pid 1371296.
-    if let Ok(mine) = std::env::current_exe() {
-        report.stale_serve = stale_serve_at(&paths::daemon_state_path(), &mine);
-    }
+    // `stale_serve` is filled by `collect_at`, below, which this delegates to.
+    // It used to be filled HERE instead -- and `doctor::run`, the function the
+    // `doctor` subcommand calls, reaches `collect_at` without passing through
+    // `collect`. So the check ran only on paths that never reach the CLI, and
+    // `memory-wire doctor` printed no stale-serve finding at all while
+    // `daemon status` printed `not running`. Found by running the built binary
+    // against this host, not by a test: the unit test called `stale_serve_at`
+    // directly and passed. A fix verified only through the function it edits is
+    // not verified.
     report
 }
 
 /// Collect a report for explicit inputs.
 pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
+    collect_at_with_state(endpoint, bank, store, &paths::daemon_state_path())
+}
+
+/// [`collect_at`], with the serve-state file named instead of read from the
+/// ambient daemon path.
+///
+/// The seam exists because the ambient path made the stale-serve check
+/// untestable through the entry point, and that is how a defect shipped: the
+/// check was added to `collect` and verified by a test that called
+/// `stale_serve_at` directly, while `collect_at` -- the function the CLI uses --
+/// set the field to `None`. Every test passed. Running the built binary against
+/// this host is what found it.
+fn collect_at_with_state(
+    endpoint: &str,
+    bank: &str,
+    store: &Path,
+    serve_state: &Path,
+) -> Report {
     // Fold the WAL in first so the reported size is the store as it will be
     // copied, not the store plus a sidecar a `cp` would miss.
     fold_wal(store);
@@ -325,7 +344,27 @@ pub fn collect_at(endpoint: &str, bank: &str, store: &Path) -> Report {
         elsewhere: elsewhere_at(&per_bank, bank),
         banks_by_memories: per_bank,
         harness_banks: Vec::new(),
-        stale_serve: None,
+        // The stale-serve check, on the path `doctor` actually runs.
+        //
+        // It used to be `None` here, unconditionally, and the check lived only in
+        // `collect` above -- so `memory-wire doctor`, which calls `run` ->
+        // `collect_at`, has NEVER reported a stale serve or a dead pid. The
+        // 2026-11-21 fix went into `collect`, passed its unit test, and changed
+        // nothing on the real command line. Found by running the built binary
+        // against this host: `daemon status` said `not running` with dead pid
+        // 1371296 while `doctor` printed no finding at all.
+        //
+        // Two functions computing the same report is the same redundancy class
+        // as the two registers; the difference is that this one hid a defect
+        // instead of a duplicate.
+        //
+        // Guarded on the state file naming THIS store. `collect_at` takes an
+        // arbitrary store -- that is what makes it testable -- so reading the
+        // ambient `serve.json` unconditionally made every test host-dependent:
+        // two of them began failing on this machine because the real state file
+        // names a dead pid. A serve record for a different DB is not this
+        // store's record, and saying so is both the fix and more correct.
+        stale_serve: stale_serve_for(serve_state, store),
         bank_source: paths::bank_source_in(&std::env::current_dir().unwrap_or_else(|_| {
             PathBuf::from(".")
         })),
@@ -443,6 +482,45 @@ fn stale_serve_at(state: &Path, mine: &Path) -> Option<String> {
     Some(format!(
         "serve is running an older binary ({running}); this binary is {mine}. Restart it: `{mine} daemon stop && {mine} daemon start`"
     ))
+}
+
+/// The stale-serve finding for `store`, or nothing.
+///
+/// Two conditions, in order: the state file must parse, and it must describe
+/// `store`. A serve record for a different DB is not this store's record --
+/// without that guard `collect_at` would report the ambient daemon's state
+/// against any store a caller passes, which made the doctor tests depend on
+/// whatever `serve.json` happened to exist on the machine running them.
+fn stale_serve_for(serve_state: &Path, store: &Path) -> Option<String> {
+    let state = std::fs::read_to_string(serve_state)
+        .ok()
+        .and_then(|text| serde_json::from_str::<crate::daemon::ServeState>(&text).ok())?;
+    if !state_names_store(&state, store) {
+        return None;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|mine| stale_serve_at(serve_state, &mine))
+}
+
+/// Does this serve record describe `store`?
+///
+/// Compared on the canonical path when both resolve, and on the raw string when
+/// they do not. The raw compare is the one that matters in practice: the state
+/// file holds the path the daemon was given, which is what `--db` received, and
+/// a test passes a temp path that was never a daemon argument.
+fn state_names_store(state: &crate::daemon::ServeState, store: &Path) -> bool {
+    let recorded = Path::new(&state.db);
+    if recorded == store {
+        return true;
+    }
+    match (
+        std::fs::canonicalize(recorded),
+        std::fs::canonicalize(store),
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// The executable a live pid is running, via `/proc/<pid>/exe`.
@@ -827,6 +905,84 @@ mod tests {
         assert!(
             found.contains("stale"),
             "the finding must say the state file is stale, got: {found}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The rendered report `memory-wire doctor` actually prints, for a dead pid.
+    ///
+    /// This test exists because the one above did not catch a real defect. The
+    /// 2026-11-21 fix put the dead-pid branch in `stale_serve_at` and called it
+    /// from `collect` -- and passed its unit test -- while `collect_at`, the
+    /// function `doctor::run` uses, set `stale_serve: None` unconditionally. So
+    /// the CLI went on printing nothing, exactly as before the fix. Testing the
+    /// function and not the entry point is how a green suite ships a change an
+    /// operator never sees.
+    ///
+    /// Asserted on the render, not on the field, because the second half of that
+    /// defect was the shared trailing sentence: "the old process keeps serving
+    /// the old bytes" is advice for a stale build and nonsense for a dead pid.
+    #[test]
+    fn the_collected_report_renders_the_dead_pid_finding() {
+        let dir = tmp_home("render-dead");
+        let store = dir.join("memory.db");
+        let svc = MemoryService::new(SqliteStore::open(&store).expect("open"));
+        svc.store.put_bank(&bank("fresh")).expect("bank");
+        // A state file naming THIS store and a pid the kernel does not have.
+        std::fs::write(
+            dir.join("serve.json"),
+            serde_json::json!({
+                "pid": i32::MAX,
+                "addr": "127.0.0.1:18897",
+                "db": store.to_string_lossy(),
+                "started_at": 0
+            })
+            .to_string(),
+        )
+        .expect("write state");
+
+        // Through the entry point, not through `stale_serve_at`. That is the
+        // whole point: the first version of this test called `stale_serve_at`
+        // directly and stayed green when `collect_at` was reverted to
+        // `stale_serve: None`, which is exactly the defect it was written for.
+        let r = collect_at_with_state(
+            "http://127.0.0.1:1",
+            "fresh",
+            &store,
+            &dir.join("serve.json"),
+        );
+        let rendered = r.render();
+        assert!(
+            rendered.contains("not running"),
+            "the rendered report must name the dead pid: {rendered}"
+        );
+        assert!(
+            !rendered.contains("keeps serving the old bytes"),
+            "a dead pid has no old process; that advice belongs to a stale build: {rendered}"
+        );
+
+        // And a state file for a DIFFERENT store is not this store's finding.
+        std::fs::write(
+            dir.join("serve.json"),
+            serde_json::json!({
+                "pid": i32::MAX,
+                "addr": "127.0.0.1:18897",
+                "db": "/somewhere/else/memory.db",
+                "started_at": 0
+            })
+            .to_string(),
+        )
+        .expect("rewrite state");
+        let other = collect_at_with_state(
+            "http://127.0.0.1:1",
+            "fresh",
+            &store,
+            &dir.join("serve.json"),
+        );
+        assert!(
+            !other.render().contains("not running"),
+            "a serve record for another DB is not this store's: {}",
+            other.render()
         );
         std::fs::remove_dir_all(&dir).ok();
     }
