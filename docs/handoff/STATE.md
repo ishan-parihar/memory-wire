@@ -16,12 +16,18 @@
 > file now says too, because a fresh agent should not have to open two files to
 > find out which one is authoritative.
 >
-> **The current state, in one place** (2026-11-22, plan v6 complete): `v0.11.0` is
-> tagged and published with three Linux assets; all five plan v6 items are done
-> (`57066c9`, `3c08e5f`, `a6e82f7`, `92b2ebe`); 681 tests, clippy 0, doc 0, three
-> doc gates green; `CONSISTENCY.md` §80 records the round. The one thing §80
-> declines to claim: the `update` fix is tested against a real rename, not
-> re-observed live.
+> **The current state, in one place** (2026-11-22, after plan v7 and `v0.11.2`):
+> `v0.11.2` is tagged (`e7011c8`) and published with three Linux assets, and it
+> is **installed and serving here** (pid 560976, health `ok`, bank `omp` 4250
+> memories). Plan v7's five doc items are done (`5c48e96`), its omp entry was
+> **kept** after verification (`3f99063` corrected the premise), and two defects
+> were found by *running* the release: `update` needing `--clobber` on its
+> scratch dir, and `build-release.sh` conflating "cross loader absent" with
+> "does not run" (`d06c413`). 682 tests, clippy 0, doc 0, four doc gates green
+> (the fourth is `scripts/tool_table_check.sh`). `CONSISTENCY.md` §81-§83
+> record the round. **The honest limit:** the live `update` path has never been
+> run to completion against a real upgrade here, because every attempt so far
+> was either a version behind or pointed at the data dir by mistake.
 >
 > The status table at the foot of this file is **generated** (`genome emit`), not
 > hand-written. It read "open 4 / done 24" until 2026-11-22, then "open 6 /
