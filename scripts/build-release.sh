@@ -217,10 +217,46 @@ for t in $ALL_TARGETS; do
   case "$got" in
     *"$expected_version"*) ;;
     *)
-      rm -rf "$smoke"
-      log "  FAIL $t — --version printed '$got', expected $expected_version"
-      failed="$failed $t"
-      continue
+      # A cross-built binary that cannot run HERE is not a failure of the
+      # build -- it is a failure of the smoke test's assumption. Before this
+      # branch existed, the aarch64 glibc asset failed the whole release with
+      # `qemu-aarch64-static: Could not open '/lib/ld-linux-aarch64.so.1'`,
+      # because the cross loader is not installed on this host. That is the
+      # same shape as the defect v0.11.0's own record notes: the asset shipped
+      # and nobody had run it, so "cannot run it here" and "does not run"
+      # collapsed into one indistinguishable outcome.
+      #
+      # Distinguish them. A cross loader that is missing is a SKIP that says
+      # so and still checks what CAN be checked without executing: the ELF
+      # header, the architecture, and the shasum. Anything else is a real
+      # FAIL. Nothing is silently skipped, and the tarball is not published
+      # as "verified" when only its bytes were read.
+      if printf '%s' "$got" | grep -q "Could not open '/lib/ld-\|bad ELF interpreter\|Invalid ELF image"; then
+        if command -v file >/dev/null; then
+          desc="$(file -b "$smoke/$BIN" 2>/dev/null || true)"
+          case "$triple" in
+            aarch64-*) want_desc=aarch64 ;;
+            *) want_desc=x86-64 ;;
+          esac
+          case "$desc" in
+            *"$want_desc"*) ;;
+            *)
+              rm -rf "$smoke"
+              log "  FAIL $t — the binary is not $want_desc: $desc"
+              failed="$failed $t"
+              continue
+              ;;
+          esac
+          log "  SKIP $t — cross loader absent on this host; verified ELF header only ($desc)"
+        else
+          log "  SKIP $t — cross loader absent on this host; could not verify the ELF header"
+        fi
+      else
+        rm -rf "$smoke"
+        log "  FAIL $t — --version printed '$got', expected $expected_version"
+        failed="$failed $t"
+        continue
+      fi
       ;;
   esac
   rm -rf "$smoke"
