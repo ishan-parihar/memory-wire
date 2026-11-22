@@ -5911,3 +5911,68 @@ looked like an unused declared dependency under `grep 'crate::'`. It is called a
 in §34 stands at 2.
 
 **Load:** not load-sensitive; no timing claims.
+
+## §79. 2026-11-22 — v0.11.0 released, the bank wired, and the live server restarted
+
+**Release.** `v0.11.0` tagged `51b3133` (the bump commit), pushed as `f65aa3b`.
+Three Linux assets, built locally with `scripts/build-release.sh` and published
+through the `gh` REST API, so **no Actions minutes were billed**. `ci.yml` and
+`release.yml` were disabled around the tag push and re-enabled after, per §11.
+
+| asset | size | `DT_NEEDED` | verified |
+|---|---:|---:|---|
+| `linux-x86_64` | 4.1M | 3 | runs, prints 0.11.0 |
+| `linux-x86_64-musl` | 4.2M | **0** (static-pie) | runs, prints 0.11.0 |
+| `linux-aarch64` | 3.6M | — | cross-built |
+
+All three `sha256` files verify locally (`sha256sum -c`). The musl asset is the
+one to prefer on a host with an older glibc: it has no floor.
+
+**The bank.** The user's decision was to move the hooks onto `omp` (4,249
+memories). What the work actually found is that **the hosts were mostly there
+already**:
+
+| host | before | after |
+|---|---|---|
+| copilot-cli | hooks with `--bank omp`; no MCP entry | wired, `--bank omp` + `/mcp/omp` |
+| cursor | `mcp --bank omp` | unchanged, verified |
+| omp | **refused** — a foreign `memory-wire` under `mcpServers` | left untouched, by design |
+| pi | extension with `DEFAULT_BANK = "omp"` | unchanged, verified |
+| claude-code | **not wired** | wired, 5 hook events with `--bank omp` |
+| codex | **not wired** | wired, hooks + `mcp_servers.memory-wire` |
+| opencode | **not wired** | wired, MCP + plugin |
+| hermes | not wired | deliberately excluded (it displaces a provider) |
+
+Seven of eight hosts wired. The `omp` host refused and was left alone: it has a
+`memory-wire` server registered that this tool did not write, and displacing it
+is the operator's call, not `connect`'s.
+
+**A correction to what this section would have said.** `doctor` reports
+`bank ishan-parihar-memory-wire holds no memories` and recommends
+`connect --bank omp`. That is advice about **this directory**, whose bank is
+derived from the origin remote, and it does not mean the hosts are mispointed.
+Four of them already carried `omp` before anything was run. I nearly reported
+"the hosts were on the wrong bank" — they were not, and the empty bank is what a
+bare `memory-wire hook` invocation in this repo resolves, which is not a path any
+host takes.
+
+**Update.** `memory-wire update` ran from 0.9.0. It removed the stale
+`serve.json` (dead pid 1371296), swapped the binary, and kept the old one as
+`memory-wire.old`. **The restart step failed**: it looked for an extracted binary
+at `update-v0.11.0/memory-wire` and found only the tarball. So the binary was
+0.11.0 while **pid 1295 kept serving 8888 from `memory-wire.old`** — the
+stale-serve case, live, on this host, one minute after shipping the fix that
+names it.
+
+Restarted by hand: `kill 1295`, then `daemon start`. Now pid 1768060 serves 8888
+from the new binary, `daemon status` says `serving`, and the doctor's
+`server up` / `not running` contradiction is gone.
+
+**That is a real defect in `update`, found by running it, and it is not fixed
+here.** The download and swap are correct; the restart step assumes it extracted
+a file where it left an archive. `update` should either extract before the swap
+or invoke the swapped binary rather than a path it never wrote.
+
+**Gate after all of it:** 679 tests, clippy 0, doc 0, three doc gates green.
+
+**Not a test-set consultation.** No LongMemEval number produced or read.
