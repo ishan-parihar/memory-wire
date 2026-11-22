@@ -1,6 +1,6 @@
 # Outline plan — remaining gaps, redundancy, and upgrades (sixth pass)
 
-**Status:** proposal, 2026-11-22. Written from `d6243f2`, seven commits past `v0.11.0`.
+**Status:** **executed 2026-11-22** (see §11). Written from `d6243f2`, seven commits past `v0.11.0`; item 7 was cancelled after its premise failed verification.
 
 Five previous plans were written and executed on 2026-11-21 and 2026-11-22. This
 pass was written by **reading the running product against its own documentation**
@@ -316,3 +316,41 @@ that keeps whatever the operator settled on. Both are decisions, not cleanup.
 2. **v0.11.1 for v6's §1/§4?** Still open from the last plan and now seven
    commits stale. `update` is broken in the field and the fix is unreleased.
    §1-§4 here do not change that answer either way.
+
+---
+
+## 11. Execution record — items 1-5 done, 6 done, 7 cancelled, 2026-11-22
+
+| § | item | commit | outcome |
+|---|---|---|---|
+| 1 | README tool table | `5c48e96` | six rows; `memory_redact` added |
+| 2 | INTEGRATION_GAPS | `5c48e96` | dated correction block appended, 2026-11-19 table untouched |
+| 3 | README route list | `5c48e96` | all three routes named, plus an explicit "that is every route" |
+| 4 | plan v3 status | `5c48e96` | `proposal` → **EXECUTED**, with the false v4 claim recorded |
+| 5 | the gate | `5c48e96` | `scripts/tool_table_check.sh`, wired into pre-commit, battery 4/4 |
+| 6 | redundancy | — | **declined** as specified: `entry_url` noted, `prune_empty_dirs` declined by reason |
+| 7 | omp live config | `5c48e96` (plan text) | **CANCELLED — premise false.** See below. |
+
+**§7 is the finding worth carrying forward.** The plan said to delete the
+`memory-wire` entry from omp's `mcpServers`. Checked before deleting, it is
+load-bearing: `memory-wire` is in `enabledServers`, `POST /mcp/omp` serves six
+tools live, and bank `omp` holds 4250 memories reachable **only** through that
+door. Deleting it would have taken omp's memory away. The plan's §7 is
+corrected in place and the entry is **kept**.
+
+**Two things the plan did not predict.**
+
+1. **A second defect in the README table, caller-visible.** The
+   `memory_supersede` row documented `memory_id`; the schema says `id`. A client
+   following the table got an error. Found only by reading the live schema
+   while writing the replacement row — and the gate as specified would not have
+   caught it, so a third assertion (required args per row) was added.
+2. **`cargo test --offline` broke mid-session** on `base64`/`winapi` missing from
+   the local cache. `cargo fetch --locked` fixed it. Recorded in §81.
+
+**DoD:** README table has one row per served tool ✓; route list names all three ✓;
+INTEGRATION_GAPS carries a dated correction ✓; v3 says executed ✓; the gate
+fails on both directions with a 4-case battery ✓; gates green ✓; CONSISTENCY §81 ✓.
+
+**What was NOT done, by decision:** the omp entry (kept, not removed), and the
+v0.11.1 cut (the user asked for a build, which is the next step).
