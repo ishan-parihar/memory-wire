@@ -5839,3 +5839,75 @@ to catch, and this one was mine.
 in §34 stands at 2.
 
 **Load:** not load-sensitive; no timing claims.
+
+## §78. 2026-11-22 — plan v5: a fix on an unreachable path, and two registers that disagreed
+
+**The defect, and it was mine.** `9b2782d` (2026-11-21) fixed the doctor's
+stale-serve check so a dead pid in `serve.json` would be reported instead of
+silently swallowed. It passed its unit test. **The CLI printed no finding
+anyway.**
+
+`doctor::run` — the function the `doctor` subcommand calls — reaches
+`collect_at`, not `collect`. `collect_at` set `stale_serve: None`
+unconditionally. The fix lived entirely on a path nothing in the product takes.
+Two functions computed the same report and only the unreachable one was fixed.
+
+Found by running the built binary against this host:
+`memory-wire doctor` printed `server up` while `memory-wire daemon status`
+printed `not running: serve.json points at pid 1371296`. No test found it,
+because no test went through the entry point.
+
+**The regression test I wrote first was blind in the same way.** It called
+`stale_serve_at` directly and built the `Report` by hand. I reverted
+`collect_at` to `stale_serve: None` and **24 tests still passed** — including
+the one written for exactly that defect. The serve-state path is now a parameter
+(`collect_at_with_state`) so a test can name it, and the test goes through the
+entry point. Re-running the mutation fails it.
+
+**Two further corrections fell out:**
+
+- A dead pid got stale-build advice. The shared trailing sentence said "the old
+  process keeps serving the old bytes", which is nonsense when the pid is gone:
+  nothing is holding that port. The advice is now conditional.
+- `collect_at` read the ambient `serve.json` regardless of which store it was
+  asked about. Two doctor tests began failing on this host for a reason unrelated
+  to the code they test. It now guards on the state file naming that store.
+
+Landed `46ceba3`. 679 tests, clippy 0, doc 0. Mutation-checked.
+
+**The register disagreement, and a correction to my own plan.** Plan v5 said
+`STATE.md`'s status table was hand-written and wrong. It is **generated**
+(`genome:zone`), and regenerating it produced the right numbers: open 6, done 31,
+not open 4 / done 24. Hand-editing it would have been overwritten on the next
+`genome emit` and would have hidden the drift. Fixed with `genome emit`.
+
+**What the registers actually got wrong:**
+
+- `REMAINING_WORK_PLAN.md` opened by saying it superseded "that file's §4/§5" —
+  naming *itself*. It had copied the sentence from
+  `2026-11-19-execution-plan.md`, which is the file that supersedes it, and lost
+  the filename in the copy.
+- `2026-11-19-execution-plan.md` had no supersession marker at all.
+- `STATE.md` was titled 2026-10-16, described v0.8.2, and was **133 commits**
+  behind the `c919f13` it named as HEAD — while having been modified that day.
+
+**The artifact that described work that never happened.**
+`context-pack-2026-11-21-rulings/notes/RESPONSE-NOT-COLLECTED.md` said the lost
+reply was "transcribed to `RESPONSE.md` and verified in `VERIFICATION.md`".
+Neither file exists. `SEND-NOT-COMPLETED.md` in the same directory said the true
+thing — "no reply was received, so there is nothing to verify" — and the false
+note was written last, so it read as the settled account. Merged into one.
+
+The pack's subject was `9a61762`, whose Tier 1 *did* land (`dc97c40`, `3050ab2`,
+`3a4b1a6`, `303a096`, per the plan's own supersession header). The lost reply cost
+nothing. That is luck, not design: a review that goes missing while reviewing a
+plan someone executed anyway is two things going right by coincidence.
+
+**A false positive worth recording so it is not re-filed.** `tracing-subscriber`
+looked like an unused declared dependency under `grep 'crate::'`. It is called as
+`tracing_subscriber::fmt()` (`src/main.rs:320`). No unused dependencies.
+
+**Not a test-set consultation.** No LongMemEval number produced or read. The count
+in §34 stands at 2.
+
+**Load:** not load-sensitive; no timing claims.
