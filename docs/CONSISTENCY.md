@@ -5976,3 +5976,62 @@ or invoke the swapped binary rather than a path it never wrote.
 **Gate after all of it:** 679 tests, clippy 0, doc 0, three doc gates green.
 
 **Not a test-set consultation.** No LongMemEval number produced or read.
+## §80. 2026-11-22 — plan v6: the update fix, and the fake that could not see it
+
+**What this is.** Plan v6 had five items. All five are done. This section
+records the one that mattered, the two that were hygiene, and the reason the
+first one existed at all.
+
+**1. `update` exec'd a path it had already moved away (`3c08e5f`).** The
+2026-11-22 incident in §79 was not bad luck. `Ops::swap` *renames* the new
+binary onto the installed path, so the extracted path stops existing — and
+`orchestrate` then called `start_daemon(&new_bin)` and `reconnect(&new_bin)`.
+The restart could only ever fail. Fixed by making `swap` return the installed
+path and using that.
+
+**Why eight tests stayed green through it.** Every `update` test injected an
+`Ops` fake whose `swap` recorded a string and moved nothing. A seam that models
+the world falsely makes every caller look correct — the same shape as §78's
+doctor defect, where the fix landed on a path the CLI never takes. The fake now
+really renames, and `start_daemon`/`reconnect` fail if handed a path that no
+longer exists.
+
+**Mutation-verified, twice.** Reverting the `orchestrate` fix fails
+`orchestrate_runs_the_full_order_when_live` with the live error text. Separately,
+removing the port check fails both `an_occupied_port_refuses_before_the_swap` and
+the ordering test. Neither assertion was accepted on a green run alone.
+
+**2. `daemon stop` said "nothing running" and meant it (`a6e82f7`).** It exits
+0 when the state file names a dead pid, which is correct, and `inspect_at`'s
+pidfile-first ordering is deliberate with its reasoning in its own doc comment.
+What was missing was the sentence: the message said nothing about the port, so
+`orchestrate` read exit 0 as "the port is free". Now the Absent and Gone
+messages append a note naming the address and `ss -ltnp` when anything is
+listening (read-only `TcpStream::connect`, so the probe cannot disturb the
+holder), and `orchestrate` re-checks the port after the stop and **refuses
+before the swap** rather than starting a second server that cannot bind.
+
+**3. The module doc's claim was false and is corrected in place (`a6e82f7`).**
+It said "the restart closes the stale-serve window the same moment the new bytes
+land". The opposite happened: the window opened and stayed open for an hour. The
+claim is not restated, and the correction names the evidence rather than
+asserting a fix.
+
+**4. Two hygiene items (`92b2ebe`).** The `connect` refusal for a foreign entry
+now names both shapes it is comparing — `it is a 'http' entry, and this host
+writes 'stdio'` — where before it said only `is not ours`. `connect_claude.rs`
+already did this properly; only the shared path was terse. And TODO #31 is
+flipped `open` → `done`: its text said `Closed 2026-11-21` while its status
+column said `open`. All three of its claims were re-verified against the tree
+(`api.rs:1498`, `api.rs:1428`, `main.rs:285`), not against the row's own history.
+
+**Gate after all of it:** 681 tests (was 679; +2 net from the port tests, with
+`an_occupied_port_refuses_before_the_swap` replacing nothing), clippy 0, doc 0,
+three doc gates green, module table updated for all three files that moved.
+
+**Not a test-set consultation.** No LongMemEval number produced or read.
+
+**What this does not prove.** The `update` fix is verified by unit tests against
+a real rename, not by running `update` again on this host. The live path is
+exercised next time a release is cut, and that is the honest statement: the
+defect that §79 found is fixed in code and tested, not re-observed live.

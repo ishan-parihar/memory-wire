@@ -1,6 +1,6 @@
 # Outline plan — remaining gaps, redundancy, and upgrades (fifth pass)
 
-**Status:** proposal, 2026-11-22. Written from `327af57`, one commit past `v0.11.0`
+**Status:** executed 2026-11-22 (see §9). Written from `327af57`, one commit past `v0.11.0`
 (the tagged commit is `51b3133`).
 
 Four previous plans were written and executed on 2026-11-21 and 2026-11-22. This
@@ -219,3 +219,53 @@ doc lines. #4 is optional.
 - TODO #31's status agrees with its text.
 - All gates green; `CONSISTENCY.md` gets the section, including the correction
   that `omp`'s refusal was right.
+---
+
+## 9. Execution record — all five items done, 2026-11-22
+
+| § | item | commit | evidence |
+|---|---|---|---|
+| 4 | release-script smoke test | `57066c9` | each built binary is extracted and `--version`-checked; mutation-verified by pointing the expected version at a wrong value |
+| 1 | `update` fix | `3c08e5f`, `a6e82f7` | `Ops::swap` returns the installed path and `orchestrate` uses it; `Ops::port_holder` lets it refuse before the swap; `daemon stop` names the port; `reconnect` says what its failure cost; module doc corrected |
+| 5 | module doc | `a6e82f7` | the "restart closes the stale-serve window" claim is replaced with the correction and its evidence |
+| 3 | TODO #31 → done | `92b2ebe` | status column said `open`, text said `Closed 2026-11-21`; all three claims re-verified (`api.rs:1498`, `api.rs:1428`, `main.rs:285`) |
+| 2 | connect shape mismatch | `92b2ebe` | the refusal now names both shapes; mutation-verified against the old message |
+
+**Four defects in §1, not one.** The plan named the exec-after-swap as *the*
+defect. Fixing it exposed three more in the same path, all found by the same
+question — *what does this assume that is not true?*:
+
+- **(a) exec after move** — `swap` renames, so `new_bin` is gone. Fixed by
+  returning the installed path.
+- **(b) `daemon stop` silence** — exits 0 for "state file names a dead pid"
+  while a foreign process holds the port. `inspect_at`'s ordering is
+  *deliberate* and unchanged; the missing piece was the sentence, not the logic.
+- **(c) bare `No such file`** — a reconnect failure after a successful swap read
+  like a connect bug. Now says the binary is installed and the hosts were not
+  rewired.
+- **(d) no port re-check after stop** — `orchestrate` read exit 0 as "the port
+  is free". Now re-checks and refuses before swapping.
+
+**The DoD's `daemon_live` clause was superseded, not met.** The plan proposed
+`daemon_live` should "probe the port rather than trusting the pidfile". That is
+wrong and was not done: the pidfile-first ordering exists precisely so a wedged
+daemon whose listener died can still be stopped, and `inspect_at` documents why.
+Probing the port there would make a wedged daemon unkillable. The real gap was
+(b), and (b) is fixed.
+
+**Mutations run, not asserted.** Three separate reversions, each confirmed to
+fail a named test before the fix was restored:
+
+| mutation | test that failed |
+|---|---|
+| `start_daemon`/`reconnect` on the moved path | `orchestrate_runs_the_full_order_when_live` |
+| remove the post-stop port check | `an_occupied_port_refuses_before_the_swap` **and** the ordering test |
+| restore the terse connect refusal | `a_foreign_server_under_our_name_is_refused_in_both_directions` |
+
+**Gate:** 681 tests, clippy 0, doc 0, three doc gates green, module table updated
+for `update.rs`, `daemon.rs` and `connect.rs`. `CONSISTENCY.md` §80 records the
+round.
+
+**Not done, and it is a limit not an oversight.** The fix is verified against a
+real rename in a unit test, not by running `update` on this host. The live path
+gets exercised at the next release cut. §80 states this plainly.
