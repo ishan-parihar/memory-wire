@@ -6119,3 +6119,70 @@ argument for checking rather than inheriting.
 packages that a lockfile-complete build still needs. `cargo fetch --locked`
 resolved it and the suite ran clean. Recorded because a future agent hitting an
 offline build failure should check the cache before suspecting the tree.
+
+## §82. 2026-11-22 — v0.11.1 shipped, and the update path broke again on the second run
+
+**This section is a record of a release that shipped with a defect, found
+afterwards by using it.** The release itself is not retracted: what it contains
+is verified, and the defect is in a path most users hit only on a retry.
+
+**What v0.11.1 is.** Tagged `2903a5c`, published with the three Linux assets
+(musl `static-pie` `DT_NEEDED=0`, gnu 3, aarch64 cross-built). All three
+sha256-verified against the published release by downloading it back. Zero
+Actions minutes: `ci.yml` and `release.yml` were disabled around the tag push
+and re-enabled after, and no run was created for `v0.11.1`.
+
+**What it fixes.** The `update` exec-after-swap defect (`3c08e5f`), the silent
+`daemon stop` and the missing post-stop port check (`a6e82f7`), the terse
+`connect` refusal (`92b2ebe`), and plan v7's documentation plus its gate
+(`5c48e96`).
+
+**The defect, found by running the release twice.** `update` on 0.11.0 failed
+for the exec-after-swap reason. The *second* attempt failed for a different
+reason:
+
+```
+gh release download v0.11.1: .../update-v0.11.1/
+memory-wire-linux-x86_64.tar.gz.sha256 already exists (use `--clobber` to
+overwrite file or `--skip-existing` to skip file)
+```
+
+`dir` is the version's own scratch dir and `gh release download` refuses to
+overwrite, so the first run works and every later one fails. Fixed in
+`3f99063` with `--clobber`, verified live both ways: the old argv against the
+real dirty dir reproduces it, the new argv succeeds.
+
+**Why the release shipped without it.** The fix was written while verifying the
+release, after the tag. The lesson is the same one this project keeps learning:
+a fix discovered by *using* the thing is discovered after it ships.
+
+**A second, methodological error worth recording.** I first tried to validate
+the fix by running the update from a scratch copy of **0.10.0** — a version
+that predates the fix, so it reproduced the old bug and told me nothing. Worse,
+`update_root()` resolves through `paths::data_dir` and ignores the working
+directory, so the scratch copy operated on the **real** data dir: it stopped
+the live daemon and removed its state file. Restored immediately (`daemon
+start`, pid 2154892, 4250 memories intact, doctor's contradiction gone). Two
+rules from this: a test of the fixed code must run the fixed code, and a scratch
+HOME is the only way to make a test that touches `data_dir` safe.
+
+**Gate at this section:** 682 tests, clippy 0, doc 0, four doc gates green.
+
+**Not a test-set consultation.** No LongMemEval number produced or read.
+
+**Release decision, stated not taken.** `v0.11.1` is published and contains the
+clobber defect (`3f99063` is after the tag). Three options, and the choice is
+the owner's:
+
+1. **Cut `v0.11.2`** with the one-line fix. Normal, non-destructive, costs
+   another tag and asset set.
+2. **Move the `v0.11.1` tag** to `3f99063` and re-upload. Requires a history
+   rewrite on a *published* tag — `docs/SECRETS.md` §2 territory, and a tag
+   moving is a thing that surprises anyone who already pulled it.
+3. **Leave it.** The defect only bites a retry after a failed update, and the
+   fix is in `main`. A user on 0.11.1 who retries gets a clear error naming the
+   cause and the flag.
+
+Recorded rather than decided: `git tag -f` on a published tag is exactly the
+"destructive or non-reversible" class this session is meant to hesitate over,
+and the release was already the owner's call to make.
