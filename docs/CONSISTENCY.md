@@ -5779,3 +5779,63 @@ operator's call and the pack should have said so.
 The 2 consultations counted in §34 stand.
 
 **Load at measurement:** not load-sensitive (no timing claims).
+
+## §77. 2026-11-21 — plan v4 Tier 1 executed: two docs, one gate, and a count I got wrong
+
+**What landed.** `docs/plans/2026-11-21-remaining-gaps-plan-v4.md` proposed four
+items. All four are done, all on 2026-11-21.
+
+| # | item | commit |
+|---|---|---|
+| 1 | doctor names a dead serve pid + unadopted server | `9b2782d` |
+| 2 | OPEN_HOOK item-2 contradiction repaired | `19d265f` |
+| 3 | INTEGRATION_AUDIT status line, `[V]`/`[C]` legend clarified | `5950ddf` |
+| 4 | citation-name gate, mutation battery 5/5 | `0aaefb5` |
+
+**#2 was not a staleness problem.** The correction block at line 27 of
+`OPEN_HOOK_RECALL_RELEVANCE.md` said the score is no longer discarded; item 2,
+eight lines below, went on saying `recall_at` deserialises to `Vec<String>`. A
+correction above the text it corrects is a second wrong thing, and the wrong one
+reads as a finding. Repaired to the real state (`recall_at` at `hooks.rs:727`
+returns `Option<Vec<ScoredHit>>`, `ScoredHit` at `:516`, `recall_section` at
+`:680-706` never reads `score`).
+
+Its citation was worse than stale: `src/api.rs:1903` for
+`recall_should_score_with_the_fused_rrf_value`. The test is at **3132**; line 1903
+is a bare `}`; and at `36bb947`, the commit that document pins itself to, it was
+at **2168**. It never pointed at its target.
+
+**#3 corrected my own first draft.** I wrote F6 up as "still open, and
+deliberate" before checking. It had been explained on 2026-10-15: `memory.provider`
+binds to a directory name, so `provider: agentgateway` with plugin dir
+`agentmemory` was a **dead slot** — `find_provider_dir` found nothing and hermes
+ran with no memory at all, silently. Corrected in the same commit. The count also
+went from three open findings to two (F5 traceability, F7 the Python provider).
+
+**#4's mutation battery, 5/5.** The gate compares a backticked `path:line` against
+the function named beside it, tolerating 6 lines for a `///` doc block, and skipping
+citations that are pinned to a commit or quoted as an example of the defect.
+Two of the five cases took three attempts each, and **both failures were the gate
+being too eager, not too lax**: a 3-line window reached up into the previous
+paragraph's commit pin and excused a citation that paragraph was not making, and a
+word-list match on the phrase `verified at` did the same. The window is now the hit
+line plus one, and a pin must be a backticked hash. Case 5 disables the comparison
+and confirms the defect then slips through — the vacuity check, because a gate that
+cannot fail is worse than no gate.
+
+The gate found one more real defect while being written, which is the argument for
+it: `2026-11-18-hierarchical-grounded-memory-upgrade.md` said "What is actually true
+at HEAD" and cited `hooks.rs:660` for `recall_at`, which is at 727. Fixed in the
+same commit.
+
+**A count I got wrong.** I reported 679 tests after `9b2782d`. The real number is
+**678**. I had added the per-suite figures in my head (273 + 382 + 2 + 4 + 2 + 10 +
+3 + 1 + 1) and landed one out. Chasing the phantom took four runs; lib is 273
+(untouched, all my code changes are in the bin), bin is 382 and contains my test.
+Recorded because a number in prose that no artifact backs is exactly what §7 exists
+to catch, and this one was mine.
+
+**Not a test-set consultation.** No LongMemEval number produced or read. The count
+in §34 stands at 2.
+
+**Load:** not load-sensitive; no timing claims.

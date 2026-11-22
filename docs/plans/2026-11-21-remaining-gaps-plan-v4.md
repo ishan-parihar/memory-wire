@@ -1,7 +1,19 @@
 # Outline plan: remaining gaps, cleanup, and upgrades — third pass
 
-**Status:** proposal, 2026-11-21 (third pass). Written from `2155adf`, 87 commits
-past `v0.10.0`.
+**Status:** **EXECUTED 2026-11-21** (third pass). Written from `2155adf`, 87 commits
+past `v0.10.0`; all four items landed the same day.
+
+> **Execution record.** #1 landed as `9b2782d` (the doctor names a dead serve pid
+> and an unadopted server, with a mutation-checked test). #2 landed as `19d265f`
+> (OPEN_HOOK item 2 repaired, its never-right `src/api.rs:1903` citation corrected
+> to 3132, and "Where the fix belongs" no longer recommends work that has
+> landed). #3 landed as `5950ddf` (the audit status block, which corrected my own
+> first draft: F6 was already explained on 2026-10-15, so it is resolved and not
+> "deliberate"). #4 landed as `0aaefb5` (the citation-name gate, mutation battery
+> 5/5, wired into `pre-commit`). It caught one more real defect while being
+> written, in `2026-11-18-hierarchical-grounded-memory-upgrade.md`.
+>
+> Tier 1 is closed. What is left is §6: three decisions that are yours.
 
 Two previous plans were executed in the same day (`...-plan-v2.md`, `...-plan-v3.md`;
 both now carry supersession headers). This pass was written the way the last two
