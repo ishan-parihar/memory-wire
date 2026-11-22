@@ -35,6 +35,14 @@ fi
 # this line, which is the argument for it.
 "$root/scripts/count_claim_check.sh"
 
+# And the citations. A `file:line` that NAMES the function it claims is there, and
+# points somewhere else. The defect: OPEN_HOOK_RECALL_RELEVANCE.md cited
+# `src/api.rs:1903` for `recall_should_score_with_the_fused_rrf_value`, which is
+# at 3132 -- and was at 2168 even at the commit that document pins itself to. It
+# was never right, which is different from a citation drifting as a file grows.
+# Mutation battery 5/5 in the script header.
+"$root/scripts/citation_name_check.sh"
+
 # core.hooksPath replaces .git/hooks, which install-docs-gate writes to. Keep
 # running that gate so enabling this hook does not silently disable it.
 managed="$(git rev-parse --git-common-dir)/hooks/pre-commit"

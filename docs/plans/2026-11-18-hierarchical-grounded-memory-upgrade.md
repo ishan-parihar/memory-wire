@@ -317,8 +317,8 @@ reason.
 Rests on **D-ASK**, verified at `36bb947`, and on the review's finding 4.
 
 **What is actually true at HEAD, so this item is not built on a stale premise.**
-`src/hooks.rs:660` `recall_at` returns `Option<Vec<ScoredHit>>`; `ScoredHit`
-(`:496-507`) carries `content`, `created_at` **and** `score: Option<f64>`, and
+`src/hooks.rs:727` `recall_at` returns `Option<Vec<ScoredHit>>`; `ScoredHit`
+(`:516-535`) carries `content`, `created_at` **and** `score: Option<f64>`, and
 `the_score_should_survive_the_client_boundary` (`:1497`) pins that the score
 survives the wire. So the *evidence-gathering* half of D-ASK has landed. What
 has **not**: `recall_section` (`:680-706`) reads content and date and **never
