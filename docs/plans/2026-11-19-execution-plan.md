@@ -1,5 +1,15 @@
 # Outline plan — execution order for what is actually left
 
+> **SUPERSEDED 2026-11-22.** The live list is
+> [`2026-11-22-remaining-gaps-plan-v5.md`](2026-11-22-remaining-gaps-plan-v5.md).
+> This file and `docs/handoff/REMAINING_WORK_PLAN.md` are kept as dated records
+> (AGENTS §7); neither is a live list any more, and both now say so at the top.
+>
+> The marker was missing when this file was re-read on 2026-11-22. It is the
+> same omission that let `REMAINING_WORK_PLAN.md` carry a header naming itself as
+> the file it supersedes -- two plan files, each pointing at the other, and
+> nothing pointing at either.
+
 Written 2026-11-19, after round 4 and its two follow-up commits (`ed8eea4`,
 `518903d`). It supersedes `REMAINING_WORK_PLAN.md` as the live ordering; that
 file stays as the dated record of the decisions block, and `TODO.md` rows

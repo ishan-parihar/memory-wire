@@ -1,8 +1,25 @@
 # Outline plan — what is left, and what each blocker needs from you
 
-Written 2026-11-19, after the four batches of `REMAINING_WORK_PLAN.md` closed.
-Supersedes that file's §4/§5 as the live list; `TODO.md` rows 10–13, 31 stay the
-implementation register.
+> **SUPERSEDED 2026-11-22, and read this before the title.** The live list is
+> [`docs/plans/2026-11-22-remaining-gaps-plan-v5.md`](../../plans/2026-11-22-remaining-gaps-plan-v5.md).
+> This file stays as the dated record of the decisions block, which is what
+> `2026-11-19-execution-plan.md` kept it for.
+>
+> **A defect in this file's own header, corrected above.** The line that used to
+> open the body read "Written 2026-11-19, after the four batches of
+> `REMAINING_WORK_PLAN.md` closed. Supersedes **that file's** §4/§5" — naming
+> *itself* as the file it supersedes. Those words belong to
+> `2026-11-19-execution-plan.md`, which supersedes this file and is the only one
+> of the two that had a target to name. A verbatim copy with the filename lost
+> is how a stale sentence outlives the file it described.
+>
+> **The title line below (`Written 2026-11-19`) is correct.** This file *was*
+> written then. The sentence that used to sit under it was not, and it is now
+> removed rather than annotated, because a correction above text it contradicts
+> is the failure this repository has now paid for three times.
+
+Written 2026-11-19, after the four batches of work that preceded it closed.
+`TODO.md` rows 10–13, 31 stay the implementation register.
 
 **Two sections, deliberately.** §1 is what can proceed without you. §2 is the
 part that cannot — each blocker stated as a decision with its cost, its

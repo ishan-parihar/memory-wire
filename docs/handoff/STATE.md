@@ -1,5 +1,26 @@
 # State at handoff — 2026-10-16
 
+> **STALE HEADER, added 2026-11-22. Read this before the date in the title.**
+>
+> This file is titled 2026-10-16 and its body describes **v0.8.2**, released that
+> day. The tree is now **v0.10.0 plus 98 commits**, which is **133 commits past**
+> `c919f13`, the commit this file names as HEAD. The body was not wrong when it
+> was written; it has simply not been rewritten since, and a reader who takes the
+> title at face value will believe the project is 98 commits behind where it is.
+>
+> The body is kept as the dated record (AGENTS §7). For where the project stands
+> now, the live list is
+> [`docs/plans/2026-11-22-remaining-gaps-plan-v5.md`](../../plans/2026-11-22-remaining-gaps-plan-v5.md),
+> and for the implementation register it is **`TODO.md`** -- which
+> `docs/handoff/README.md` already says, and this file now says too, because a
+> fresh agent should not have to open two files to find out which one is
+> authoritative.
+>
+> The status table at the foot of this file is **generated** (`genome emit`), not
+> hand-written. It read "open 4 / done 24" until 2026-11-22; it now reads "open 6 /
+> done 31", matching `TODO.md`. Editing that table by hand would be overwritten on
+> the next `genome emit` and would hide the drift.
+
 Repo `agentic-utility/memory/memory-wire`, branch `main`, HEAD `c919f13` — **v0.8.2,
 released** (the tag names `95e54c1`; `3ac422c` and `c919f13` are the records and
 navigation passes on top). The day cut two patches: **v0.8.1** (`fbe0a91`+`52e27a7`: the H8 capsule
@@ -545,16 +566,16 @@ From `amb_locomo_rag.json.gz` joined with `eval/data/locomo/queries.json`
   not a memory-wire one. The adapter now carries `MEMORY_WIRE_TOPK` to move that cut
   for measurement; H4 used it to fix the served set at k = 3/5/10.
 
-<!-- genome:zone status sha=5c0a646f8a92 -->
+<!-- genome:zone status sha=0d8d3bcc3974 -->
 | status | items |
 |---|---|
-| open | 4 |
-| in-progress | 1 |
-| done | 24 |
+| open | 6 |
+| done | 31 |
 
-- `4` [in-progress] ~~INTEGRATION_PLAN Phase 0, starting with P0.1~~ — **re-verified 2026-10-15 against the binary**; th
 - `10` [open] agent-memory-bench (GiulioDER) Claude Code arm
 - `11` [open] LLM-judged runs: AMB `rag` (BEAM/PersonaMem/LifeBench), OAMB LME-60, memorybench ConvoMem, MemBase R
 - `12` [open] AMB provider writes at the product's granularity (turn pairs, as the hooks do), not 25k-token sessio
 - `13` [open] aroute: 200-with-`{"error"}` logged `outcome=ok` with no failover (B1); cline replies forwarded insi
+- `31` [open] door parity. **Re-measured 2026-11-21 and mostly closed**: `supersede` now has an HTTP route (`POST 
+- `38` [open] ~~**the enumerated cross-door parity check both review rounds asked for**~~ **half done 2026-11-21**
 <!-- genome:end status -->
