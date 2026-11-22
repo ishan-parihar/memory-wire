@@ -6,9 +6,18 @@
 //! install incidents lived (see `docs/handoff/STATE.md`): a swapped binary
 //! with the daemon still serving the old inode, and a `connect` that dropped
 //! the `--bank` pin. This module runs the steps in the only safe order and
-//! composes the two fixes: the restart closes the stale-serve window the same
-//! moment the new bytes land, and the re-connect rides TODO #1's pin
-//! preservation so a bare `connect` cannot unpin a machine.
+//! composes the two fixes: the re-connect rides TODO #1's pin preservation so a
+//! bare `connect` cannot unpin a machine.
+//!
+//! **A correction, earned on 2026-11-22.** This doc used to claim the restart
+//! "closes the stale-serve window the same moment the new bytes land". It did
+//! not. The v0.11.0 run swapped the binary, tried to restart on the
+//! *extraction* path that `swap` had just renamed away, and left pid 1295
+//! serving 8888 from `memory-wire.old` for an hour. Worse, `daemon stop`
+//! printed "nothing running" and exited 0 while that process held the port,
+//! because the state file named a *dead* pid. Both are fixed and both are
+//! tested; the claim is not restated until the test that would break exists.
+//! See `orchestrate` and `Ops::port_holder`.
 //!
 //! **The network is `gh`, not this binary.** GitHub serves `https://` only and
 //! this tree's HTTP client is deliberately dependency-free plain HTTP
@@ -57,6 +66,14 @@ pub trait Ops {
     fn start_daemon(&mut self, new_bin: &Path) -> Result<(), String>;
     /// Re-wire the hosts (a bare `connect` from the new binary).
     fn reconnect(&mut self, new_bin: &Path) -> Result<String, String>;
+    /// Who, if anyone, is serving the endpoint right now -- a human-facing name
+    /// for the process or path holding the port.
+    ///
+    /// `None` means the port is free. `Some` means it is not, and naming the
+    /// holder is the whole point: the 2026-11-22 update left a live server on
+    /// 8888 that no state file mentioned, and the operator had nothing to
+    /// search on. `orchestrate` treats `Some` after a stop as a refusal.
+    fn port_holder(&mut self) -> Option<String>;
 }
 
 /// The order of operations, as one function over the seam. Returns the
@@ -111,6 +128,19 @@ fn orchestrate_into(ops: &mut dyn Ops, current: &str, root: PathBuf) -> Result<S
     let was_live = ops.daemon_live();
     if was_live {
         ops.stop_daemon()?;
+        // Defect (d): re-check the port after stopping. `stop_daemon` exits 0
+        // for "nothing running", which is not the same as "the port is free"
+        // -- the 2026-11-22 run proved the gap, with pid 1295 still serving
+        // 8888 from the `.old` binary. Starting a second server onto an
+        // occupied port fails at bind, which is a worse outcome than saying so
+        // here.
+        if let Some(holder) = ops.port_holder() {
+            return Err(format!(
+                "stopped the daemon, but {holder} is still serving, so the new binary \
+                 was not started. The swap did not happen. Find the holder and stop it: \
+                 `ss -ltnp | grep {holder}`"
+            ));
+        }
     }
     // swap MOVES the new binary onto the installed path, so `new_bin` is gone
     // from here on. Everything below must use the path swap returns -- the
@@ -435,8 +465,28 @@ impl Ops for GhOps {
         if out.status.success() {
             Ok(report)
         } else {
-            Err(format!("connect on the new binary: {report}"))
+            // Defect (c): say what the failure cost. "connect on the new
+            // binary: No such file" was accurate but unexplained -- the caller
+            // had just landed a swap and would reasonably read it as a connect
+            // bug rather than as the update being half-done.
+            Err(format!(
+                "connect failed on {}: {report}\n  the binary is installed and the \
+                 daemon is on the new build, but the agent hosts were not re-wired. Re-run \
+                 `memory-wire connect`",
+                new_bin.display()
+            ))
         }
+    }
+
+    fn port_holder(&mut self) -> Option<String> {
+        let addr = paths::endpoint();
+        // A failed connect is the common case (port free) and says nothing.
+        let sock: std::net::SocketAddr = addr.parse().ok()?;
+        std::net::TcpStream::connect_timeout(&sock, std::time::Duration::from_millis(250)).ok()?;
+        // Something is listening. Name it as well as the tools allow: the
+        // socket's inode is enough to find the owning process with `ss -ltnp`,
+        // and that is what the caller's message tells the operator to run.
+        Some(addr)
     }
 }
 
@@ -490,15 +540,18 @@ mod tests {
         assert_eq!(parse_tag(""), None);
     }
 
-    /// The full order, recorded by a fake: verify precedes stop, stop
-    /// precedes swap, start and connect run on the new binary, and an
-    /// Recording fake. Deliberately NOT a no-op for `swap`: it really does the
-    /// rename, because the 2026-11-22 `update` failure was invisible to every
-    /// test precisely because this fake recorded a string and moved nothing.
+    /// The full order, recorded by a fake: verify precedes stop, stop precedes
+    /// swap, start and connect run on the installed binary, the port is
+    /// re-checked after the stop, and an up-to-date release short-circuits.
+    ///
+    /// Deliberately NOT a no-op for `swap`: it really does the rename, because
+    /// the 2026-11-22 `update` failure was invisible to every test precisely
+    /// because the fake recorded a string and moved nothing.
     struct Fake {
         log: Vec<String>,
         live: bool,
         exe: PathBuf,
+        holder: Option<String>,
     }
     impl Fake {
         fn ok() -> Self {
@@ -506,6 +559,7 @@ mod tests {
                 log: vec![],
                 live: false,
                 exe: PathBuf::new(),
+                holder: None,
             }
         }
         /// The fake's notion of "the installed binary", on disk and holding
@@ -520,6 +574,7 @@ mod tests {
                 log: vec![],
                 live: false,
                 exe,
+                holder: None,
             }
         }
         /// The assertion that makes the real defect fail: a caller handing a
@@ -576,6 +631,10 @@ mod tests {
             self.log.push(format!("connect {}", new_bin.display()));
             Ok(String::new())
         }
+        fn port_holder(&mut self) -> Option<String> {
+            self.log.push("port".into());
+            self.holder.clone()
+        }
     }
 
     fn hex_of(b: &[u8]) -> String {
@@ -615,6 +674,7 @@ mod tests {
                 "extract".to_string(),
                 "probe".to_string(),
                 "stop".to_string(),
+                "port".to_string(),
                 format!("swap {}", bin.display()),
                 format!("start {}", installed.display()),
                 format!("connect {}", installed.display()),
@@ -704,6 +764,9 @@ mod tests {
             fn reconnect(&mut self, new_bin: &Path) -> Result<String, String> {
                 self.0.reconnect(new_bin)
             }
+            fn port_holder(&mut self) -> Option<String> {
+                self.0.port_holder()
+            }
         }
         let mut t = Tampered(Fake::ok());
         let root =
@@ -715,6 +778,39 @@ mod tests {
         assert_eq!(
             t.0.log,
             vec!["releases".to_string(), "download v0.8.0".to_string()]
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Defect (d), the case that actually happened on 2026-11-22: `stop_daemon`
+    /// exits 0 because the state file names a dead pid, while an unrelated
+    /// process is still serving the port. The old code read exit 0 as "the
+    /// port is free" and swapped, leaving two servers fighting over the port.
+    /// This asserts the update refuses and the swap does not run.
+    #[test]
+    fn an_occupied_port_refuses_before_the_swap() {
+        let root =
+            std::env::temp_dir().join(format!("mw-update-root-{}-busy", std::process::id()));
+        std::fs::remove_dir_all(&root).ok();
+        let mut f = Fake {
+            live: true,
+            holder: Some("127.0.0.1:8888".to_string()),
+            ..Fake::ok_in(&root)
+        };
+        let err = orchestrate_into(&mut f, "v0.7.0", root.clone())
+            .expect_err("an occupied port must refuse");
+        assert!(err.contains("8888"), "names the port: {err}");
+        assert!(err.contains("ss -ltnp"), "names the command: {err}");
+        // The swap must not have happened: no `swap` entry, and the installed
+        // binary still holds the old bytes.
+        assert!(
+            !f.log.iter().any(|l| l.starts_with("swap ")),
+            "swapped despite an occupied port: {:?}",
+            f.log
+        );
+        assert_eq!(
+            std::fs::read(root.join("installed").join("memory-wire")).expect("installed"),
+            b"old binary"
         );
         std::fs::remove_dir_all(&root).ok();
     }

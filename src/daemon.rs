@@ -575,12 +575,47 @@ fn wait_until_serving(state: &ServeState) -> Result<(), String> {
 
 // ---------------------------------------------------------------------- stop
 
+/// Whether anything is listening on the endpoint right now, as a sentence
+/// appended to a "nothing running" message.
+///
+/// WHY THIS EXISTS. The 2026-11-22 update printed
+/// `memory-wire daemon: nothing running` and exited 0 while pid 1295 was still
+/// serving 8888 from the `.old` binary -- `daemon::stop` had concluded the
+/// daemon was absent because the state file named a dead pid, and said nothing
+/// about the port, so `orchestrate` read exit 0 as "the port is free" and
+/// started a second server it could never bind. The absent-state conclusion is
+/// correct and stays; this only stops the silence that made it dangerous.
+///
+/// Probing the port is a read-only `TcpStream::connect`, so it cannot disturb
+/// whatever holds it. A failed probe says nothing: an endpoint that is not
+/// listening is the normal case and does not warrant a sentence.
+fn port_holder_note_at(addr: &str) -> String {
+    match std::net::TcpStream::connect_timeout(
+        &addr
+            .parse()
+            .unwrap_or_else(|_| "127.0.0.1:8888".parse().expect("a literal socket addr")),
+        std::time::Duration::from_millis(250),
+    ) {
+        Ok(_) => format!(
+            "; WARNING: something IS still listening on {addr}, so the port is NOT free -- \
+             the daemon was not stopped. Find it with `ss -ltnp | grep {addr}` and stop it "
+        ),
+        Err(_) => String::new(),
+    }
+}
+
+/// The ambient-endpoint form of [`port_holder_note_at`], for the messages.
+fn port_holder_note() -> String {
+    port_holder_note_at(&paths::endpoint())
+}
+
 fn stop() -> i32 {
     match inspect() {
         Verdict::Absent => {
             println!(
-                "memory-wire daemon: nothing running; no state file at {}",
-                state_path().display()
+                "memory-wire daemon: nothing running; no state file at {}{}",
+                state_path().display(),
+                port_holder_note()
             );
             0
         }
@@ -590,9 +625,10 @@ fn stop() -> i32 {
             clear_state_at(&state_path());
             println!(
                 "memory-wire daemon: nothing running; pid {} is gone, and the stale state at {} \
-                 was removed",
+                 was removed{}",
                 state.pid,
-                state_path().display()
+                state_path().display(),
+                port_holder_note()
             );
             0
         }
@@ -963,6 +999,26 @@ mod tests {
             !clear_state_at(&t.state_file()),
             "removing twice is not an error"
         );
+    }
+
+    /// The 2026-11-22 incident's message shape: `daemon stop` said "nothing
+    /// running" and exited 0 while pid 1295 held 8888. The fix names the port,
+    /// so this pins that a listening endpoint produces a sentence with the
+    /// address and the command to find the holder, and a free endpoint produces
+    /// nothing at all.
+    #[test]
+    fn a_held_port_is_named_and_a_free_one_is_silent() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = l.local_addr().expect("addr").to_string();
+        let note = port_holder_note_at(&addr);
+        assert!(note.contains(&addr), "names the port: {note}");
+        assert!(note.contains("ss -ltnp"), "names the search: {note}");
+
+        // A port nobody holds says nothing: an empty suffix, not a sentence.
+        let free = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let free_addr = free.local_addr().expect("addr").to_string();
+        drop(free);
+        assert_eq!(port_holder_note_at(&free_addr), "");
     }
 
     // A state file we cannot read names no process, so it is never treated as a
