@@ -42,8 +42,17 @@ pub trait Ops {
     fn daemon_live(&mut self) -> bool;
     /// Stop the live daemon (the running binary's own `daemon stop`).
     fn stop_daemon(&mut self) -> Result<(), String>;
-    /// Move `new_bin` onto the installed binary's path, atomically.
-    fn swap(&mut self, new_bin: &Path) -> Result<(), String>;
+    /// Move `new_bin` onto the installed binary's path, atomically, and return
+    /// the path the new binary now lives at.
+    ///
+    /// The return value is not decoration. `swap` **moves** the file (rename
+    /// across one filesystem), so `new_bin` does not exist afterwards -- and a
+    /// 2026-11-22 run proved the obvious code gets this wrong: `orchestrate`
+    /// called `reconnect(&new_bin)` after the swap and got
+    /// `.../update-v0.11.0/memory-wire: No such file or directory`, leaving a
+    /// swapped binary and a daemon still serving the old inode. Callers must
+    /// use the returned path for anything they exec afterwards.
+    fn swap(&mut self, new_bin: &Path) -> Result<PathBuf, String>;
     /// Start the daemon with the *new* binary.
     fn start_daemon(&mut self, new_bin: &Path) -> Result<(), String>;
     /// Re-wire the hosts (a bare `connect` from the new binary).
@@ -103,13 +112,17 @@ fn orchestrate_into(ops: &mut dyn Ops, current: &str, root: PathBuf) -> Result<S
     if was_live {
         ops.stop_daemon()?;
     }
-    ops.swap(&new_bin)?;
+    // swap MOVES the new binary onto the installed path, so `new_bin` is gone
+    // from here on. Everything below must use the path swap returns -- the
+    // 2026-11-22 run is the proof: this line used to pass `new_bin` and the
+    // restart failed with `.../update-v0.11.0/memory-wire: No such file`.
+    let installed = ops.swap(&new_bin)?;
     let mut notes = vec![format!("updated {current} to {newest}")];
     if was_live {
-        ops.start_daemon(&new_bin)?;
+        ops.start_daemon(&installed)?;
         notes.push("daemon restarted on the new binary".to_string());
     }
-    let connect_note = ops.reconnect(&new_bin)?;
+    let connect_note = ops.reconnect(&installed)?;
     if !connect_note.trim().is_empty() {
         notes.push(connect_note);
     }
@@ -364,7 +377,7 @@ impl Ops for GhOps {
         }
     }
 
-    fn swap(&mut self, new_bin: &Path) -> Result<(), String> {
+    fn swap(&mut self, new_bin: &Path) -> Result<PathBuf, String> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(new_bin, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("{}: {e}", new_bin.display()))?;
@@ -385,7 +398,7 @@ impl Ops for GhOps {
                 format!("{}: {e}", exe.display())
             })?;
         }
-        Ok(())
+        Ok(exe.clone())
     }
 
     fn start_daemon(&mut self, new_bin: &Path) -> Result<(), String> {
@@ -479,17 +492,44 @@ mod tests {
 
     /// The full order, recorded by a fake: verify precedes stop, stop
     /// precedes swap, start and connect run on the new binary, and an
-    /// up-to-date release short-circuits before any download.
+    /// Recording fake. Deliberately NOT a no-op for `swap`: it really does the
+    /// rename, because the 2026-11-22 `update` failure was invisible to every
+    /// test precisely because this fake recorded a string and moved nothing.
     struct Fake {
         log: Vec<String>,
         live: bool,
+        exe: PathBuf,
     }
     impl Fake {
         fn ok() -> Self {
             Self {
                 log: vec![],
                 live: false,
+                exe: PathBuf::new(),
             }
+        }
+        /// The fake's notion of "the installed binary", on disk and holding
+        /// bytes, so a caller that execs a path after the swap gets a real
+        /// `No such file` rather than a recorded string.
+        fn ok_in(dir: &Path) -> Self {
+            let exe = dir.join("installed").join("memory-wire");
+            std::fs::create_dir_all(exe.parent().expect("parent"))
+                .expect("the fake's installed dir is writable");
+            std::fs::write(&exe, b"old binary").expect("seed the installed binary");
+            Self {
+                log: vec![],
+                live: false,
+                exe,
+            }
+        }
+        /// The assertion that makes the real defect fail: a caller handing a
+        /// path that no longer exists gets the same error the 2026-11-22 run
+        /// produced, instead of a silent pass.
+        fn require_real(&self, p: &Path, what: &str) -> Result<(), String> {
+            if p.as_os_str().is_empty() || !p.exists() {
+                return Err(format!("{what} on a missing path: {}: No such file", p.display()));
+            }
+            Ok(())
         }
     }
     impl Ops for Fake {
@@ -518,15 +558,21 @@ mod tests {
             self.log.push("stop".into());
             Ok(())
         }
-        fn swap(&mut self, new_bin: &Path) -> Result<(), String> {
+        fn swap(&mut self, new_bin: &Path) -> Result<PathBuf, String> {
             self.log.push(format!("swap {}", new_bin.display()));
-            Ok(())
+            // A real rename, so `new_bin` stops existing -- which is the
+            // whole defect. Returning `self.exe` is then the only path a
+            // caller can exec.
+            std::fs::rename(new_bin, &self.exe).map_err(|e| e.to_string())?;
+            Ok(self.exe.clone())
         }
         fn start_daemon(&mut self, new_bin: &Path) -> Result<(), String> {
+            self.require_real(new_bin, "start")?;
             self.log.push(format!("start {}", new_bin.display()));
             Ok(())
         }
         fn reconnect(&mut self, new_bin: &Path) -> Result<String, String> {
+            self.require_real(new_bin, "connect")?;
             self.log.push(format!("connect {}", new_bin.display()));
             Ok(String::new())
         }
@@ -549,12 +595,18 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
         let mut f = Fake {
             live: true,
-            ..Fake::ok()
+            ..Fake::ok_in(&root)
         };
         let report = orchestrate_into(&mut f, "v0.7.0", root.clone()).expect("update");
         assert!(report.contains("v0.7.0"), "{report}");
         assert!(report.contains("v0.8.0"), "{report}");
         let bin = scratch_in(&root, "v0.8.0").join("memory-wire");
+        // `swap` moves the new binary onto the installed path, so `start` and
+        // `connect` run on THAT path -- not on `bin`, which no longer exists
+        // after the rename. This assertion is the regression the 2026-11-22
+        // failure needs: the old code passed `bin` here and got `No such
+        // file` at runtime.
+        let installed = root.join("installed").join("memory-wire");
         assert_eq!(
             f.log,
             vec![
@@ -564,8 +616,8 @@ mod tests {
                 "probe".to_string(),
                 "stop".to_string(),
                 format!("swap {}", bin.display()),
-                format!("start {}", bin.display()),
-                format!("connect {}", bin.display()),
+                format!("start {}", installed.display()),
+                format!("connect {}", installed.display()),
             ]
         );
         std::fs::remove_dir_all(&root).ok();
@@ -609,7 +661,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("mw-update-root-{}-cur", std::process::id()));
         let mut f = Fake {
             live: true,
-            ..Fake::ok()
+            ..Fake::ok_in(&root)
         };
         let report = orchestrate_into(&mut f, "v0.8.0", root).expect("report");
         assert!(report.contains("up to date"), "{report}");
@@ -643,7 +695,7 @@ mod tests {
             fn stop_daemon(&mut self) -> Result<(), String> {
                 self.0.stop_daemon()
             }
-            fn swap(&mut self, new_bin: &Path) -> Result<(), String> {
+            fn swap(&mut self, new_bin: &Path) -> Result<PathBuf, String> {
                 self.0.swap(new_bin)
             }
             fn start_daemon(&mut self, new_bin: &Path) -> Result<(), String> {

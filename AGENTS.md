@@ -104,7 +104,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 ## 3. Where things live
 
-`src/`, 33 modules, 40,783 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 40,835 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
@@ -126,7 +126,7 @@ stale count is a red gate rather than a claim nobody checks.
 | `connect_ext.rs` | 886 | omp and pi: the two hosts installed as a **TypeScript file**, not a config entry |
 | `paths.rs` | 892 | bank identity, endpoint, data paths |
 | `render.rs` | 683 | human-readable report rendering |
-| `update.rs` | 686 | `update`: the five-step self-update swap |
+| `update.rs` | 738 | `update`: the five-step self-update swap |
 | `seed.rs` | 693 | transcript reading for hook capture |
 | `hygiene.rs` | 658 | W4: deterministic hygiene scan (merge/contradiction/date/bloat) |
 | `mcp_http.rs` | 543 | stateless streamable-HTTP MCP mount |
