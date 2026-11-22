@@ -1,7 +1,7 @@
 # Outline plan — remaining implementation gaps, redundancy, and upgrades
 
-**Status:** proposal, 2026-11-22 (fourth pass). Written from `46ceba3`, 97
-commits past `v0.10.0`.
+**Status:** **EXECUTED 2026-11-22** (fourth pass). Written from `46ceba3`; all
+three items landed the same day.
 
 Three previous plans ran the same day (`...-plan-v2.md`, `...-plan-v3.md`,
 `...-plan-v4.md`), all executed. This pass was written by looking for defects
@@ -13,6 +13,24 @@ earlier.
 supersession, and one register pair that disagrees about what is open.** Plus
 two operator decisions that have been open since the last pass and are not mine
 to make.
+
+> **Execution record.** §1 landed as `46ceba3` (the entry-point fix, the
+> conditional dead-pid advice, the store guard, and a mutation-checked test
+> through `collect_at_with_state`). §2 landed as `bcf7f56` (both plan files
+> marked superseded, the self-referential header removed, `STATE.md` given a
+> staleness header, and its generated status table corrected with `genome emit`
+> to open 6 / done 31). §3 landed as `d7e2ef4` (the note corrected, the two
+> contradicting notes merged into one). Recorded in `CONSISTENCY.md` §78.
+>
+> **One thing the plan got wrong, corrected during execution:** it said
+> `STATE.md`'s status table was hand-written and needed hand-editing. The table
+> sits inside a `genome:zone` and is generated. Hand-editing it would have been
+> overwritten on the next `genome emit`. `genome emit` produced the correct
+> numbers on its own.
+>
+> **And one the plan missed:** `STATE.md` was not merely stale in its table. It
+> was titled 2026-10-16, described v0.8.2, and was **133 commits** behind the
+> `c919f13` it named as HEAD, while having been modified that day.
 
 ---
 
