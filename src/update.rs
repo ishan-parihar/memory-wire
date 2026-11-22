@@ -320,6 +320,33 @@ impl GhOps {
     }
 }
 
+/// The `gh` argv for one release download.
+///
+/// Split out so a test can assert the flags without spawning `gh`. That matters
+/// because `--clobber` is **required**, not optional. `gh release download`
+/// refuses when a target file already exists, and the target dir is the
+/// version's own scratch dir (`update-<tag>`), so the first `update` succeeds
+/// and every later one fails with
+/// `...tar.gz.sha256 already exists (use --clobber to overwrite)`. That is
+/// exactly the path a user takes after a failed first attempt, and it was found
+/// only by running `update` twice. The scratch dir is ours, so overwriting it
+/// is safe -- and re-verifying the digest afterwards is the point of the
+/// download in the first place.
+fn gh_args_for(tag: &str, repo: &str, slug: &str, dir: &str) -> Vec<String> {
+    vec![
+        "release".into(),
+        "download".into(),
+        tag.into(),
+        "--repo".into(),
+        repo.into(),
+        "--pattern".into(),
+        format!("memory-wire-{slug}*"),
+        "--dir".into(),
+        dir.into(),
+        "--clobber".into(),
+    ]
+}
+
 impl Ops for GhOps {
     fn extract(&mut self, archive: &Path, dir: &Path) -> Result<PathBuf, String> {
         extract(archive, dir)
@@ -360,19 +387,8 @@ impl Ops for GhOps {
             .map(|a| a.trim().to_string())
             .filter(|a| !a.is_empty())
             .unwrap_or_else(|| slug.to_string());
-        let pattern = format!("memory-wire-{slug}*");
         let out = std::process::Command::new("gh")
-            .args([
-                "release",
-                "download",
-                tag,
-                "--repo",
-                &self.repo,
-                "--pattern",
-                &pattern,
-                "--dir",
-            ])
-            .arg(dir)
+            .args(gh_args_for(tag, &self.repo, &slug, &dir.display().to_string()))
             .output()
             .map_err(|e| format!("gh: {e}"))?;
         if !out.status.success() {
@@ -711,6 +727,29 @@ mod tests {
         assert!(bin.is_file(), "{}", bin.display());
         assert_eq!(bin, dir.join("memory-wire"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Every download into a scratch dir that a previous run already filled
+    /// must overwrite, not refuse. Found by running `update` twice: the second
+    /// run died with `...tar.gz.sha256 already exists (use --clobber to
+    /// overwrite)`, because `gh release download` fails on an existing file and
+    /// `dir` is the version's own scratch dir. A user fixing a failed update
+    /// hits this immediately, so it is pinned on the argv rather than left to
+    /// the next run to discover.
+    #[test]
+    fn a_second_download_into_a_used_scratch_dir_must_clobber() {
+        // Exercise the real argv builder, not a copy of it: `gh_args_for` is the
+        // one place the flags are assembled, and a test against a hand-written
+        // list would keep passing if the list drifted.
+        let argv = gh_args_for("v0.9.0", "ishan-parihar/memory-wire", "linux-x86_64", "/tmp/dir");
+        assert!(
+            argv.iter().any(|a| a == "--clobber"),
+            "a re-run must overwrite its own scratch dir: {argv:?}"
+        );
+        // And the flags it should still carry, so the fix is not `--anything`.
+        assert!(argv.iter().any(|a| a == "--pattern"), "{argv:?}");
+        assert!(argv.iter().any(|a| a == "--dir"), "{argv:?}");
+        assert!(argv.iter().any(|a| a == "--repo"), "{argv:?}");
     }
 
     /// Up to date: no download, no probe, nothing touched.
