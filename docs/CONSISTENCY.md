@@ -6186,3 +6186,58 @@ the owner's:
 Recorded rather than decided: `git tag -f` on a published tag is exactly the
 "destructive or non-reversible" class this session is meant to hesitate over,
 and the release was already the owner's call to make.
+
+## §83. 2026-11-22 — v0.11.2 deployed: the patch that carried the clobber fix
+
+**Why this release exists.** `v0.11.1` was tagged before `3f99063`
+(`--clobber`) landed, so the published 0.11.1 fixes the exec-after-swap defect
+but not the retry defect. Three options were recorded in §82: cut a patch
+release, move the tag, or leave it. **A patch release was taken** — a tag move
+is a history rewrite on a published tag and would surprise anyone who already
+pulled it, which is exactly the class of action this repo's rules say to
+hesitate over.
+
+**What shipped.** `v0.11.2` at `e7011c8`, three Linux assets, published through
+the `gh` REST API. `ci.yml` and `release.yml` were disabled around the tag push
+and re-enabled after; **zero runs were created for the tag**, so no Actions
+minutes were billed.
+
+| asset | size | `DT_NEEDED` | verification |
+|---|---:|---:|---|
+| `linux-x86_64` | 4.1M | 3 | runs, prints 0.11.2 |
+| `linux-x86_64-musl` | 4.2M | **0** (static-pie) | runs, prints 0.11.2 |
+| `linux-aarch64` | 3.6M | 4 | cross-built; ELF header verified, not executed |
+
+All three sha256 sidecars verify **after download from the release**, not just
+locally: the published tarballs were fetched back and checked before the
+install. The binary inside prints 0.11.2.
+
+**Deployed.** Installed with `install/get-memory-wire.sh --no-connect --bank
+omp` (deliberately `--no-connect`: the hosts were already wired to `omp` and
+there was no reason to rewrite seven live configs). The installer named the
+stale-serve condition itself, which is worth noting — it said a server was
+still running the old 0.11.0 inode and gave the exact stop/start commands. That
+is the same condition §79 and §82 hit by hand, now reported by the tool.
+
+Restarted: pid `560976`, `daemon status` `serving`, health `ok`, bank `omp` at
+**4250** memories, and omp's own `memory-wire` MCP entry survived untouched
+(`http://127.0.0.1:8888/mcp/omp`, still in `enabledServers`) — the entry §82
+established is load-bearing, kept deliberately.
+
+`memory-wire update` on the deployed install reports
+`up to date: 0.11.2 is the newest release (17 known)`.
+
+**The clobber fix, verified against the live dirty directory.** The argv now
+carries `--clobber`, and running it against
+`~/.local/share/memory-wire/update-v0.11.1/` — a directory that genuinely held
+files from the failed run — returns 0 and refreshes the tarball. The old argv
+against the same directory returned the `already exists` error. Both directions
+are real runs, not a test of a copy.
+
+**Gate at this section:** 682 tests, clippy 0, doc 0, four doc gates green.
+
+**Not a test-set consultation.** No LongMemEval number produced or read.
+
+**What remains true from §82.** The 0.11.1 tag still names its own commit and
+its assets are unchanged; this release does not rewrite history. Anyone who
+already pulled 0.11.1 can move to 0.11.2 normally.
