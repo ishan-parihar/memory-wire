@@ -104,7 +104,7 @@ v0.1.4). Prefix `PATH=/usr/bin:$PATH` for every cargo command, or the
 
 ## 3. Where things live
 
-`src/`, 33 modules, 40,987 lines. Counts are `wc -l` against this tree;
+`src/`, 33 modules, 41,003 lines. Counts are `wc -l` against this tree;
 `scripts/module_table_check.sh` fails when the table and the tree disagree, so a
 stale count is a red gate rather than a claim nobody checks.
 
@@ -113,7 +113,7 @@ stale count is a red gate rather than a claim nobody checks.
 | `store.rs` | 5874 | SQLite: schema, migrations, put/recall/delete, FTS5, redaction, versions |
 | `api.rs` | 4878 | HTTP routes, the frozen error contract, the historian prompt |
 | `main.rs` | 3593 | clap surface, routing, wiring |
-| `connect.rs` | 3515 | agent-host detection and config writing |
+| `connect.rs` | 3531 | agent-host detection and config writing |
 | `recall.rs` | 2707 | RRF fusion, candidate pool, budget trim, scoring |
 | `hooks.rs` | 2277 | the five lifecycle events; the never-fail hook contract |
 | `mcp.rs` | 2299 | MCP server: 6 tools + resources + prompts + completion |

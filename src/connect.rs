@@ -1363,9 +1363,24 @@ fn edit_mcp(root: &mut Value, key: &str, entry: Option<Value>) -> Result<Edit, R
                 // entry under our name that we did not write.
                 if let Some(existing) = map.get(MARKER) {
                     if !is_ours(existing) {
+                        // The refusal is right; its message was not. A 2026-11-22
+                        // `connect` on a host whose `memory-wire` key held an
+                        // `http` entry said only "is not ours; left untouched",
+                        // which names neither the shape it found nor the shape
+                        // the host writes -- so the operator had to go read the
+                        // file and the source to learn the two disagree. Name
+                        // both.
+                        let theirs = existing.get("type").and_then(Value::as_str);
+                        let ours = "stdio";
+                        let shape = match theirs {
+                            Some(t) => format!("is a `{t}` entry"),
+                            None => "has no `type` field".to_string(),
+                        };
                         return Err(format!(
                             "a server named `{MARKER}` is already registered under \
-                             `{key}` and is not ours; left untouched"
+                             `{key}` and is not ours: it {shape}, and this host writes \
+                             `{ours}` (a `command`/`args` argv, not a `url`); left untouched. \
+                             Remove or rename that entry, then re-run"
                         ));
                     }
                 }
@@ -2357,8 +2372,9 @@ url = "http://127.0.0.1:8888/mcp/golden""#,
                 None,
             );
             assert!(
-                matches!(&out, Outcome::Failed(why) if why.contains("is not ours; left untouched")),
-                "{out:?}"
+                matches!(&out, Outcome::Failed(why)
+                    if why.contains("is a `http` entry") && why.contains("stdio")),
+                "names both shapes: {out:?}"
             );
             assert_eq!(
                 std::fs::read_to_string(home.join(&rel)).expect("read"),
