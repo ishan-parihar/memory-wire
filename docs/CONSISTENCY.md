@@ -6213,16 +6213,47 @@ locally: the published tarballs were fetched back and checked before the
 install. The binary inside prints 0.11.2.
 
 **Deployed.** Installed with `install/get-memory-wire.sh --no-connect --bank
-omp` (deliberately `--no-connect`: the hosts were already wired to `omp` and
-there was no reason to rewrite seven live configs). The installer named the
-stale-serve condition itself, which is worth noting — it said a server was
-still running the old 0.11.0 inode and gave the exact stop/start commands. That
-is the same condition §79 and §82 hit by hand, now reported by the tool.
+omp` (deliberately `--no-connect`, because six host entries already pinned
+`omp`: `~/.claude.json`, `~/.codex/config.toml`, `~/.copilot/mcp-config.json`
+and `~/.omp/agent/mcp.json` each carry `http://127.0.0.1:8888/mcp/omp`, while
+`~/.cursor/mcp.json` and `~/.config/opencode/opencode.json` carry the same pin
+as a `--bank omp` argv. There was no reason to rewrite six live entries). Note
+that `--bank` is threaded into `connect`, which `--no-connect` skips — so on
+this host the flag was inert and the pin was preserved by the *entries*, not by
+the installer. The installer named the stale-serve condition itself, which is
+worth noting — it said a server was still running the old 0.11.0 inode and gave
+the exact stop/start commands. That is the same condition §79 and §82 hit by
+hand, now reported by the tool.
 
 Restarted: pid `560976`, `daemon status` `serving`, health `ok`, bank `omp` at
-**4250** memories, and omp's own `memory-wire` MCP entry survived untouched
-(`http://127.0.0.1:8888/mcp/omp`, still in `enabledServers`) — the entry §82
-established is load-bearing, kept deliberately.
+**4250** memories, and all six host entries' `memory-wire` pins survived
+untouched — the entry §82 established is load-bearing, kept deliberately.
+
+**One correction to the sentence above, because it was going to be wrong in
+print.** The 4250 `omp` memories were not established by this restart. Their
+oldest row is `2026-09-29T21:52:07Z`, eight weeks before the install; they are
+long-standing data that the restart kept reachable, not a product of the
+deployment. `serve` also takes no `--bank` flag at all — `memory-wire serve
+--help` lists only `--addr` and `--db` — so the daemon's own default bank is
+`ishan-parihar-memory-wire`, which holds **0** memories. The `omp` route works
+because `/mcp/omp` pins the bank *from the URL path* (`bank_from_path` in
+`src/mcp_http.rs`), which is per-request and does not depend on the daemon's
+default. That is why a 0-memory default bank and a 4250-memory served bank
+coexist without contradiction, and it is also why the doctor's finding is not
+alarmism: the bank a bare hook resolves to (`ishan-parihar-memory-wire`) is
+genuinely empty, and that is the pre-existing condition, unchanged by this
+release.
+
+Verified end to end rather than inferred: `POST /mcp/omp` and `POST /mcp`
+return **different** memories (the first starts `[2026-09-29] When reporting
+status…`, the second `[2026-10-07] asked: Proceed with deploying…`), so the
+path pin is real and not a label.
+
+**Six published assets, not three.** `v0.11.2` carries six files: the three
+Linux tarballs plus their three `.sha256` sidecars. The table above lists the
+three tarballs and that is the honest set, but "three assets" undercounts what
+`gh` holds; the count to quote is six, and the three tarballs are the ones that
+run.
 
 `memory-wire update` on the deployed install reports
 `up to date: 0.11.2 is the newest release (17 known)`.
