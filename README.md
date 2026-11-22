@@ -393,7 +393,11 @@ or relative. Point it at a scratch file for throwaway work —
 
 `GET /health` → `ok` (plain text) · `POST /banks/:id/{retain,recall,reflect}` ·
 `GET`/`PUT /banks/:id/config` · `GET /banks/:id/memories[?limit=&offset=]` ·
-`GET`/`DELETE /banks/:id/memories/:mid` · `GET /banks/:id/stats`.
+`GET`/`DELETE /banks/:id/memories/:mid` ·
+`POST /banks/:id/memories/:mid/{supersede,redact}` ·
+`GET /banks/:id/hygiene` · `GET /banks/:id/stats`.
+That is every route the server registers; the three correction/maintenance verbs
+have MCP and CLI doors too (see the door table in `docs/INTEGRATION_GAPS.md`).
 Banks are isolated namespaces; any bank id is created implicitly by its first
 `retain`, and a `default` bank is seeded at boot. Recall returns a bare JSON array
 of content strings by default; `{"format":"full"}` returns `{id, score, created_at, content}`
@@ -686,15 +690,18 @@ binding beyond `127.0.0.1` is not enough on its own to expose it.
 | `memory_recall` | no | `query` (required), `bank?`, `budget?`, `tags?`, `exclude_tags?` |
 | `memory_reflect` | no | `query` (required), `bank?` |
 | `memory_bank_config_get` | no | `bank?` |
-| `memory_supersede` | yes | `memory_id` (required), `bank?`, `superseded_by?` |
+| `memory_supersede` | yes | `id` (required), `bank?`, `superseded_by?` |
+| `memory_redact` | yes | `id` (required), `pattern` (required), `bank?`, `name?` |
 
-Every tool declares `destructiveHint: false`; `memory_retain` and
-`memory_supersede` are the two without `readOnlyHint: true` — a repeated retain
+Every tool declares `destructiveHint: false`; `memory_retain`,
+`memory_supersede` and `memory_redact` are the three without
+`readOnlyHint: true` — a repeated retain
 of the same content in the same bank writes nothing and returns the id that
 already holds it, but a repeated retain of *different* content is a second
 memory; a supersede marks a row superseded (the default recall excludes it, and
 `include_history` returns it with its lineage) rather than deleting it, so the
-audit trail survives. Each tool is a thin adapter onto
+audit trail survives; a redact rewrites the matching substring out of a row and
+its version rows, leaving the row itself in place. Each tool is a thin adapter onto
 the same `MemoryService` methods
 the HTTP routes call — retrieval, redaction, and budgeting are not reimplemented
 for MCP, so the two surfaces cannot drift. An unknown tool name is a JSON-RPC

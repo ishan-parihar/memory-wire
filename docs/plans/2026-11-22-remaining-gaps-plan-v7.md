@@ -242,20 +242,38 @@ That is a result, not a deferral.
 
 ---
 
-## 7. The `omp` live config still holds the `http` entry (carried from v6 §7)
+## 7. The `omp` live config's `http` entry — **verified LIVE and working, kept**
 
-Not a code gap. v6 §2 established that the `memory-wire` key in omp's
-`mcpServers` is an `http` entry (`http://127.0.0.1:8888/mcp/omp`) while
-`connect` writes `stdio`, and that omp ignores the entry either way. It is still
-there:
+Not a defect. Carried from v6 §2, where the entry was recorded as one omp
+"ignores". **That premise was checked on 2026-11-22 and it is wrong**, which is
+the whole value of re-verifying a carried-forward claim rather than inheriting
+it:
 
-```
-memory-wire -> http http://127.0.0.1:8888/mcp/omp
-```
+- `memory-wire` **is** in `enabledServers` — it is not a stray key.
+- `POST /mcp/omp` answers with **six tools**, verified live. The URL pins the
+  `omp` bank, so this is the door omp uses and it works.
+- bank `omp` holds **4250** memories, reachable only through this door.
 
-It is dead weight and removing it is a one-line edit to a **live host config**,
-so per the standing rule it is the user's call and this plan does not touch it.
-Re-verify after any `connect` run, since a future `connect` may rewrite it.
+So the entry is **load-bearing, not dead weight**, and it is **not removed**.
+Removing it would take memory away from omp, which is the exact opposite of
+what this section says it was doing.
+
+**The shape is deliberate, and the code already protects it.** `connect` writes
+`stdio`; this entry is `http`. It was written by hand (or by an earlier config
+pass), not by `connect`, and `is_ours()` is false for it — a URL carrying the
+bank id `omp` does not contain the literal `memory-wire`. So a future bare
+`memory-wire connect omp` **refuses** and names both shapes, rather than
+destroying a working door. That is the v6 refusal-message fix doing its job on
+the live config it was written for.
+
+**Nothing to do, then.** The section stays in the plan as a verification record,
+not an action: the claim was wrong, the check was cheap, and the conclusion is
+*keep it*. Re-verify after any `connect` run, since `connect` would refuse
+rather than overwrite — but a *forced* rewrite would still change the shape.
+
+**A note for the future:** if omp ever needs memory-wire through `connect`, the
+resolution is a `stdio` entry (what `connect` writes) or an explicit hand-edit
+that keeps whatever the operator settled on. Both are decisions, not cleanup.
 
 ---
 

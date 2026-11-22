@@ -493,6 +493,34 @@ is simply absent, and the CLI's `--help` lists what the CLI can do. The risk is
 a reader assuming a capability is reachable everywhere because the service is
 shared.
 
+### Correction, 2026-11-22 — two of the three gaps above closed
+
+The table above is a dated record and is deliberately left as it stood on
+2026-11-19. **Two rows are now stale**, and the prose that drew conclusions from
+them is stale with them:
+
+- **`POST /banks/:id/memories/:mid/supersede`** landed 2026-11-21 (`34237bf`,
+  `CONSISTENCY.md` §74). `supersede` now has **all three** doors: MCP, HTTP,
+  and the shared service. The bullet "supersede has no HTTP route" is no longer
+  true.
+- **`POST /banks/:id/memories/:mid/redact`** landed 2026-11-21 (`ed96bbd`,
+  `CONSISTENCY.md` §75). `redact` has HTTP and MCP, so "the widest gap" and
+  "an agent that retained a credential through MCP cannot retract it through
+  MCP" are both resolved.
+
+Both were verified **routed** on the live server, not inferred from the router:
+a `supersede` for a missing id answers with the domain's 404 naming the bank and
+the id, and a `redact` with a bad body answers 415 from the deserializer —
+neither is the frozen router 404.
+
+**What is unchanged, and must not be "fixed" by association:** `grounding (W5)`
+still has no HTTP route and no MCP tool. That is verified by grep, not inherited
+from this paragraph.
+
+**hygiene** is still MCP-less and CLI-less by a recorded decision, not by
+omission: a scan is an operator maintenance pass, and the MCP door was
+deliberately declined (`TODO.md` #31, which records the ruling).
+
 ### A related count, corrected
 
 `src/mcp.rs` has seven `pub const …: &str = "memory_…"` constants, but only

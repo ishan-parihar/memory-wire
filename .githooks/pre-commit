@@ -43,6 +43,15 @@ fi
 # Mutation battery 5/5 in the script header.
 "$root/scripts/citation_name_check.sh"
 
+# And the tool table. `count_claim_check` grades a NUMBER in prose and skips
+# every table row by design (INTEGRATION_GAPS' comparison table mixes projects).
+# That skip is right for a comparison table and wrong for an ENUMERATION one --
+# README's tool table listed five rows for a server serving six, and a second
+# defect hid in the same table: `memory_supersede` documented `memory_id` where
+# the schema says `id`, so a client following the table got an error. Mutation
+# battery 4/4 in the script header.
+"$root/scripts/tool_table_check.sh"
+
 # core.hooksPath replaces .git/hooks, which install-docs-gate writes to. Keep
 # running that gate so enabling this hook does not silently disable it.
 managed="$(git rev-parse --git-common-dir)/hooks/pre-commit"

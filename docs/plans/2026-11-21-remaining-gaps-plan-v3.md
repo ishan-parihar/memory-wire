@@ -1,6 +1,9 @@
 # Outline plan: remaining gaps, cleanup, and upgrades — measured, with the work log
 
-**Status:** proposal, 2026-11-21 (second pass). Written from `790987d`.
+**Status:** **EXECUTED 2026-11-21** (second pass). Written from `790987d`;
+all its items landed the same day. Verified 2026-11-22: the successor's header
+(`...-plan-v4.md`) said "both now carry supersession headers" — **neither did**,
+and this line was the correction.
 
 Two questions were asked alongside this: *is a benchmark re-run really all that's
 left*, and *what did the ~70 commits actually accomplish*. §1 answers the first,

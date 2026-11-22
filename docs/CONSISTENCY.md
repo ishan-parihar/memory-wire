@@ -6035,3 +6035,87 @@ three doc gates green, module table updated for all three files that moved.
 a real rename, not by running `update` again on this host. The live path is
 exercised next time a release is cut, and that is the honest statement: the
 defect that §79 found is fixed in code and tested, not re-observed live.
+## §81. 2026-11-22 — plan v7: three documents that described a surface the binary lost
+
+**What this is.** Plan v7 named five items. All are done, one is declined by
+decision, and one **premise was wrong and was corrected rather than executed**.
+No code changed: this is the first plan in the series whose content is
+documentation plus one shell gate.
+
+**1. README's MCP table listed five tools for a six-tool server (`d5821b3`
+corrected, this commit finalises).** The table had rows for retain, recall,
+reflect, config_get and supersede. `memory_redact` — added 2026-11-20 by TODO
+#34 — had no row, while the sentence directly above the table said "six tools".
+Confirmed against the live server rather than the source: `tools/list` over
+`POST /mcp` returns six.
+
+**2. A second defect hid in the same table, and it was caller-visible.** The
+`memory_supersede` row documented its argument as `memory_id`; the server's
+schema says `id`. A client that followed the table got
+`id is required and must be a string`. Verified live:
+
+```
+POST /mcp {"name":"memory_supersede","arguments":{"memory_id":"nope"}}
+-> {"isError":true,"text":"`id` is required and must be a string"}
+```
+
+This was not in the plan. It was found while reading the table against the
+live schema to write the new row, which is the argument for reading the running
+product rather than the document.
+
+**3. README's route list omitted three of eleven registered routes.** `hygiene`,
+`supersede` and `redact` all exist and were verified **routed** on the live
+server — not inferred from registration. supersede for a missing id answers the
+domain's 404 naming the bank and the id; redact with a bad body answers 415
+from the deserializer. Neither is the frozen router 404, which carries neither
+message. The list now names all three and says so explicitly.
+
+**4. INTEGRATION_GAPS' door table was nine days stale and understated symmetry.**
+It recorded `redact` and `supersede` as having "no route"; both landed
+2026-11-21 (`34237bf`, `ed96bbd`). The table is dated 2026-11-19, so it is a
+historical record (AGENTS §7) and **was not rewritten** — a dated correction
+block was appended instead, naming what changed and, explicitly, what did not:
+`grounding (W5)` still has no HTTP route and no MCP tool, verified by grep.
+
+**5. Plan v3 said `proposal` and had been executed.** v4's body recorded that
+v2 and v3 "both now carry supersession headers" — **neither did**. That was
+checked and both files had no status line at all. v3's status is corrected, and
+the correction records the false claim rather than quietly fixing it.
+
+**6. The gate could not see §1, and now can (`scripts/tool_table_check.sh`).**
+`count_claim_check.sh` grades a number in prose and skips every table row by
+design, because INTEGRATION_GAPS' comparison table legitimately mixes projects.
+That skip is right for a comparison table and wrong for an **enumeration** one.
+The new gate asserts two directions — every served tool has a row, every
+`memory_*` row names a served tool — plus a third case the plan did not ask for:
+each row must name the required arguments the schema actually declares. That
+third case is what catches the `memory_id` defect, and without it the gate
+would have shipped green over a live caller-facing bug.
+
+**Mutation battery 4/4**, runnable as `tool_table_check.sh --battery` and run
+before commit: missing row, unserved row, wrong required arg, unmodified tree.
+Each case mutates a copy and restores it, so the working tree is never touched.
+
+**7. The `omp` live config: the plan's premise was wrong, so the action was
+cancelled.** Plan v6 §2 and v7 §7 both said the `memory-wire` entry in omp's
+`mcpServers` is "dead weight" that "omp ignores". Checked before deleting:
+
+- `memory-wire` **is** in `enabledServers`.
+- `POST /mcp/omp` serves **six tools**, verified live.
+- bank `omp` holds **4250** memories, reachable only through that door.
+
+Deleting it would have removed omp's only access to its own memory bank. The
+entry is **load-bearing, not dead weight**, and it was **not removed**. The
+claim is corrected in the plan in place. This is the third time in this series
+that a carried-forward claim turned out to be wrong when checked, which is the
+argument for checking rather than inheriting.
+
+**Gate:** 681 tests, clippy 0, doc 0, four doc gates green (the fourth is new).
+
+**Not a test-set consultation.** No LongMemEval number produced or read.
+
+**One dependency note.** `cargo test --offline` began failing on
+`base64 v0.22.1` / `winapi` mid-session: the local registry cache was missing
+packages that a lockfile-complete build still needs. `cargo fetch --locked`
+resolved it and the suite ran clean. Recorded because a future agent hitting an
+offline build failure should check the cache before suspecting the tree.
