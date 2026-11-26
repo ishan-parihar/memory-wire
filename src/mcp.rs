@@ -51,12 +51,12 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, CompleteRequestParams, CompleteResult,
-    CompletionInfo, ContentBlock, ErrorCode, ErrorData, GetPromptRequestParams, GetPromptResponse,
-    GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams, ReadResourceResponse,
-    ReadResourceResult, Reference, Resource, ResourceContents, Role, ServerCapabilities,
-    ServerConfig, Tool, ToolAnnotations,
+    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, CompleteRequestParams,
+    CompleteResult, CompletionInfo, ContentBlock, ErrorCode, ErrorData, GetPromptRequestParams,
+    GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult,
+    ListToolsResult, PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams,
+    ReadResourceResponse, ReadResourceResult, Reference, Resource, ResourceContents, Role,
+    ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
@@ -502,7 +502,13 @@ impl<S: Store> Server<S> {
                 .collect(),
             next_cursor: more.then(|| (offset + RESOURCE_PAGE).to_string()),
             ..Default::default()
-        })
+        }
+        // The same SEP-2549 hints `list_tools` sets. A page of memories is the
+        // one result most worth never caching stale: `ttlMs: 0` makes every
+        // page a fresh read, so a recall never follows a listing the store has
+        // since changed.
+        .with_ttl_ms(0)
+        .with_cache_scope(CacheScope::Private))
     }
 
     /// One resource read, optionally with the bank pinned by the URL.
@@ -785,10 +791,28 @@ impl<S: Store + 'static> ServerHandler for Server<S> {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
+        // SEP-2549 cache hints, and why they are set rather than left absent:
+        // rmcp models `ttlMs`/`cacheScope` as `Option` with
+        // `skip_serializing_if`, so a `Default` result carries neither, and a
+        // client that validates against the 2026-07-28 schema — where both are
+        // required — rejects the WHOLE result. That is exactly how OpenCode
+        // 2.4.1 failed memory-wire (`Invalid result for tools/list`), and it is
+        // why the DSH profile carried a stdio shim that injected the two fields
+        // by hand. The server emitting them is the fix; the shims are now
+        // redundant.
+        //
+        // `0` ms is the spec's "immediately stale" value, so no client or
+        // intermediary may serve a cached tool list that is one build old.
+        // `Private` is the conservative scope: only the caller that asked may
+        // cache it. Older clients that do not know the fields ignore them.
+        // The same two values go on the other list results — one list handler
+        // that omitted them would read as a deliberate choice to be cacheable.
         Ok(ListToolsResult {
             tools: Server::<SqliteStore>::tools(),
             ..Default::default()
-        })
+        }
+        .with_ttl_ms(0)
+        .with_cache_scope(CacheScope::Private))
     }
 
     async fn call_tool(
@@ -878,10 +902,13 @@ impl<S: Store + 'static> ServerHandler for Server<S> {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
+        // The same SEP-2549 hints `list_tools` sets; the rationale is there.
         Ok(ListPromptsResult {
             prompts: Server::<SqliteStore>::prompts(),
             ..Default::default()
-        })
+        }
+        .with_ttl_ms(0)
+        .with_cache_scope(CacheScope::Private))
     }
 
     /// The historian framing itself, byte for byte as `reflect` frames it.
@@ -1234,6 +1261,40 @@ mod tests {
             assert_eq!(required(RECALL), vec!["query"]);
             assert_eq!(required(REFLECT), vec!["query"]);
             assert!(required(CONFIG_GET).is_empty());
+        });
+    }
+
+    // `tools/list` must carry the SEP-2549 cache hints a 2026-07-28 client
+    // requires. This is the regression pin for the defect that took the tools
+    // away from OpenCode entirely: the client validated the result and rejected
+    // it whole, because `ttlMs` and `cacheScope` were absent rather than
+    // shape-wrong, so the failure named a field the reply never mentioned.
+    #[test]
+    fn tools_list_should_carry_the_cache_hints_a_2026_client_requires() {
+        run(async {
+            let (mut c, _running) = session(server());
+            let reply = c.request(2, "tools/list", json!({})).await;
+            let result = &reply["result"];
+            // `0` is the spec's "immediately stale" value, so no client may
+            // serve a tool list one build old out of its cache.
+            assert_eq!(result["ttlMs"], json!(0), "{reply}");
+            // The conservative scope: only the caller that asked may cache it.
+            assert_eq!(result["cacheScope"], json!("private"), "{reply}");
+        });
+    }
+
+    // The same two hints on every list result, not just tools: one handler that
+    // omitted them would read as a deliberate choice to be cacheable.
+    #[test]
+    fn prompts_and_resources_lists_should_carry_the_cache_hints() {
+        run(async {
+            let (mut c, _running) = session(server());
+            for (id, method) in [(3, "prompts/list"), (4, "resources/list")] {
+                let reply = c.request(id, method, json!({})).await;
+                let result = &reply["result"];
+                assert_eq!(result["ttlMs"], json!(0), "{method}: {reply}");
+                assert_eq!(result["cacheScope"], json!("private"), "{method}: {reply}");
+            }
         });
     }
 

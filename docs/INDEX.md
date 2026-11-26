@@ -17,6 +17,7 @@ Status: LIVE (current truth) · EVIDENCE (dated measured verdict) · PLAN-ACTIVE
 | `docs/INTEGRATION_AUDIT.md` | EVIDENCE | Integration audit | — |
 | `docs/INTEGRATION_GAPS.md` | EVIDENCE | Integration gap analysis | — |
 | `docs/INTEGRATION_PLAN.md` | PLAN-ACTIVE | Integration plan | — |
+| `docs/MCP_CACHE_HINTS_PLAN.md` | PLAN-ACTIVE | Plan: emit the SEP-2549 cache hints a 2026-07-28 client requires on every list result | retrieval quality |
 | `docs/NEXT_ITERATION.md` | SUPERSEDED | Next iteration | — |
 | `docs/OPEN_HOOK_RECALL_RELEVANCE.md` | EVIDENCE | Open: hook recall injects the best of an irrelevant set | — |
 | `docs/PAGE-INDEX.md` | LIVE | PAGE INDEX | — |

@@ -304,6 +304,13 @@ mod tests {
             over_http, over_stdio,
             "HTTP and stdio must serve one tool set"
         );
+        // The SEP-2549 cache hints ride the HTTP transport too. This is not
+        // paranoia about two implementations: one `list_tools` handler serves
+        // both, so the drift this catches is a handler change that sets the
+        // hints on stdio and forgets HTTP — or the reverse. OpenCode reached
+        // its broker over HTTP and would have failed on this half alone.
+        assert_eq!(reply["result"]["ttlMs"], json!(0), "{reply}");
+        assert_eq!(reply["result"]["cacheScope"], json!("private"), "{reply}");
 
         // retain, with no `bank` argument: the URL decides.
         let (head, reply) = post(
