@@ -2,6 +2,39 @@
 
 Status: PLAN-ACTIVE · Owner: this file · Not for: retrieval quality, bank semantics, prompt wording.
 
+## Executed — 2026-11-27 (v0.11.3, then v0.11.4)
+
+Shipped and verified on this host. What the record below got wrong, corrected by
+probing the *installed* binary through the real client rather than trusting the
+unit suite:
+
+- **v0.11.3** set the hints on the four list results this server overrides. It
+  was necessary but not sufficient: OpenCode then reported
+  `failed to list MCP resource templates — Invalid result for
+  resources/templates/list`, because a client asks for that method on every
+  server and rmcp answered it from its own `Default`, which carries neither
+  hint. **v0.11.4** added an explicit handler. A suite that only covered the
+  methods with overrides would have shipped v0.11.3 as "fixed".
+- The OpenCode MCP row needed **no** workaround and no shim: it already pointed
+  at `/home/ishanp/.local/bin/memory-wire mcp --bank omp`, so the fix was
+  picked up by reconnecting the row after the swap.
+- The DSH row now spawns the binary directly
+  (`@local/dsh-memory-wire/cordis.patch.yml`, `command:
+  /home/ishanp/.local/bin/memory-wire`, `args: [mcp]`, no `--bank` — the default
+  bank stays git-derived, which `dsh-self-improve` callers rely on). The
+  `memory-wire-mcp-shim.mjs` file is still in the bundle, inert and referenced
+  by nothing; deleting it is cleanup, not a fix, and it was left rather than
+  committed into a workspace tree that already carries unrelated edits.
+
+Remaining after execution: nothing that affects either client. `memory-wire
+connect` still refuses `~/.omp/agent/mcp.json`, which holds a hand-written
+`http` entry at `http://127.0.0.1:8888/mcp/omp` — that is a working arrangement
+of its own, not a gap this plan owns.
+
+---
+
+The plan as written, for the record:
+
 ## The defect, in the client's words
 
 OpenCode 2.4.1 refuses the whole tool list:
@@ -143,12 +176,16 @@ proved the unconditional shape works against both client families live; match it
 
 ## Release and deploy
 
-- Version bump `0.11.2` → `0.11.3` in `Cargo.toml`; release commit in the
-  established shape (`chore(release): 0.11.3` — see `d7d850f`), tag `v0.11.3`,
-  `gh release create`.
-- Install on this host: `memory-wire update` (it stops the daemon, swaps, keeps
-  `<exe>.old` beside the new binary, re-runs `connect`, and preserves the bank
-  pin).
+- Version bumps: `0.11.2` → `0.11.3` (the four overridden list results), then
+  `0.11.4` (the explicit `resources/templates/list` handler the client turned out
+  to require). Each was a `fix(mcp):` commit plus an annotated tag, built and
+  published with `scripts/build-release.sh --only linux-x86_64 --upload <tag>`
+  (a deliberate single-platform subset; `install/get-memory-wire.sh` is what
+  needs the rest).
+- Install on this host: `memory-wire update`, then
+  `systemctl --user restart memory-wire.service` — the HTTP/MCP-http server is a
+  systemd unit here, not `memory-wire daemon`, so the swap alone leaves the old
+  binary serving on :8888.
 - Verify in order: the raw probe above, `opencode mcp list`, the DSH memory
   tools, `~/.local/bin/memory-wire doctor`.
 
@@ -157,22 +194,13 @@ proved the unconditional shape works against both client families live; match it
 Both stopgaps become dead weight and each is a silent failure waiting for the
 next client:
 
-1. OpenCode's `mcp.memory-wire` row currently points at
-   `node …/dsh-memory-wire/memory-wire-mcp-shim.mjs` with `MEMORY_WIRE_BANK=omp`
-   (a copy under `~/.local/bin` is the durable location). Once the binary emits
-   the hints, restore the direct row:
-
-   ```json
-   "memory-wire": {
-     "type": "local",
-     "command": ["/home/ishanp/.local/bin/memory-wire", "mcp", "--bank", "omp"],
-     "enabled": true
-   }
-   ```
-
-2. The DSH shim (`memory-wire-mcp-shim.mjs` and its `cordis.patch.yml` entry) can
-   be dropped from the profile bundle once a DSH session connects against the
-   fixed binary.
+1. OpenCode's `mcp.memory-wire` row pointed straight at
+   `/home/ishanp/.local/bin/memory-wire mcp --bank omp`, so there was nothing to
+   restore. The shim never reached this host.
+2. The DSH shim entry is replaced by the direct binary in
+   `~/.dsh/profiles/web/node_modules/@local/dsh-memory-wire/cordis.patch.yml`,
+   recomposed by touching the profile's own `cordis.patch.yml`. Its
+   `memory-wire-mcp-shim.mjs` file stays in the bundle, inert.
 
 ## Rollback
 
