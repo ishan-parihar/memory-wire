@@ -53,10 +53,11 @@ use axum::http::StatusCode;
 use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, CompleteRequestParams,
     CompleteResult, CompletionInfo, ContentBlock, ErrorCode, ErrorData, GetPromptRequestParams,
-    GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult,
-    ListToolsResult, PaginatedRequestParams, Prompt, PromptMessage, ReadResourceRequestParams,
-    ReadResourceResponse, ReadResourceResult, Reference, Resource, ResourceContents, Role,
-    ServerCapabilities, ServerConfig, Tool, ToolAnnotations,
+    GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
+    ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+    Prompt, PromptMessage, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult,
+    Reference, Resource, ResourceContents, Role, ServerCapabilities, ServerConfig, Tool,
+    ToolAnnotations,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
@@ -880,7 +881,33 @@ impl<S: Store + 'static> ServerHandler for Server<S> {
         store_task(move || me.list_scoped(cursor.as_deref(), pinned.as_deref())).await
     }
 
-    /// One memory's content, addressed by `memory://{bank}/{id}`.
+    /// Resource templates: none today, and the reason is worth stating.
+    ///
+    /// The resources this server serves are per-memory
+    /// (`memory://{bank}/{id}`) and are reached by address, never enumerated
+    /// from a template — `list_resources` pages the bank's rows instead, and a
+    /// `memory://{bank}/{id}` template would invite a host to materialise a
+    /// listing that does not exist.
+    ///
+    /// The hints are the point, and the reason an *empty* result must be built
+    /// by hand: rmcp's default for this method returns
+    /// `ListResourceTemplatesResult::default()`, which carries neither `ttlMs`
+    /// nor `cacheScope`, and a 2026-07-28 client validates every list result
+    /// against a schema that requires both. A server that answers nothing here
+    /// therefore still has to answer well — this is the one handler the client
+    /// asks for that no other fix covered, because `tools/list`, `prompts/list`
+    /// and `resources/list` have their own overrides and this one did not.
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        Ok(ListResourceTemplatesResult::default()
+            .with_ttl_ms(0)
+            .with_cache_scope(CacheScope::Private))
+    }
+
+    /// One memory's content, addressed as `memory://{bank}/{id}`.
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
@@ -1285,16 +1312,32 @@ mod tests {
 
     // The same two hints on every list result, not just tools: one handler that
     // omitted them would read as a deliberate choice to be cacheable.
+    //
+    // `resources/templates/list` is the case that proves the blanket matters:
+    // it is the one method a client asks for that this server answers with no
+    // data, so its result is the easiest to leave as an unannotated empty
+    // object — which is exactly the shape a strict client rejects.
     #[test]
-    fn prompts_and_resources_lists_should_carry_the_cache_hints() {
+    fn every_list_result_should_carry_the_cache_hints() {
         run(async {
             let (mut c, _running) = session(server());
-            for (id, method) in [(3, "prompts/list"), (4, "resources/list")] {
+            for (id, method) in [
+                (3, "prompts/list"),
+                (4, "resources/list"),
+                (5, "resources/templates/list"),
+            ] {
                 let reply = c.request(id, method, json!({})).await;
                 let result = &reply["result"];
                 assert_eq!(result["ttlMs"], json!(0), "{method}: {reply}");
                 assert_eq!(result["cacheScope"], json!("private"), "{method}: {reply}");
             }
+            // The template listing is empty on purpose; a template that does
+            // not exist must not be invented to make the handler look used.
+            assert_eq!(
+                c.request(6, "resources/templates/list", json!({})).await["result"]
+                    ["resourceTemplates"],
+                json!([])
+            );
         });
     }
 
